@@ -22,7 +22,6 @@ import {
   PartyPopper,
   Wallet,
   ChevronRight,
-  Palette,
   BookOpen,
   Plug,
   Shield,
@@ -56,6 +55,8 @@ interface NavItem {
   requiredPlan?: PlanId
   /** Nuroo product plan gate — locks item for nuroo ($15) users */
   businessFeature?: BusinessFeature
+  /** Hide this item for nuroo (specialist) plan users — show only for nuroo_business */
+  businessOnly?: boolean
 }
 
 interface NavGroup {
@@ -154,7 +155,9 @@ export function Sidebar({
         const data = snap.data() as Record<string, unknown> | undefined
         setIsPlatformAdmin(data?.platformRole === 'platform_admin')
       })
-      .catch(() => {})
+      .catch((_err) => {
+        /* platform admin check is best-effort */
+      })
   }, [user])
   const displayName = branding?.name || currentOrg?.orgName || 'Nuroo'
   const displayLogo = branding?.logo || currentOrg?.logoUrl || null
@@ -185,7 +188,6 @@ export function Sidebar({
         href: withOrg('/b2b/assignments'),
         labelKey: t('assignments'),
         icon: FileText,
-        businessFeature: 'assignments_progress' as BusinessFeature,
       },
     ],
   }
@@ -251,7 +253,6 @@ export function Sidebar({
         href: withOrg('/b2b/invites'),
         labelKey: t('inviteCodes'),
         icon: Key,
-        businessFeature: 'team_management' as BusinessFeature,
       },
     ],
   }
@@ -260,12 +261,10 @@ export function Sidebar({
     ? {
         labelKey: 'adminSection',
         items: [
-          { href: withOrg('/b2b/organization'), labelKey: t('organization'), icon: Building2 },
           {
-            href: withOrg('/b2b/brand'),
-            labelKey: t('brandSettings'),
-            icon: Palette,
-            requiredPlan: 'growth' as PlanId,
+            href: withOrg('/b2b/organization'),
+            labelKey: isBusiness ? t('organization') : t('profile'),
+            icon: Building2,
           },
           { href: withOrg('/b2b/billing'), labelKey: t('billing'), icon: CreditCard },
         ],
@@ -351,7 +350,16 @@ export function Sidebar({
               />
             )}
             <div className="flex-1 min-w-0">
-              <span className="b2b-sidebar-org-name text-xl font-bold text-gray-900 block leading-tight truncate">
+              <span
+                className="b2b-sidebar-org-name text-[17px] font-bold text-gray-900 block leading-snug"
+                style={{
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                  wordBreak: 'break-word',
+                }}
+              >
                 {displayName}
               </span>
               <span className="b2b-sidebar-role text-sm text-primary-500 font-semibold leading-tight mt-1 block">
@@ -371,6 +379,7 @@ export function Sidebar({
                 )}
                 {group.items
                   .filter((item) => !item.businessFeature || isBusiness)
+                  .filter((item) => !item.businessOnly || isBusiness)
                   .map((item) => (
                     <NavLink
                       key={item.href}

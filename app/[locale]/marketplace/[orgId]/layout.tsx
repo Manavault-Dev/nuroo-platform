@@ -6,7 +6,7 @@ type Props = {
   children: React.ReactNode
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3101'
+const API_URL = `${(process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3101').replace(/\/+$/, '')}/v1`
 
 const LOCALE_OG: Record<string, string> = { ru: 'ru_RU', en: 'en_US', ky: 'ky_KG' }
 
@@ -29,12 +29,14 @@ async function fetchOrgMeta(
   orgId: string
 ): Promise<{ name: string | null; description: string | null } | null> {
   try {
-    const res = await fetch(`${API_URL}/organizations/${orgId}/public`, {
+    const res = await fetch(`${API_URL}/api/organizations/public`, {
       next: { revalidate: 3600 },
     })
     if (!res.ok) return null
     const data = await res.json()
-    return { name: data?.name ?? null, description: data?.branding?.description ?? null }
+    const org = (data?.organizations ?? []).find((o: { id: string }) => o.id === orgId)
+    if (!org) return null
+    return { name: org.name ?? null, description: org.description ?? null }
   } catch {
     return null
   }

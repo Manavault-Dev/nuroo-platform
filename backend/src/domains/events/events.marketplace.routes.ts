@@ -71,7 +71,7 @@ export const eventsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
     if (query.free === 'true') events = events.filter((e) => e.price === 0)
     events = events.slice(0, query.limit)
 
-    reply.header('Cache-Control', 'public, max-age=30, stale-while-revalidate=60')
+    reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
     return { ok: true, events }
   })
 
