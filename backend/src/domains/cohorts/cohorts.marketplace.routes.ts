@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { getFirestore } from '../../infrastructure/database/firebase.js'
 import type { CohortDoc, PublicCohort } from './cohorts.types.js'
+import { computeStatus } from './cohorts.helpers.js'
 
 const RATE = { max: 120, timeWindow: '1 minute' }
 
@@ -62,7 +63,13 @@ async function getCachedCohorts(db: ReturnType<typeof getFirestore>): Promise<Pu
         .limit(20)
         .get()
         .then((snap) =>
-          snap.docs.map((d) => toPublic({ id: d.id, orgId, ...d.data() } as CohortDoc))
+          snap.docs
+            .map((d) => ({ id: d.id, orgId, ...d.data() }) as CohortDoc)
+            .filter((doc) => {
+              const s = computeStatus(doc)
+              return s === 'open' || s === 'in_progress' || s === 'full'
+            })
+            .map(toPublic)
         )
         .catch(() => [] as PublicCohort[])
     )
@@ -100,9 +107,13 @@ export const cohortsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
         .where('status', 'in', ['open', 'in_progress'])
         .limit(query.limit)
         .get()
-      cohorts = snap.docs.map((d) =>
-        toPublic({ id: d.id, orgId: query.orgId!, ...d.data() } as CohortDoc)
-      )
+      cohorts = snap.docs
+        .map((d) => ({ id: d.id, orgId: query.orgId!, ...d.data() }) as CohortDoc)
+        .filter((doc) => {
+          const s = computeStatus(doc)
+          return s === 'open' || s === 'in_progress' || s === 'full'
+        })
+        .map(toPublic)
     } else {
       // Cross-org: served from 60-second in-memory cache
       cohorts = await getCachedCohorts(db)
@@ -117,7 +128,7 @@ export const cohortsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
       cohorts = cohorts.filter((c) => (c.ageMin ?? 0) <= query.ageMax!)
     }
 
-    reply.header('Cache-Control', 'public, max-age=30, stale-while-revalidate=60')
+    reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
     return { ok: true, cohorts }
   })
 
