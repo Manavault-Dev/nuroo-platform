@@ -64,7 +64,7 @@ async function getCachedCohorts(db: ReturnType<typeof getFirestore>): Promise<Pu
         .get()
         .then((snap) =>
           snap.docs
-            .map((d) => ({ id: d.id, orgId, ...d.data() } as CohortDoc))
+            .map((d) => ({ id: d.id, orgId, ...d.data() }) as CohortDoc)
             .filter((doc) => {
               const s = computeStatus(doc)
               return s === 'open' || s === 'in_progress' || s === 'full'
@@ -108,7 +108,7 @@ export const cohortsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
         .limit(query.limit)
         .get()
       cohorts = snap.docs
-        .map((d) => ({ id: d.id, orgId: query.orgId!, ...d.data() } as CohortDoc))
+        .map((d) => ({ id: d.id, orgId: query.orgId!, ...d.data() }) as CohortDoc)
         .filter((doc) => {
           const s = computeStatus(doc)
           return s === 'open' || s === 'in_progress' || s === 'full'

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
 import { getIdToken } from '@/lib/b2b/authClient'
-import Image from 'next/image'
+import NextImage from 'next/image'
 import { Select } from '@/components/ui/Select'
 import { DateTimePicker } from '@/components/ui/DateTimePicker'
 // Resize cover to ≤600px wide at JPEG 0.55 → ~50–150KB, safely under Firestore's 1MB field limit
@@ -112,6 +112,7 @@ export default function EventsPage() {
 
   useEffect(() => {
     if (!isLoading && orgId) fetchEvents()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, orgId])
 
   const openCreate = () => {
@@ -349,7 +350,7 @@ function EventCard({
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden flex flex-col shadow-sm">
       <div className="h-36 bg-gradient-to-br from-violet-500 to-purple-700 relative overflow-hidden">
         {ev.coverUrl && (
-          <Image
+          <NextImage
             src={ev.coverUrl}
             alt=""
             fill
