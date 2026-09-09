@@ -109,7 +109,7 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
   fastify.get<{ Params: { orgId: string } }>('/orgs/:orgId', async (request, reply) => {
     if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
     const { orgId } = request.params
-    const member = await requireOrgMember(request, reply, orgId)
+    await requireOrgMember(request, reply, orgId)
     if (reply.sent) return
     const db = getFirestore()
     const snap = await db.collection('organizations').doc(orgId).get()
