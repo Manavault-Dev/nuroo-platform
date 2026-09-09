@@ -25,7 +25,7 @@ const imageSourceSchema = z
     message: 'Must be a valid URL or uploaded image',
   })
 
-const uploadKindSchema = z.enum(['logo', 'cover'])
+const uploadKindSchema = z.enum(['logo', 'cover', 'photo'])
 const imagePositionSchema = z.number().min(0).max(100).optional().nullable()
 const imageScaleSchema = z.number().min(1).max(2).optional().nullable()
 
@@ -45,7 +45,7 @@ function parseDataImageUrl(value: string): { mimeType: string; buffer: Buffer } 
 
 async function uploadOrgMarketplaceImage(
   orgId: string,
-  kind: 'logo' | 'cover',
+  kind: 'logo' | 'cover' | 'photo',
   mediaBuffer: Buffer,
   mediaMimetype: string,
   mediaFilename: string
@@ -104,6 +104,18 @@ const updateOrgSchema = z
 
 export const orgsRoute: FastifyPluginAsync = async (fastify) => {
   await fastify.register(multipart, { limits: { fileSize: 8 * 1024 * 1024 } })
+
+  // ── GET /orgs/:orgId — fetch full org data including photos[] ─────────────
+  fastify.get<{ Params: { orgId: string } }>('/orgs/:orgId', async (request, reply) => {
+    if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
+    const { orgId } = request.params
+    const member = await requireOrgMember(request, reply, orgId)
+    if (reply.sent) return
+    const db = getFirestore()
+    const snap = await db.collection('organizations').doc(orgId).get()
+    if (!snap.exists) return reply.code(404).send({ error: 'Org not found' })
+    return reply.send({ ok: true, org: { id: snap.id, ...snap.data() } })
+  })
 
   fastify.post<{ Body: z.infer<typeof createOrgSchema> }>('/orgs', async (request, reply) => {
     if (!request.user) {
@@ -351,7 +363,7 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
       let mediaBuffer: Buffer | null = null
       let mediaMimetype = ''
       let mediaFilename = 'image'
-      let kind: 'logo' | 'cover' = 'logo'
+      let kind: 'logo' | 'cover' | 'photo' = 'logo'
 
       for await (const part of parts) {
         if (part.type === 'file' && part.fieldname === 'media') {
@@ -373,17 +385,17 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ error: 'Only image uploads are allowed' })
       }
 
-      return reply.code(201).send({
-        ok: true,
-        kind,
-        url: await uploadOrgMarketplaceImage(
-          orgId,
-          kind,
-          mediaBuffer,
-          mediaMimetype,
-          mediaFilename
-        ),
-      })
+      const url = await uploadOrgMarketplaceImage(orgId, kind, mediaBuffer, mediaMimetype, mediaFilename)
+
+      // For gallery photos — append URL to the photos[] array in Firestore
+      if (kind === 'photo') {
+        const db = getFirestore()
+        await db.collection('organizations').doc(orgId).update({
+          photos: admin.firestore.FieldValue.arrayUnion(url),
+        })
+      }
+
+      return reply.code(201).send({ ok: true, kind, url })
     } catch (error: any) {
       if (error?.code === 'FST_FILES_LIMIT') {
         return reply.code(413).send({ error: 'Image file is too large' })
@@ -396,7 +408,30 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // ── In-memory cache for public org listing (TTL 60 s) ────────────────────────
+  // ── DELETE /orgs/:orgId/media/photo — remove a gallery photo URL ─────────────
+  fastify.delete<{ Params: { orgId: string }; Body: { url: string } }>(
+    '/orgs/:orgId/media/photo',
+    async (request, reply) => {
+      if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
+      const { orgId } = request.params
+      const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
+      if (member.role !== 'org_admin') return reply.code(403).send({ error: 'Only admins can delete photos' })
+
+      const { url } = request.body as { url: string }
+      if (!url) return reply.code(400).send({ error: 'url is required' })
+
+      const db = getFirestore()
+      await db.collection('organizations').doc(orgId).update({
+        photos: admin.firestore.FieldValue.arrayRemove(url),
+      })
+      return reply.send({ ok: true })
+    }
+  )
+
+  // ── In-memory cache for public org listing (TTL 5 min) ───────────────────────
+  // Orgs don't change frequently; 5 min cache saves Firestore reads under load.
+  const ORGS_CACHE_TTL = 5 * 60_000
   let _orgsCache: { data: Record<string, unknown>[]; expiresAt: number } | null = null
 
   // ── GET /api/organizations/public — unauthenticated marketplace listing ───────
@@ -425,7 +460,7 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
         .get()
       orgsRaw = snap.docs.map((doc) => ({ _id: doc.id, ...doc.data() }))
       if (!category && !search && !country && !city) {
-        _orgsCache = { data: orgsRaw, expiresAt: Date.now() + 60_000 }
+        _orgsCache = { data: orgsRaw, expiresAt: Date.now() + ORGS_CACHE_TTL }
       }
     }
 
@@ -460,12 +495,15 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
         websiteUrl: d.websiteUrl ?? null,
         reviewCount: (d.reviewCount as number) ?? 0,
         averageRating: (d.averageRating as number) ?? 0,
-        plan: d.plan ?? 'nuroo_business',
+        plan: d.nurooPlan ?? d.plan ?? 'nuroo_business',
         isOnline: d.isOnline === true,
         priceFrom: (d.priceFrom as number) ?? null,
         currency: (d.currency as string) ?? 'KGS',
         ageMin: (d.ageMin as number) ?? null,
         ageMax: (d.ageMax as number) ?? null,
+        lat: typeof d.lat === 'number' ? d.lat : null,
+        lng: typeof d.lng === 'number' ? d.lng : null,
+        photos: Array.isArray(d.photos) ? (d.photos as string[]).filter((p: string) => typeof p === 'string' && p.startsWith('http')) : [],
       }
     })
 
@@ -493,7 +531,7 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
       )
     }
 
-    reply.header('Cache-Control', 'public, max-age=30, stale-while-revalidate=60')
+    reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
     return { ok: true, organizations: result }
   })
 }
