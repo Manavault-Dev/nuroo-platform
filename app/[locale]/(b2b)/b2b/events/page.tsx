@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
 import { getIdToken } from '@/lib/b2b/authClient'
+import Image from 'next/image'
 import { Select } from '@/components/ui/Select'
 import { DateTimePicker } from '@/components/ui/DateTimePicker'
 // Resize cover to ≤600px wide at JPEG 0.55 → ~50–150KB, safely under Firestore's 1MB field limit
@@ -347,7 +348,15 @@ function EventCard({
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden flex flex-col shadow-sm">
       <div className="h-36 bg-gradient-to-br from-violet-500 to-purple-700 relative overflow-hidden">
-        {ev.coverUrl && <img src={ev.coverUrl} alt="" className="w-full h-full object-cover" />}
+        {ev.coverUrl && (
+          <Image
+            src={ev.coverUrl}
+            alt=""
+            fill
+            className="object-cover"
+            sizes="(max-width: 640px) 100vw, 33vw"
+          />
+        )}
         <div className="absolute inset-0 bg-black/25" />
         <span
           className={`absolute top-2 right-2 text-[11px] font-bold px-2 py-1 rounded-full ${statusColors[ev.status]}`}

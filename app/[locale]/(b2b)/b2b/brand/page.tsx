@@ -2,9 +2,11 @@
 
 import { FormEvent, type CSSProperties, useEffect, useRef, useState } from 'react'
 import { useRouter } from '@/i18n/navigation'
+import { OrgPageTabs } from '@/components/b2b/OrgPageTabs'
 import { useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useAuth } from '@/lib/b2b/AuthContext'
+import { usePlanGate } from '@/lib/b2b/planGate'
 import { useBranding, type OrgBranding } from '@/lib/b2b/brandingContext'
 import { getCurrentUser } from '@/lib/b2b/authClient'
 import {
@@ -103,6 +105,7 @@ export default function BrandSettingsPage() {
   const searchParams = useSearchParams()
   const { profile, isLoading } = useAuth()
   const { branding, updateBranding } = useBranding()
+  const { isBusiness } = usePlanGate()
   const t = useTranslations('b2b.pages.brand')
 
   const currentOrgId = searchParams.get('orgId') || profile?.organizations?.[0]?.orgId || undefined
@@ -128,6 +131,13 @@ export default function BrandSettingsPage() {
       router.push('/b2b/login')
     }
   }, [isLoading, router])
+
+  // Branding is only for nuroo_business — redirect specialists away
+  useEffect(() => {
+    if (!isLoading && profile && !isBusiness) {
+      router.replace(currentOrgId ? `/b2b?orgId=${currentOrgId}` : '/b2b')
+    }
+  }, [isLoading, profile, isBusiness, currentOrgId, router])
 
   useEffect(() => {
     if (!isLoading && profile && !isAdmin) {
@@ -324,10 +334,9 @@ export default function BrandSettingsPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">{t('title')}</h2>
-          <p className="text-gray-600 mt-1">{t('subtitle')}</p>
-        </div>
+        <h2 className="text-2xl font-bold text-gray-900">{t('title')}</h2>
+        <p className="text-gray-600 mt-1 mb-4">{t('subtitle')}</p>
+        <OrgPageTabs orgId={currentOrgId} />
       </div>
 
       <div className="max-w-5xl grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -430,13 +439,16 @@ export default function BrandSettingsPage() {
                     </button>
                   </div>
                   <div className="mb-4 flex justify-center">
-                    <div className="relative h-20 w-20 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                      <img
-                        src={form.logo}
-                        alt=""
-                        className="h-full w-full object-cover"
-                        style={logoCropStyle}
-                      />
+                    {/* Shadow on outer wrapper; clip on inner — fixes Safari overflow-hidden bug */}
+                    <div className="rounded-2xl shadow-sm">
+                      <div className="relative h-20 w-20 overflow-hidden rounded-2xl border border-gray-200 bg-white [transform:translateZ(0)]">
+                        <img
+                          src={form.logo}
+                          alt=""
+                          className="absolute inset-0"
+                          style={logoCropStyle}
+                        />
+                      </div>
                     </div>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-3">
