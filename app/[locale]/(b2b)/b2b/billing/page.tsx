@@ -24,15 +24,6 @@ import {
   Info,
 } from 'lucide-react'
 import { BillingBadge, type BillingBadgeKey } from '@/components/ui/BillingBadge'
-import { PricingCard } from '@/components/ui/PricingCard'
-import { PLAN_FEATURE_KEYS } from '@/lib/pricing/planFeatureKeys'
-import {
-  PLAN_PRICES,
-  getMonthlyAnnualTotal,
-  getMonthlyEquivalent,
-  getYearlySavings,
-  type BillingPeriod,
-} from '@/lib/pricing/pricingConfig'
 import type { BillingMode } from '@/lib/b2b/api'
 
 interface BillingStatus {
@@ -126,14 +117,12 @@ export default function BillingPage() {
   const [startingTrial, setStartingTrial] = useState(false)
   const [trialStarted, setTrialStarted] = useState(false)
   const [openingPortal, setOpeningPortal] = useState(false)
-  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly')
   const [error, setError] = useState('')
   const currentOrg =
     profile?.organizations.find((org) => org.orgId === currentOrgId) ?? profile?.organizations[0]
 
   const numberLocale =
     locale === 'en' ? 'en-US' : locale === 'ru' ? 'ru-RU' : locale === 'ky' ? 'ky-KG' : 'en-US'
-  const formatPrice = (n: number) => n.toLocaleString(numberLocale)
   const formatDate = (value: DateLike, options?: Intl.DateTimeFormatOptions): string | null =>
     parseDateLike(value)?.toLocaleDateString(numberLocale, options) ?? null
 
@@ -419,57 +408,6 @@ export default function BillingPage() {
     )
   }
 
-  const getDisplayPrice = (id: 'starter' | 'growth' | 'enterprise') => {
-    const found = PLAN_PRICES.find((p) => p.id === id)
-    if (!found) return 0
-    return billingPeriod === 'yearly' ? found.yearlyPrice : found.monthlyPrice
-  }
-
-  const renderYearlySavings = (planId: 'starter' | 'growth' | 'enterprise') => {
-    if (billingPeriod !== 'yearly') return null
-
-    return (
-      <div className="space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-gray-400 line-through">
-            ${formatPrice(getMonthlyAnnualTotal(planId))}
-          </span>
-          <span className="rounded bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-700">
-            {tPricing('saveLabel')} ${formatPrice(getYearlySavings(planId))}
-          </span>
-        </div>
-        <p className="text-xs text-gray-500">
-          ≈ ${formatPrice(getMonthlyEquivalent(planId))} / {t('perMonth')} ·{' '}
-          {tPricing('billedAnnually')}
-        </p>
-      </div>
-    )
-  }
-
-  // Two Nuroo product tiers mapped to billing plan IDs (starter=$15, growth=$50)
-  const billingPlans: Array<{
-    id: 'starter' | 'growth' | 'enterprise'
-    name: string
-    price: number
-    currency: string
-    nurooPlanLabel?: string
-  }> = [
-    {
-      id: 'starter',
-      name: 'Nuroo',
-      nurooPlanLabel: 'Для независимых специалистов',
-      price: getDisplayPrice('starter'),
-      currency: 'USD',
-    },
-    {
-      id: 'growth',
-      name: 'Nuroo Business',
-      nurooPlanLabel: 'Для центров и организаций',
-      price: getDisplayPrice('growth'),
-      currency: 'USD',
-    },
-  ]
-
   const hasStripeCustomer = Boolean(billingStatus?.stripeCustomerId)
   const trialEndDate = formatDate(billingStatus?.trialEndsAt)
   const manualStatus = billingStatus?.billingStatus
@@ -496,6 +434,32 @@ export default function BillingPage() {
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900">{t('title')}</h2>
         <p className="text-gray-600 mt-2">{t('subtitle')}</p>
+      </div>
+
+      {/* Plan distinction banner */}
+      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
+        <div className="flex items-start gap-3 bg-teal-50 border border-teal-200 rounded-xl p-4">
+          <div className="bg-teal-100 rounded-lg p-2 shrink-0">
+            <Star className="w-4 h-4 text-teal-600" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-teal-900">Nuroo</p>
+            <p className="text-xs text-teal-700 mt-0.5">
+              {t('nurooLabel')} — {t('planDistinctionNuroo')}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+          <div className="bg-indigo-100 rounded-lg p-2 shrink-0">
+            <Building2 className="w-4 h-4 text-indigo-600" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-indigo-900">Nuroo Business</p>
+            <p className="text-xs text-indigo-700 mt-0.5">
+              {t('nurooBusinessLabel')} — {t('planDistinctionBusiness')}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Stripe return banners */}
@@ -823,70 +787,122 @@ export default function BillingPage() {
 
             {/* Plans overview (informational only — no checkout button) */}
             <div>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                <h3 className="text-lg font-bold text-gray-900">{t('plansOverviewTitle')}</h3>
-                <div className="inline-flex items-center gap-0 rounded-full border border-gray-200 bg-white p-1 shadow-sm self-start sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={() => setBillingPeriod('monthly')}
-                    className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                      billingPeriod === 'monthly'
-                        ? 'bg-primary-600 text-white shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
+              <h3 className="text-lg font-bold text-gray-900 mb-6">{t('plansOverviewTitle')}</h3>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 max-w-4xl">
+                {/* Nuroo */}
+                <div className="flex flex-col rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+                  <div className="mb-5">
+                    <h3 className="text-xl font-bold text-gray-900 mb-1">
+                      {tPricing('nurooName')}
+                    </h3>
+                    <p className="text-sm text-gray-500">{tPricing('nurooSubtitle')}</p>
+                  </div>
+                  <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                    {tPricing('nurooValueProp')}
+                  </p>
+                  <div className="mb-7">
+                    <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-xs font-semibold mb-3">
+                      {tPricing('trialBadge')}
+                    </div>
+                    <div className="flex items-end gap-1">
+                      <span className="text-sm text-gray-400 pb-1.5">$</span>
+                      <span className="text-5xl font-bold text-gray-900 tracking-tight leading-none">
+                        15
+                      </span>
+                      <span className="text-sm text-gray-400 pb-1.5 ml-1">
+                        / {tPricing('perMonth')}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-xs text-gray-400">{tPricing('afterTrialCaption')}</p>
+                  </div>
+                  <ul className="space-y-2.5 mb-8 flex-1">
+                    {(
+                      [
+                        'nF1',
+                        'nF2',
+                        'nF3',
+                        'nF4',
+                        'nF5',
+                        'nF6',
+                        'nF7',
+                        'nF8',
+                        'nF9',
+                        'nF10',
+                        'nF11',
+                      ] as const
+                    ).map((key) => (
+                      <li key={key} className="flex items-start gap-2.5">
+                        <div className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-100 flex items-center justify-center">
+                          <CheckCircle2 className="w-2.5 h-2.5 text-teal-600" />
+                        </div>
+                        <span className="text-sm text-gray-600">{tPricing(key)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <a
+                    href="mailto:tilek.dzenisev@gmail.com?subject=Nuroo%20Subscription%20Request"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold transition-colors"
                   >
-                    {tPricing('billingMonthly')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBillingPeriod('yearly')}
-                    className={`relative px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                      billingPeriod === 'yearly'
-                        ? 'bg-primary-600 text-white shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {tPricing('billingYearly')}
-                    <span className="absolute -top-2.5 -right-2 bg-green-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none whitespace-nowrap">
-                      {tPricing('savePercent')}
-                    </span>
-                  </button>
+                    {t('contactUs')}
+                    <ArrowRight className="w-4 h-4 flex-shrink-0" />
+                  </a>
+                  <p className="mt-2.5 text-center text-xs text-gray-400">
+                    {tPricing('microCopy')}
+                  </p>
                 </div>
-              </div>
-              {billingPeriod === 'yearly' && (
-                <p className="mb-4 text-xs text-green-600 font-medium">
-                  {tPricing('annualBillingNote')}
-                </p>
-              )}
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 max-w-2xl">
-                {billingPlans.map((plan) => {
-                  const featureKeys = PLAN_FEATURE_KEYS[plan.id] ?? []
-                  const isPopular = plan.id === 'growth'
-                  const isEnterprise = plan.id === 'enterprise'
-                  return (
-                    <PricingCard
-                      key={plan.id}
-                      density="compact"
-                      variant={isEnterprise ? 'enterprise' : isPopular ? 'popular' : 'default'}
-                      badge={isPopular ? <span>{tPricing('popular')}</span> : undefined}
-                      title={plan.name}
-                      price={`$${formatPrice(plan.price)}`}
-                      priceSuffix={`/ ${billingPeriod === 'yearly' ? tPricing('perYear') : t('perMonth')}`}
-                      priceDetails={renderYearlySavings(plan.id)}
-                      soonLabel={tPricing('soon')}
-                      features={featureKeys.map((key) => ({
-                        text: tPricing(key as Parameters<typeof tPricing>[0]),
-                      }))}
-                    >
-                      <a
-                        href="mailto:tilek.dzenisev@gmail.com?subject=Nuroo%20Subscription%20Request"
-                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-                      >
-                        {t('contactUs')}
-                      </a>
-                    </PricingCard>
-                  )
-                })}
+
+                {/* Nuroo Business */}
+                <div className="flex flex-col rounded-2xl border border-teal-200 bg-teal-50/40 p-8 shadow-sm">
+                  <div className="mb-5">
+                    <h3 className="text-xl font-bold text-gray-900 mb-1">
+                      {tPricing('businessName')}
+                    </h3>
+                    <p className="text-sm text-gray-500">{tPricing('businessSubtitle')}</p>
+                  </div>
+                  <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                    {tPricing('businessValueProp')}
+                  </p>
+                  <div className="mb-7">
+                    <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-xs font-semibold mb-3">
+                      {tPricing('trialBadge')}
+                    </div>
+                    <div className="flex items-end gap-1">
+                      <span className="text-sm text-gray-400 pb-1.5">$</span>
+                      <span className="text-5xl font-bold text-gray-900 tracking-tight leading-none">
+                        50
+                      </span>
+                      <span className="text-sm text-gray-400 pb-1.5 ml-1">
+                        / {tPricing('perMonth')}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-xs text-gray-400">{tPricing('afterTrialCaption')}</p>
+                  </div>
+                  <ul className="space-y-2.5 mb-8 flex-1">
+                    <li className="text-xs font-semibold text-gray-400 uppercase tracking-wide pb-1">
+                      {tPricing('businessIntro')}
+                    </li>
+                    {(
+                      ['bF1', 'bF2', 'bF4', 'bF5', 'bF7', 'bF8', 'bF9', 'bF10', 'bF11'] as const
+                    ).map((key) => (
+                      <li key={key} className="flex items-start gap-2.5">
+                        <div className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-100 flex items-center justify-center">
+                          <CheckCircle2 className="w-2.5 h-2.5 text-teal-600" />
+                        </div>
+                        <span className="text-sm text-gray-600">{tPricing(key)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <a
+                    href="mailto:tilek.dzenisev@gmail.com?subject=Nuroo%20Subscription%20Request"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold transition-colors"
+                  >
+                    {t('contactUs')}
+                    <ArrowRight className="w-4 h-4 flex-shrink-0" />
+                  </a>
+                  <p className="mt-2.5 text-center text-xs text-gray-400">
+                    {tPricing('microCopy')}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -895,117 +911,198 @@ export default function BillingPage() {
         {/* ── STRIPE BILLING MODE ── */}
         {isStripeMode && (
           <>
-            <div className="mb-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <h3 className="text-base font-semibold text-gray-700">{t('upgradeplan')}</h3>
-                <div className="inline-flex items-center gap-0 rounded-full border border-gray-200 bg-white p-1 shadow-sm self-start sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={() => setBillingPeriod('monthly')}
-                    className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                      billingPeriod === 'monthly'
-                        ? 'bg-primary-600 text-white shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {tPricing('billingMonthly')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBillingPeriod('yearly')}
-                    className={`relative px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                      billingPeriod === 'yearly'
-                        ? 'bg-primary-600 text-white shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {tPricing('billingYearly')}
-                    <span className="absolute -top-2.5 -right-2 bg-green-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none whitespace-nowrap">
-                      {tPricing('savePercent')}
-                    </span>
-                  </button>
-                </div>
-              </div>
-              {billingPeriod === 'yearly' && (
-                <p className="mt-2 text-xs text-green-600 font-medium">
-                  {tPricing('annualBillingNote')}
-                </p>
-              )}
+            <div className="mb-6">
+              <h3 className="text-base font-semibold text-gray-700 mb-2">{t('upgradeplan')}</h3>
               {billingMode === 'stripe_test' && (
-                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                <p className="text-xs text-amber-600 flex items-center gap-1">
                   <AlertTriangle className="w-3.5 h-3.5" />
                   {t('stripeTestModeNotice')}
                 </p>
               )}
             </div>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 max-w-2xl">
-              {billingPlans.map((plan) => {
-                const featureKeys = PLAN_FEATURE_KEYS[plan.id] ?? []
-                const isCurrent =
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 max-w-4xl">
+              {/* Nuroo — Stripe */}
+              {(() => {
+                const isCurrentStarter =
                   billingStatus?.active === true &&
-                  billingStatus?.planId === plan.id &&
+                  billingStatus?.planId === 'starter' &&
                   (billingStatus.source === 'subscription' || billingStatus.source === null)
-                const isPopular = plan.id === 'growth'
-                const isEnterprise = plan.id === 'enterprise'
                 return (
-                  <PricingCard
-                    key={plan.id}
-                    density="compact"
-                    variant={isEnterprise ? 'enterprise' : isPopular ? 'popular' : 'default'}
-                    badge={
-                      isCurrent ? (
-                        <span className="inline-flex items-center gap-1">
-                          <Star className="w-3.5 h-3.5" />
+                  <div className="flex flex-col rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+                    <div className="mb-5">
+                      {isCurrentStarter && (
+                        <span className="inline-flex items-center gap-1 mb-3 px-2.5 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-xs font-semibold">
+                          <Star className="w-3 h-3" />
                           {t('current')}
                         </span>
-                      ) : isPopular && !isCurrent ? (
-                        <span>{tPricing('popular')}</span>
-                      ) : undefined
-                    }
-                    title={plan.name}
-                    price={`$${formatPrice(plan.price)}`}
-                    priceSuffix={`/ ${billingPeriod === 'yearly' ? tPricing('perYear') : t('perMonth')}`}
-                    priceDetails={renderYearlySavings(plan.id)}
-                    soonLabel={tPricing('soon')}
-                    features={featureKeys.map((key) => ({
-                      text: tPricing(key as Parameters<typeof tPricing>[0]),
-                    }))}
-                  >
-                    {isEnterprise ? (
-                      <a
-                        href="mailto:tilek.dzenisev@gmail.com"
-                        className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-medium bg-gray-900 text-white hover:bg-gray-800 transition-colors"
-                      >
-                        {t('contactUs')}
-                        <ArrowRight className="w-4 h-4" />
-                      </a>
-                    ) : (
-                      <button
-                        onClick={() => handleStripeCheckout(plan.id)}
-                        disabled={creatingCheckout === plan.id || isCurrent}
-                        className={`w-full py-3.5 px-4 rounded-xl font-medium transition-colors ${
-                          isCurrent
-                            ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
-                            : creatingCheckout === plan.id
-                              ? 'bg-primary-400 text-white cursor-wait'
-                              : 'bg-primary-600 text-white hover:bg-primary-700'
-                        }`}
-                      >
-                        {creatingCheckout === plan.id ? (
-                          <span className="flex items-center justify-center gap-2">
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                            {t('creatingPayment')}
-                          </span>
-                        ) : isCurrent ? (
-                          t('current')
-                        ) : (
-                          t('startTrial')
-                        )}
-                      </button>
-                    )}
-                  </PricingCard>
+                      )}
+                      <h3 className="text-xl font-bold text-gray-900 mb-1">
+                        {tPricing('nurooName')}
+                      </h3>
+                      <p className="text-sm text-gray-500">{tPricing('nurooSubtitle')}</p>
+                    </div>
+                    <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                      {tPricing('nurooValueProp')}
+                    </p>
+                    <div className="mb-7">
+                      <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-xs font-semibold mb-3">
+                        {tPricing('trialBadge')}
+                      </div>
+                      <div className="flex items-end gap-1">
+                        <span className="text-sm text-gray-400 pb-1.5">$</span>
+                        <span className="text-5xl font-bold text-gray-900 tracking-tight leading-none">
+                          15
+                        </span>
+                        <span className="text-sm text-gray-400 pb-1.5 ml-1">
+                          / {tPricing('perMonth')}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-xs text-gray-400">
+                        {tPricing('afterTrialCaption')}
+                      </p>
+                    </div>
+                    <ul className="space-y-2.5 mb-8 flex-1">
+                      {(
+                        [
+                          'nF1',
+                          'nF2',
+                          'nF3',
+                          'nF4',
+                          'nF5',
+                          'nF6',
+                          'nF7',
+                          'nF8',
+                          'nF9',
+                          'nF10',
+                          'nF11',
+                        ] as const
+                      ).map((key) => (
+                        <li key={key} className="flex items-start gap-2.5">
+                          <div className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-100 flex items-center justify-center">
+                            <CheckCircle2 className="w-2.5 h-2.5 text-teal-600" />
+                          </div>
+                          <span className="text-sm text-gray-600">{tPricing(key)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      onClick={() => handleStripeCheckout('starter')}
+                      disabled={creatingCheckout === 'starter' || isCurrentStarter}
+                      className={`w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-semibold transition-colors ${
+                        isCurrentStarter
+                          ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                          : creatingCheckout === 'starter'
+                            ? 'bg-teal-400 text-white cursor-wait'
+                            : 'bg-teal-600 hover:bg-teal-700 text-white'
+                      }`}
+                    >
+                      {creatingCheckout === 'starter' ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          {t('creatingPayment')}
+                        </>
+                      ) : isCurrentStarter ? (
+                        t('current')
+                      ) : (
+                        <>
+                          {t('startTrial')}
+                          <ArrowRight className="w-4 h-4 flex-shrink-0" />
+                        </>
+                      )}
+                    </button>
+                    <p className="mt-2.5 text-center text-xs text-gray-400">
+                      {tPricing('microCopy')}
+                    </p>
+                  </div>
                 )
-              })}
+              })()}
+
+              {/* Nuroo Business — Stripe */}
+              {(() => {
+                const isCurrentGrowth =
+                  billingStatus?.active === true &&
+                  billingStatus?.planId === 'growth' &&
+                  (billingStatus.source === 'subscription' || billingStatus.source === null)
+                return (
+                  <div className="flex flex-col rounded-2xl border border-teal-200 bg-teal-50/40 p-8 shadow-sm">
+                    <div className="mb-5">
+                      {isCurrentGrowth && (
+                        <span className="inline-flex items-center gap-1 mb-3 px-2.5 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-xs font-semibold">
+                          <Star className="w-3 h-3" />
+                          {t('current')}
+                        </span>
+                      )}
+                      <h3 className="text-xl font-bold text-gray-900 mb-1">
+                        {tPricing('businessName')}
+                      </h3>
+                      <p className="text-sm text-gray-500">{tPricing('businessSubtitle')}</p>
+                    </div>
+                    <p className="text-sm text-gray-600 leading-relaxed mb-6">
+                      {tPricing('businessValueProp')}
+                    </p>
+                    <div className="mb-7">
+                      <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-xs font-semibold mb-3">
+                        {tPricing('trialBadge')}
+                      </div>
+                      <div className="flex items-end gap-1">
+                        <span className="text-sm text-gray-400 pb-1.5">$</span>
+                        <span className="text-5xl font-bold text-gray-900 tracking-tight leading-none">
+                          50
+                        </span>
+                        <span className="text-sm text-gray-400 pb-1.5 ml-1">
+                          / {tPricing('perMonth')}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-xs text-gray-400">
+                        {tPricing('afterTrialCaption')}
+                      </p>
+                    </div>
+                    <ul className="space-y-2.5 mb-8 flex-1">
+                      <li className="text-xs font-semibold text-gray-400 uppercase tracking-wide pb-1">
+                        {tPricing('businessIntro')}
+                      </li>
+                      {(
+                        ['bF1', 'bF2', 'bF4', 'bF5', 'bF7', 'bF8', 'bF9', 'bF10', 'bF11'] as const
+                      ).map((key) => (
+                        <li key={key} className="flex items-start gap-2.5">
+                          <div className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-100 flex items-center justify-center">
+                            <CheckCircle2 className="w-2.5 h-2.5 text-teal-600" />
+                          </div>
+                          <span className="text-sm text-gray-600">{tPricing(key)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      onClick={() => handleStripeCheckout('growth')}
+                      disabled={creatingCheckout === 'growth' || isCurrentGrowth}
+                      className={`w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-semibold transition-colors ${
+                        isCurrentGrowth
+                          ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                          : creatingCheckout === 'growth'
+                            ? 'bg-teal-400 text-white cursor-wait'
+                            : 'bg-teal-600 hover:bg-teal-700 text-white'
+                      }`}
+                    >
+                      {creatingCheckout === 'growth' ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          {t('creatingPayment')}
+                        </>
+                      ) : isCurrentGrowth ? (
+                        t('current')
+                      ) : (
+                        <>
+                          {t('startTrial')}
+                          <ArrowRight className="w-4 h-4 flex-shrink-0" />
+                        </>
+                      )}
+                    </button>
+                    <p className="mt-2.5 text-center text-xs text-gray-400">
+                      {tPricing('microCopy')}
+                    </p>
+                  </div>
+                )
+              })()}
             </div>
           </>
         )}
