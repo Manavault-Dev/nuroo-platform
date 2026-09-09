@@ -155,7 +155,9 @@ export function Sidebar({
         const data = snap.data() as Record<string, unknown> | undefined
         setIsPlatformAdmin(data?.platformRole === 'platform_admin')
       })
-      .catch(() => {})
+      .catch((_err) => {
+        /* platform admin check is best-effort */
+      })
   }, [user])
   const displayName = branding?.name || currentOrg?.orgName || 'Nuroo'
   const displayLogo = branding?.logo || currentOrg?.logoUrl || null

@@ -385,14 +385,23 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ error: 'Only image uploads are allowed' })
       }
 
-      const url = await uploadOrgMarketplaceImage(orgId, kind, mediaBuffer, mediaMimetype, mediaFilename)
+      const url = await uploadOrgMarketplaceImage(
+        orgId,
+        kind,
+        mediaBuffer,
+        mediaMimetype,
+        mediaFilename
+      )
 
       // For gallery photos — append URL to the photos[] array in Firestore
       if (kind === 'photo') {
         const db = getFirestore()
-        await db.collection('organizations').doc(orgId).update({
-          photos: admin.firestore.FieldValue.arrayUnion(url),
-        })
+        await db
+          .collection('organizations')
+          .doc(orgId)
+          .update({
+            photos: admin.firestore.FieldValue.arrayUnion(url),
+          })
       }
 
       return reply.code(201).send({ ok: true, kind, url })
@@ -416,15 +425,19 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
       const { orgId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
       if (reply.sent) return
-      if (member.role !== 'org_admin') return reply.code(403).send({ error: 'Only admins can delete photos' })
+      if (member.role !== 'org_admin')
+        return reply.code(403).send({ error: 'Only admins can delete photos' })
 
       const { url } = request.body as { url: string }
       if (!url) return reply.code(400).send({ error: 'url is required' })
 
       const db = getFirestore()
-      await db.collection('organizations').doc(orgId).update({
-        photos: admin.firestore.FieldValue.arrayRemove(url),
-      })
+      await db
+        .collection('organizations')
+        .doc(orgId)
+        .update({
+          photos: admin.firestore.FieldValue.arrayRemove(url),
+        })
       return reply.send({ ok: true })
     }
   )
@@ -503,7 +516,11 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
         ageMax: (d.ageMax as number) ?? null,
         lat: typeof d.lat === 'number' ? d.lat : null,
         lng: typeof d.lng === 'number' ? d.lng : null,
-        photos: Array.isArray(d.photos) ? (d.photos as string[]).filter((p: string) => typeof p === 'string' && p.startsWith('http')) : [],
+        photos: Array.isArray(d.photos)
+          ? (d.photos as string[]).filter(
+              (p: string) => typeof p === 'string' && p.startsWith('http')
+            )
+          : [],
       }
     })
 
