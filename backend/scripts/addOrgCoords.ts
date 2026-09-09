@@ -19,12 +19,14 @@ const __dirname = path.dirname(__filename)
 
 dotenv.config({ path: path.join(__dirname, '../.env') })
 
-const projectId   = process.env.FIREBASE_PROJECT_ID
+const projectId = process.env.FIREBASE_PROJECT_ID
 const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
-const privateKey  = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
 
 if (!projectId || !clientEmail || !privateKey) {
-  console.error('❌ Missing FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY in backend/.env')
+  console.error(
+    '❌ Missing FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY in backend/.env'
+  )
   process.exit(1)
 }
 
@@ -58,7 +60,9 @@ const snap = await db
   .get()
 console.log(`📋 Found ${snap.size} organizations\n`)
 
-let updated = 0, skipped = 0, failed = 0
+let updated = 0,
+  skipped = 0,
+  failed = 0
 
 for (const docSnap of snap.docs) {
   const d = docSnap.data()
@@ -72,8 +76,8 @@ for (const docSnap of snap.docs) {
   }
 
   // Build query: address + city, fallback to city only
-  const fullQuery  = [d.address, d.city, d.country ?? 'Kyrgyzstan'].filter(Boolean).join(', ')
-  const cityQuery  = [d.city, 'Kyrgyzstan'].filter(Boolean).join(', ')
+  const fullQuery = [d.address, d.city, d.country ?? 'Kyrgyzstan'].filter(Boolean).join(', ')
+  const cityQuery = [d.city, 'Kyrgyzstan'].filter(Boolean).join(', ')
 
   await sleep(1100) // Nominatim: max 1 req/sec
   let coords = fullQuery ? await geocode(fullQuery) : null
