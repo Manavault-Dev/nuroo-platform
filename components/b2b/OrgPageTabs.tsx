@@ -12,7 +12,6 @@ export function OrgPageTabs({ orgId }: Props) {
   const pathname = usePathname()
 
   const base = orgId ? `?orgId=${orgId}` : ''
-  const isOrg = pathname.includes('/b2b/organization') || !pathname.includes('/b2b/brand')
   const isBrand = pathname.includes('/b2b/brand')
 
   const tabs = [
