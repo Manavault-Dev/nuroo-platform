@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import {
   X,
@@ -195,9 +196,15 @@ export function BookingPanel({
           {/* Top row: logo + name + close */}
           <div className="flex items-center gap-3 px-4 pt-4 pb-3">
             {/* Logo */}
-            <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 overflow-hidden flex-shrink-0 flex items-center justify-center border border-gray-200 dark:border-gray-700">
+            <div className="relative w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 overflow-hidden flex-shrink-0 flex items-center justify-center border border-gray-200 dark:border-gray-700">
               {org.logoUrl ? (
-                <img src={org.logoUrl} alt="" className="w-full h-full object-cover scale-[1.3]" />
+                <Image
+                  src={org.logoUrl}
+                  alt=""
+                  fill
+                  sizes="48px"
+                  className="object-cover scale-[1.3]"
+                />
               ) : (
                 <User className="w-6 h-6 text-gray-400" />
               )}
@@ -326,9 +333,15 @@ export function BookingPanel({
                             : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                         }`}
                       >
-                        <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden flex items-center justify-center flex-shrink-0">
+                        <div className="relative w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden flex items-center justify-center flex-shrink-0">
                           {sp.avatarUrl ? (
-                            <img src={sp.avatarUrl} alt="" className="w-full h-full object-cover" />
+                            <Image
+                              src={sp.avatarUrl}
+                              alt=""
+                              fill
+                              sizes="32px"
+                              className="object-cover"
+                            />
                           ) : (
                             <User className="w-4 h-4 text-gray-400" />
                           )}
