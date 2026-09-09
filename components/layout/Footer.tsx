@@ -2,6 +2,7 @@
 
 import { Link as I18nLink } from '@/i18n/navigation'
 import { useTranslations } from 'next-intl'
+import Image from 'next/image'
 import { Linkedin, Instagram, ArrowUp } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -59,9 +60,11 @@ export function Footer() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 min-w-0">
               <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 min-w-0">
                 <I18nLink href="/" className="flex items-center gap-2 w-fit flex-shrink-0">
-                  <img
+                  <Image
                     src="/Logo.svg"
                     alt="Nuroo"
+                    width={36}
+                    height={36}
                     className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex-shrink-0"
                   />
                   <span className="font-semibold text-lg text-white">Nuroo</span>

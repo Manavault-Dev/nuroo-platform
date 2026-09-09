@@ -44,6 +44,79 @@ const Footer = dynamic(() => import('@/components/layout/Footer').then((m) => m.
 type Props = { params: { locale: string } }
 
 const BASE = getSiteUrl()
+const SERVER_API_URL = `${(process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3101').replace(/\/+$/, '')}/v1`
+
+type LandingOrg = {
+  id: string
+  name: string
+  logoUrl: string | null
+  coverImageUrl: string | null
+  city: string | null
+  country: string | null
+  categories: string[]
+  averageRating: number
+  reviewCount: number
+  plan?: 'nuroo' | 'nuroo_business'
+  specialization?: string
+  priceFrom?: number | null
+  currency?: string
+}
+
+type LandingCohort = {
+  id: string
+  title: string
+  orgName: string
+  coverUrl?: string
+  schedule?: string
+  spotsLeft: number
+  price: number
+  currency: string
+  ageMin?: number
+  ageMax?: number
+}
+
+type LandingEvent = {
+  id: string
+  title: string
+  orgName: string
+  coverUrl: string | null
+  date: string
+  location: string
+  city: string | null
+  price: number
+  currency: string
+  spotsLeft: number
+}
+
+export type LandingMarketplaceData = {
+  orgs: LandingOrg[]
+  cohorts: LandingCohort[]
+  events: LandingEvent[]
+}
+
+async function fetchLandingMarketplaceData(): Promise<LandingMarketplaceData> {
+  try {
+    const [orgRes, cohortRes, eventRes] = await Promise.all([
+      fetch(`${SERVER_API_URL}/api/organizations/public?limit=8`, { next: { revalidate: 60 } }),
+      fetch(`${SERVER_API_URL}/marketplace/cohorts?limit=8`, { next: { revalidate: 60 } }),
+      fetch(`${SERVER_API_URL}/marketplace/events?limit=8`, { next: { revalidate: 60 } }),
+    ])
+
+    const [orgData, cohortData, eventData] = await Promise.all([
+      orgRes.ok ? orgRes.json().catch(() => ({ organizations: [] })) : { organizations: [] },
+      cohortRes.ok ? cohortRes.json().catch(() => ({ cohorts: [] })) : { cohorts: [] },
+      eventRes.ok ? eventRes.json().catch(() => ({ events: [] })) : { events: [] },
+    ])
+
+    return {
+      orgs: Array.isArray(orgData?.organizations) ? orgData.organizations : [],
+      cohorts: Array.isArray(cohortData) ? cohortData : (cohortData?.cohorts ?? []),
+      events: Array.isArray(eventData?.events) ? eventData.events : [],
+    }
+  } catch {
+    return { orgs: [], cohorts: [], events: [] }
+  }
+}
 
 const LOCALE_META = {
   ru: {
@@ -160,8 +233,10 @@ const jsonLd = {
   ],
 }
 
-export default function Home({ params }: Props) {
+export default async function Home({ params }: Props) {
   setRequestLocale(params.locale)
+  const marketplace = await fetchLandingMarketplaceData()
+
   return (
     <>
       <script
@@ -169,8 +244,8 @@ export default function Home({ params }: Props) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <div className="bg-white dark:bg-gray-900 min-w-0 overflow-x-hidden">
-        <Hero />
-        <ProductShowcase />
+        <Hero marketplace={marketplace} />
+        <ProductShowcase marketplace={marketplace} locale={params.locale} />
         <BusinessDashboard />
         <SocialBooking />
         <HowItWorks />
