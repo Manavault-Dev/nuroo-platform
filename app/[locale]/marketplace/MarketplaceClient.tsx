@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
@@ -101,34 +102,33 @@ const API_URL = `${(process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3101').
 // without requiring a translation deployment.
 function useCategoryLabel() {
   const t = useTranslations('marketplace')
+  const categoryLabels = t.raw('categoryLabels') as Record<string, string>
+
   return (cat: string) => {
-    try {
-      // next-intl throws if key is missing when using t.raw; catch = fallback
-      const label = t(`categoryLabels.${cat}` as any)
-      return label ?? cat
-    } catch {
-      return cat
-    }
+    return categoryLabels[cat] ?? cat
   }
 }
 
 export function MarketplaceClient({
   locale,
   initialQuery = '',
+  initialOrgs = [],
+  initialCohorts = [],
+  initialEvents = [],
 }: {
   locale: string
   initialQuery?: string
+  initialOrgs?: PublicOrg[]
+  initialCohorts?: PublicCohort[]
+  initialEvents?: PublicEvent[]
 }) {
-  const t = useTranslations('marketplace')
   const categoryLabel = useCategoryLabel()
   const searchParams = useSearchParams()
 
-  // data
-  const [orgs, setOrgs] = useState<PublicOrg[]>([])
-  const [cohorts, setCohorts] = useState<PublicCohort[]>([])
-  const [events, setEvents] = useState<PublicEvent[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // data — seeded from server-fetched props, no client fetch needed
+  const [orgs] = useState<PublicOrg[]>(initialOrgs)
+  const [cohorts] = useState<PublicCohort[]>(initialCohorts)
+  const [events] = useState<PublicEvent[]>(initialEvents)
 
   const VALID_TABS: ActiveTab[] = ['specialists', 'centers', 'programs', 'events']
   const tabFromUrl = searchParams.get('tab') as ActiveTab | null
@@ -143,7 +143,7 @@ export function MarketplaceClient({
 
   // shared filters
   const [category, setCategory] = useState('all')
-  const [format, setFormat] = useState<'all' | 'online' | 'offline'>('all')
+  const [format, setFormat] = useState<'all' | 'online' | 'offline' | 'hybrid'>('all')
   const [city, setCity] = useState('all')
 
   // org filters (specialists + centers)
@@ -155,28 +155,6 @@ export function MarketplaceClient({
   const [ageMin, setAgeMin] = useState<number | null>(null)
   const [hasSpots, setHasSpots] = useState(false)
 
-  useEffect(() => {
-    const opts: RequestInit = { next: { revalidate: 30 } } as RequestInit
-    Promise.all([
-      fetch(`${API_URL}/api/organizations/public`, opts).then((r) => r.json()),
-      fetch(`${API_URL}/marketplace/cohorts?limit=100`, opts)
-        .then((r) => r.json())
-        .catch(() => ({ cohorts: [] })),
-      fetch(`${API_URL}/marketplace/events?limit=100`, opts)
-        .then((r) => r.json())
-        .catch(() => ({ events: [] })),
-    ])
-      .then(([orgData, cohortData, eventData]) => {
-        setOrgs(orgData.organizations ?? [])
-        const raw = Array.isArray(cohortData) ? cohortData : (cohortData?.cohorts ?? [])
-        setCohorts(raw)
-        setEvents(Array.isArray(eventData?.events) ? eventData.events : [])
-      })
-      .catch(() => setError(t('loadError')))
-      .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   // derived lists
   // plan 'nuroo' = частник/специалист, 'nuroo_business' (или нет поля) = центр
   const specialists = useMemo(() => orgs.filter((o) => o.plan === 'nuroo'), [orgs])
@@ -185,8 +163,14 @@ export function MarketplaceClient({
   const categories = useMemo(() => {
     const set = new Set<string>()
     orgs.forEach((o) => o.categories.forEach((c) => set.add(c)))
+    cohorts.forEach((cohort) => {
+      if (cohort.category) set.add(cohort.category)
+    })
+    events.forEach((event) => {
+      if (event.category) set.add(event.category)
+    })
     return Array.from(set).slice(0, 10)
-  }, [orgs])
+  }, [orgs, cohorts, events])
 
   const cities = useMemo(() => {
     const set = new Set<string>()
@@ -196,42 +180,47 @@ export function MarketplaceClient({
     cohorts.forEach((c) => {
       if (c.city) set.add(c.city)
     })
+    events.forEach((event) => {
+      if (event.city) set.add(event.city)
+    })
     return Array.from(set).sort()
-  }, [orgs, cohorts])
+  }, [orgs, cohorts, events])
 
-  const applyOrgFilters = (list: PublicOrg[]) => {
-    let r = list
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      r = r.filter(
-        (o) =>
-          o.name.toLowerCase().includes(q) ||
-          o.city?.toLowerCase().includes(q) ||
-          o.description?.toLowerCase().includes(q) ||
-          o.specialization?.toLowerCase().includes(q)
-      )
-    }
-    if (category !== 'all')
-      r = r.filter((o) => o.categories.some((c) => c.toLowerCase() === category.toLowerCase()))
-    if (format === 'online') r = r.filter((o) => o.isOnline)
-    if (format === 'offline') r = r.filter((o) => !o.isOnline)
-    if (city !== 'all') r = r.filter((o) => o.city === city)
-    if (orgPriceMax !== null) r = r.filter((o) => o.priceFrom == null || o.priceFrom <= orgPriceMax)
-    if (orgAge !== null)
-      r = r.filter(
-        (o) => (o.ageMin == null || o.ageMin <= orgAge) && (o.ageMax == null || o.ageMax >= orgAge)
-      )
-    return r
-  }
+  const applyOrgFilters = useCallback(
+    (list: PublicOrg[]) => {
+      let r = list
+      if (search.trim()) {
+        const q = search.toLowerCase()
+        r = r.filter(
+          (o) =>
+            o.name.toLowerCase().includes(q) ||
+            o.city?.toLowerCase().includes(q) ||
+            o.description?.toLowerCase().includes(q) ||
+            o.specialization?.toLowerCase().includes(q)
+        )
+      }
+      if (category !== 'all')
+        r = r.filter((o) => o.categories.some((c) => c.toLowerCase() === category.toLowerCase()))
+      if (format === 'online') r = r.filter((o) => o.isOnline)
+      if (format === 'offline') r = r.filter((o) => !o.isOnline)
+      if (city !== 'all') r = r.filter((o) => o.city === city)
+      if (orgPriceMax !== null)
+        r = r.filter((o) => o.priceFrom == null || o.priceFrom <= orgPriceMax)
+      if (orgAge !== null)
+        r = r.filter(
+          (o) =>
+            (o.ageMin == null || o.ageMin <= orgAge) && (o.ageMax == null || o.ageMax >= orgAge)
+        )
+      return r
+    },
+    [category, city, format, orgAge, orgPriceMax, search]
+  )
 
   const filteredSpecialists = useMemo(
     () => applyOrgFilters(specialists),
-    [specialists, search, category, format, city, orgPriceMax, orgAge]
+    [applyOrgFilters, specialists]
   )
-  const filteredCenters = useMemo(
-    () => applyOrgFilters(centers),
-    [centers, search, category, format, city, orgPriceMax, orgAge]
-  )
+  const filteredCenters = useMemo(() => applyOrgFilters(centers), [applyOrgFilters, centers])
 
   const filteredCohorts = useMemo(() => {
     let r = cohorts
@@ -243,6 +232,7 @@ export function MarketplaceClient({
       r = r.filter((c) => c.category?.toLowerCase() === category.toLowerCase())
     if (format === 'online') r = r.filter((c) => c.format === 'online')
     if (format === 'offline') r = r.filter((c) => c.format === 'offline')
+    if (format === 'hybrid') r = r.filter((c) => c.format === 'hybrid')
     if (city !== 'all') r = r.filter((c) => c.city === city)
     if (priceMax !== null) r = r.filter((c) => c.price <= priceMax)
     if (ageMin !== null) r = r.filter((c) => c.ageMin == null || c.ageMin >= ageMin)
@@ -250,22 +240,41 @@ export function MarketplaceClient({
     return r
   }, [cohorts, search, category, format, city, priceMax, ageMin, hasSpots])
 
-  const activeCount =
-    activeTab === 'specialists'
-      ? filteredSpecialists.length
-      : activeTab === 'centers'
-        ? filteredCenters.length
-        : filteredCohorts.length
+  const filteredEvents = useMemo(() => {
+    let r = events
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      r = r.filter(
+        (event) =>
+          event.title.toLowerCase().includes(q) ||
+          event.orgName.toLowerCase().includes(q) ||
+          event.description.toLowerCase().includes(q) ||
+          event.location.toLowerCase().includes(q)
+      )
+    }
+    if (category !== 'all')
+      r = r.filter((event) => event.category?.toLowerCase() === category.toLowerCase())
+    if (format !== 'all') r = r.filter((event) => event.format === format)
+    if (city !== 'all') r = r.filter((event) => event.city === city)
+    if (priceMax !== null) r = r.filter((event) => event.price <= priceMax)
+    if (ageMin !== null) {
+      r = r.filter(
+        (event) =>
+          (event.ageMin == null || event.ageMin <= ageMin) &&
+          (event.ageMax == null || event.ageMax >= ageMin)
+      )
+    }
+    if (hasSpots) r = r.filter((event) => event.spotsTotal === 0 || event.spotsLeft > 0)
+    return r
+  }, [events, search, category, format, city, priceMax, ageMin, hasSpots])
 
   const activeFiltersCount = [
     format !== 'all',
     city !== 'all',
     category !== 'all',
-    orgPriceMax !== null,
-    orgAge !== null,
-    priceMax !== null,
-    ageMin !== null,
-    hasSpots,
+    activeTab === 'programs' || activeTab === 'events' ? priceMax !== null : orgPriceMax !== null,
+    activeTab === 'programs' || activeTab === 'events' ? ageMin !== null : orgAge !== null,
+    (activeTab === 'programs' || activeTab === 'events') && hasSpots,
   ].filter(Boolean).length
 
   const resetFilters = () => {
@@ -279,11 +288,18 @@ export function MarketplaceClient({
     setHasSpots(false)
   }
 
+  const handleTabChange = (tab: ActiveTab) => {
+    setActiveTab(tab)
+    if ((tab === 'specialists' || tab === 'centers') && format === 'hybrid') {
+      setFormat('all')
+    }
+  }
+
   const TABS: { id: ActiveTab; label: string; count: number }[] = [
     { id: 'specialists', label: 'Специалисты', count: filteredSpecialists.length },
     { id: 'centers', label: 'Центры', count: filteredCenters.length },
     { id: 'programs', label: 'Программы', count: filteredCohorts.length },
-    { id: 'events', label: 'Мероприятия', count: events.length },
+    { id: 'events', label: 'Мероприятия', count: filteredEvents.length },
   ]
 
   return (
@@ -323,7 +339,7 @@ export function MarketplaceClient({
           {TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
                 activeTab === tab.id
                   ? 'bg-primary-600 text-white shadow'
@@ -412,12 +428,6 @@ export function MarketplaceClient({
         />
 
         {/* ── Content ── */}
-        {loading && (
-          <div className="flex items-center justify-center py-24">
-            <div className="w-10 h-10 border-4 border-primary-400 border-t-transparent rounded-full animate-spin" />
-          </div>
-        )}
-        {error && <div className="text-center py-16 text-red-500">{error}</div>}
 
         {/* ── Split layout: cards + booking panel ── */}
         <div
@@ -427,9 +437,7 @@ export function MarketplaceClient({
           <div
             className={`min-w-0 transition-all duration-300 ${selectedOrg ? 'lg:flex-1' : 'w-full'}`}
           >
-            {!loading &&
-              !error &&
-              activeTab === 'specialists' &&
+            {activeTab === 'specialists' &&
               (filteredSpecialists.length === 0 ? (
                 <EmptyMsg
                   icon={<User className="w-12 h-12 text-gray-300 mx-auto mb-4" />}
@@ -444,7 +452,6 @@ export function MarketplaceClient({
                     <SpecialistCard
                       key={org.id}
                       org={org}
-                      locale={locale}
                       catLabel={categoryLabel}
                       selected={selectedOrg?.id === org.id}
                       onSelect={() => setSelectedOrg(selectedOrg?.id === org.id ? null : org)}
@@ -453,9 +460,7 @@ export function MarketplaceClient({
                 </div>
               ))}
 
-            {!loading &&
-              !error &&
-              activeTab === 'centers' &&
+            {activeTab === 'centers' &&
               (filteredCenters.length === 0 ? (
                 <EmptyMsg
                   icon={<Building2 className="w-12 h-12 text-gray-300 mx-auto mb-4" />}
@@ -470,9 +475,7 @@ export function MarketplaceClient({
                 </div>
               ))}
 
-            {!loading &&
-              !error &&
-              activeTab === 'programs' &&
+            {activeTab === 'programs' &&
               (filteredCohorts.length === 0 ? (
                 <EmptyMsg
                   icon={<Calendar className="w-12 h-12 text-gray-300 mx-auto mb-4" />}
@@ -482,24 +485,26 @@ export function MarketplaceClient({
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {filteredCohorts.map((cohort) => (
-                    <ProgramCard key={cohort.id} cohort={cohort} locale={locale} />
+                    <ProgramCard key={cohort.id} cohort={cohort} />
                   ))}
                 </div>
               ))}
 
-            {!loading &&
-              !error &&
-              activeTab === 'events' &&
-              (events.length === 0 ? (
+            {activeTab === 'events' &&
+              (filteredEvents.length === 0 ? (
                 <EmptyMsg
                   icon={<Calendar className="w-12 h-12 text-gray-300 mx-auto mb-4" />}
-                  text="Мероприятий пока нет"
-                  hint="Скоро здесь появятся мастер-классы, вебинары и открытые занятия"
+                  text={events.length === 0 ? 'Мероприятий пока нет' : 'Мероприятия не найдены'}
+                  hint={
+                    events.length === 0
+                      ? 'Скоро здесь появятся мастер-классы, вебинары и открытые занятия'
+                      : 'Попробуйте изменить фильтры или поиск'
+                  }
                 />
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {events.map((event) => (
-                    <EventCard key={event.id} event={event} locale={locale} />
+                  {filteredEvents.map((event) => (
+                    <EventCard key={event.id} event={event} />
                   ))}
                 </div>
               ))}
@@ -527,8 +532,8 @@ interface FilterDrawerProps {
   open: boolean
   onClose: () => void
   activeTab: ActiveTab
-  format: 'all' | 'online' | 'offline'
-  onFormat: (v: 'all' | 'online' | 'offline') => void
+  format: 'all' | 'online' | 'offline' | 'hybrid'
+  onFormat: (v: 'all' | 'online' | 'offline' | 'hybrid') => void
   city: string
   onCity: (v: string) => void
   cities: string[]
@@ -568,14 +573,19 @@ function FilterDrawer({
   activeFiltersCount,
   onReset,
 }: FilterDrawerProps) {
-  const currentAge = activeTab === 'programs' ? ageMin : orgAge
-  const setCurrentAge = activeTab === 'programs' ? onAgeMin : onOrgAge
-  const currentPrice = activeTab === 'programs' ? priceMax : orgPriceMax
-  const setCurrentPrice = activeTab === 'programs' ? onPriceMax : onOrgPriceMax
+  const currentAge = activeTab === 'programs' || activeTab === 'events' ? ageMin : orgAge
+  const setCurrentAge = activeTab === 'programs' || activeTab === 'events' ? onAgeMin : onOrgAge
+  const currentPrice = activeTab === 'programs' || activeTab === 'events' ? priceMax : orgPriceMax
+  const setCurrentPrice =
+    activeTab === 'programs' || activeTab === 'events' ? onPriceMax : onOrgPriceMax
   const priceOptions =
-    activeTab === 'programs'
+    activeTab === 'programs' || activeTab === 'events'
       ? [2000, 3500, 5000, 7000, 10000, 15000, 20000]
       : [1000, 2000, 3500, 5000, 7000, 10000]
+  const formatOptions =
+    activeTab === 'programs' || activeTab === 'events'
+      ? (['all', 'online', 'offline', 'hybrid'] as const)
+      : (['all', 'online', 'offline'] as const)
   const ages = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14]
   const ageLabel = (a: number) => `${a} ${a === 1 ? 'год' : a < 5 ? 'года' : 'лет'}`
 
@@ -622,98 +632,96 @@ function FilterDrawer({
         {/* Body — scrollable */}
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8">
           {/* Format */}
-          {activeTab !== 'events' && (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">
-                Формат
-              </p>
-              <div className="flex gap-2">
-                {(['all', 'online', 'offline'] as const).map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => onFormat(f)}
-                    className={`flex-1 py-3 rounded-xl text-sm font-semibold border-2 transition-all ${
-                      format === f
-                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
-                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
-                  >
-                    {f === 'all' ? 'Все' : f === 'online' ? 'Онлайн' : 'Офлайн'}
-                  </button>
-                ))}
-              </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">
+              Формат
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {formatOptions.map((f) => (
+                <button
+                  key={f}
+                  onClick={() => onFormat(f)}
+                  className={`py-3 rounded-xl text-sm font-semibold border-2 transition-all ${
+                    format === f
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}
+                >
+                  {f === 'all'
+                    ? 'Все'
+                    : f === 'online'
+                      ? 'Онлайн'
+                      : f === 'offline'
+                        ? 'Офлайн'
+                        : 'Гибрид'}
+                </button>
+              ))}
             </div>
-          )}
+          </div>
 
           {/* City */}
-          {(activeTab === 'specialists' || activeTab === 'centers') && cities.length > 0 && (
-            <CityFilter city={city} onCity={onCity} cities={cities} />
-          )}
+          {cities.length > 0 && <CityFilter city={city} onCity={onCity} cities={cities} />}
 
           {/* Age */}
-          {activeTab !== 'events' && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                  Возраст ребёнка
-                </p>
-                {currentAge !== null && (
-                  <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">
-                    {ageLabel(currentAge)}
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <FilterPill
-                  label="Любой"
-                  active={currentAge === null}
-                  onClick={() => setCurrentAge(null)}
-                />
-                {ages.map((a) => (
-                  <FilterPill
-                    key={a}
-                    label={ageLabel(a)}
-                    active={currentAge === a}
-                    onClick={() => setCurrentAge(a)}
-                  />
-                ))}
-              </div>
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                Возраст ребёнка
+              </p>
+              {currentAge !== null && (
+                <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">
+                  {ageLabel(currentAge)}
+                </span>
+              )}
             </div>
-          )}
+            <div className="flex flex-wrap gap-2">
+              <FilterPill
+                label="Любой"
+                active={currentAge === null}
+                onClick={() => setCurrentAge(null)}
+              />
+              {ages.map((a) => (
+                <FilterPill
+                  key={a}
+                  label={ageLabel(a)}
+                  active={currentAge === a}
+                  onClick={() => setCurrentAge(a)}
+                />
+              ))}
+            </div>
+          </div>
 
           {/* Price */}
-          {activeTab !== 'events' && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                  Бюджет
-                </p>
-                {currentPrice !== null && (
-                  <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">
-                    до {currentPrice.toLocaleString('ru-RU')} KGS
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <FilterPill
-                  label="Любая цена"
-                  active={currentPrice === null}
-                  onClick={() => setCurrentPrice(null)}
-                />
-                {priceOptions.map((p) => (
-                  <FilterPill
-                    key={p}
-                    label={`до ${p.toLocaleString('ru-RU')} KGS`}
-                    active={currentPrice === p}
-                    onClick={() => setCurrentPrice(p)}
-                  />
-                ))}
-              </div>
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                Бюджет
+              </p>
+              {currentPrice !== null && (
+                <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">
+                  до {currentPrice.toLocaleString('ru-RU')} KGS
+                </span>
+              )}
             </div>
-          )}
+            <div className="flex flex-wrap gap-2">
+              <FilterPill
+                label="Любая цена"
+                active={currentPrice === null}
+                onClick={() => setCurrentPrice(null)}
+              />
+              {priceOptions.map((p) => (
+                <FilterPill
+                  key={p}
+                  label={`до ${p.toLocaleString('ru-RU')} KGS`}
+                  active={currentPrice === p}
+                  onClick={() => setCurrentPrice(p)}
+                />
+              ))}
+            </div>
+          </div>
 
-          {/* Spots — programs only */}
-          {activeTab === 'programs' && (
+          {/* Spots — programs and events */}
+          {(activeTab === 'programs' || activeTab === 'events') && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">
                 Доступность
@@ -733,7 +741,8 @@ function FilterDrawer({
                     Только с местами
                   </p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                    Показать программы, куда можно записаться
+                    Показать {activeTab === 'events' ? 'мероприятия' : 'программы'}, куда можно
+                    записаться
                   </p>
                 </div>
                 <div
@@ -918,13 +927,11 @@ function EmptyMsg({ icon, text, hint }: { icon: React.ReactNode; text: string; h
 
 function SpecialistCard({
   org,
-  locale,
   catLabel,
   selected,
   onSelect,
 }: {
   org: PublicOrg
-  locale: string
   catLabel: (c: string) => string
   selected?: boolean
   onSelect?: () => void
@@ -938,12 +945,14 @@ function SpecialistCard({
           : 'border-gray-100 dark:border-gray-800 hover:border-primary-200'
       }`}
     >
-      <div className="w-16 h-16 rounded-2xl bg-primary-50 dark:bg-primary-900/20 overflow-hidden mb-3 flex items-center justify-center shadow-sm">
+      <div className="relative w-16 h-16 rounded-2xl bg-primary-50 dark:bg-primary-900/20 overflow-hidden mb-3 flex items-center justify-center shadow-sm">
         {org.logoUrl ? (
-          <img
+          <Image
             src={org.logoUrl}
             alt={org.name}
-            className="w-full h-full object-cover scale-[1.3]"
+            fill
+            sizes="64px"
+            className="object-cover scale-[1.3]"
           />
         ) : (
           <User className="w-8 h-8 text-primary-400" />
@@ -1030,10 +1039,12 @@ function CenterCard({
       {/* Cover */}
       <div className="h-44 relative overflow-hidden bg-gradient-to-br from-primary-100 to-teal-50 dark:from-primary-900/40 dark:to-teal-900/20">
         {org.coverImageUrl && (
-          <img
+          <Image
             src={org.coverImageUrl}
             alt=""
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className="object-cover group-hover:scale-105 transition-transform duration-500"
           />
         )}
         {/* gradient overlay for readability */}
@@ -1052,11 +1063,15 @@ function CenterCard({
         <div className="absolute bottom-3 left-3 right-3 flex items-end gap-3">
           <div className="w-14 h-14 rounded-xl bg-white dark:bg-gray-800 shadow-lg overflow-hidden flex items-center justify-center flex-shrink-0 border-2 border-white dark:border-gray-700">
             {org.logoUrl ? (
-              <img
-                src={org.logoUrl}
-                alt={org.name}
-                className="w-full h-full object-cover scale-[1.3]"
-              />
+              <div className="relative w-full h-full">
+                <Image
+                  src={org.logoUrl}
+                  alt={org.name}
+                  fill
+                  sizes="56px"
+                  className="object-cover scale-[1.3]"
+                />
+              </div>
             ) : (
               <Building2 className="w-7 h-7 text-primary-400" />
             )}
@@ -1131,7 +1146,7 @@ const FORMAT_COLORS: Record<string, string> = {
   hybrid: 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
 }
 
-function ProgramCard({ cohort }: { cohort: PublicCohort; locale: string }) {
+function ProgramCard({ cohort }: { cohort: PublicCohort }) {
   const startDate = new Date(cohort.startDate).toLocaleDateString('ru-RU', {
     day: 'numeric',
     month: 'long',
@@ -1152,7 +1167,13 @@ function ProgramCard({ cohort }: { cohort: PublicCohort; locale: string }) {
         {/* Cover */}
         <div className="h-32 bg-gradient-to-br from-primary-500 to-primary-700 relative overflow-hidden">
           {cohort.coverUrl && (
-            <img src={cohort.coverUrl} alt="" className="w-full h-full object-cover" />
+            <Image
+              src={cohort.coverUrl}
+              alt=""
+              fill
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              className="object-cover"
+            />
           )}
           <div className="absolute inset-0 bg-black/25" />
           <span
@@ -1420,7 +1441,7 @@ function EnrollModal({ cohort, onClose }: { cohort: PublicCohort; onClose: () =>
   )
 }
 
-function EventCard({ event, locale }: { event: PublicEvent; locale: string }) {
+function EventCard({ event }: { event: PublicEvent }) {
   const [registered, setRegistered] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -1457,7 +1478,13 @@ function EventCard({ event, locale }: { event: PublicEvent; locale: string }) {
     <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col">
       <div className="h-40 bg-gradient-to-br from-violet-500 to-purple-700 relative overflow-hidden">
         {event.coverUrl && (
-          <img src={event.coverUrl} alt="" className="w-full h-full object-cover" />
+          <Image
+            src={event.coverUrl}
+            alt=""
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className="object-cover"
+          />
         )}
         <div className="absolute inset-0 bg-black/30" />
         <span
