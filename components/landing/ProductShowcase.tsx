@@ -1,26 +1,135 @@
 'use client'
 
 import Image from 'next/image'
+import Link from 'next/link'
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { CheckCircle, MapPin, Phone } from 'lucide-react'
+import { ArrowRight, CheckCircle, MapPin, Phone } from 'lucide-react'
 
-// ─── Org Profile Mockup ────────────────────────────────────────────────────
-function OrgProfileMockup() {
+type LandingOrg = {
+  id: string
+  name: string
+  logoUrl: string | null
+  coverImageUrl: string | null
+  city: string | null
+  country?: string | null
+  address?: string | null
+  categories: string[]
+  contactPhone?: string | null
+  averageRating: number
+  reviewCount: number
+  plan?: 'nuroo' | 'nuroo_business'
+}
+
+type LandingCohort = {
+  id: string
+  title: string
+  orgName: string
+  coverUrl?: string
+  schedule?: string
+  spotsLeft: number
+  price: number
+  currency: string
+  ageMin?: number
+  ageMax?: number
+}
+
+type LandingEvent = {
+  id: string
+  title: string
+  orgName: string
+  coverUrl: string | null
+  date: string
+  location: string
+  city: string | null
+  price: number
+  currency: string
+  spotsLeft: number
+}
+
+type LandingMarketplaceData = {
+  orgs: LandingOrg[]
+  cohorts: LandingCohort[]
+  events: LandingEvent[]
+}
+
+function DynamicImage({
+  src,
+  alt,
+  fallback,
+  className,
+}: {
+  src?: string | null
+  alt: string
+  fallback: string
+  className?: string
+}) {
+  const imageSrc = src || fallback
+
+  if (imageSrc.startsWith('/')) {
+    return <Image src={imageSrc} alt={alt} fill className={className} sizes="480px" />
+  }
+
+  return (
+    <img src={imageSrc} alt={alt} className={`h-full w-full ${className ?? ''}`} loading="lazy" />
+  )
+}
+
+function OrgProfileMockup({
+  org,
+  cohorts,
+  locale,
+}: {
+  org?: LandingOrg
+  cohorts: LandingCohort[]
+  locale: string
+}) {
+  const title = org?.name || 'Детский центр «Развитие»'
+  const categories = org?.categories?.slice(0, 2) ?? ['Логопедия', 'Психология']
+  const programs =
+    cohorts.length > 0
+      ? cohorts.slice(0, 2).map((cohort) => ({
+          href: `/${locale}/marketplace?tab=programs`,
+          src: cohort.coverUrl || '/prog-school.png',
+          name: cohort.title,
+          schedule: cohort.schedule || cohort.orgName,
+          spots: cohort.spotsLeft > 0 ? `${cohort.spotsLeft} мест` : 'Идет набор',
+        }))
+      : [
+          {
+            href: `/${locale}/marketplace?tab=programs`,
+            src: '/prog-school.png',
+            name: 'Подготовка к школе',
+            schedule: 'Пн, Ср · 10:00',
+            spots: '3 места',
+          },
+          {
+            href: `/${locale}/marketplace?tab=programs`,
+            src: '/prog-masterclass.png',
+            name: 'Арт-терапия 4–7 лет',
+            schedule: 'Вт, Чт · 14:00',
+            spots: '7 мест',
+          },
+        ]
+
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-xl">
       {/* Cover */}
       <div className="relative h-28 bg-teal-600">
-        <Image
-          src="/hero-center.png"
-          alt="Детский центр"
-          fill
+        <DynamicImage
+          src={org?.coverImageUrl}
+          alt={title}
+          fallback="/hero-center.png"
           className="object-cover opacity-70"
-          sizes="480px"
         />
         {/* Logo */}
         <div className="absolute -bottom-5 left-4 w-12 h-12 rounded-xl bg-white dark:bg-gray-900 border-2 border-white dark:border-gray-800 shadow-md overflow-hidden">
-          <Image src="/hero-center.png" alt="Logo" fill className="object-cover" sizes="48px" />
+          <DynamicImage
+            src={org?.logoUrl}
+            alt={title}
+            fallback="/hero-center.png"
+            className="object-cover"
+          />
         </div>
       </div>
 
@@ -28,16 +137,17 @@ function OrgProfileMockup() {
       <div className="pt-8 px-4 pb-3">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-              Детский центр «Развитие»
-            </h3>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white">{title}</h3>
             <div className="flex items-center gap-1 mt-0.5">
               <span className="text-[10px] text-amber-500">★★★★★</span>
-              <span className="text-[10px] text-gray-400">4.9 · 38 отзывов</span>
+              <span className="text-[10px] text-gray-400">
+                {org?.averageRating ? org.averageRating.toFixed(1) : '4.9'} ·{' '}
+                {org?.reviewCount || 38} отзывов
+              </span>
             </div>
           </div>
           <div className="flex gap-1">
-            {['Логопедия', 'Психология'].map((c) => (
+            {categories.map((c) => (
               <span
                 key={c}
                 className="px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-[9px] font-medium"
@@ -50,11 +160,11 @@ function OrgProfileMockup() {
         <div className="flex items-center gap-3 mt-2">
           <div className="flex items-center gap-1 text-[10px] text-gray-500">
             <MapPin className="w-3 h-3" />
-            Бишкек, ул. Токтогула
+            {[org?.city, org?.country].filter(Boolean).join(', ') || 'Бишкек, ул. Токтогула'}
           </div>
           <div className="flex items-center gap-1 text-[10px] text-gray-500">
             <Phone className="w-3 h-3" />
-            +996 700 …
+            {org?.contactPhone || '+996 700 ...'}
           </div>
         </div>
       </div>
@@ -65,26 +175,19 @@ function OrgProfileMockup() {
           Программы и группы
         </div>
         <div className="flex flex-col gap-2">
-          {[
-            {
-              src: '/prog-school.png',
-              name: 'Подготовка к школе',
-              schedule: 'Пн, Ср · 10:00',
-              spots: '3 места',
-            },
-            {
-              src: '/prog-masterclass.png',
-              name: 'Арт-терапия 4–7 лет',
-              schedule: 'Вт, Чт · 14:00',
-              spots: '7 мест',
-            },
-          ].map((p) => (
-            <div
+          {programs.map((p) => (
+            <Link
               key={p.name}
+              href={p.href}
               className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
             >
               <div className="w-9 h-9 rounded-lg flex-shrink-0 overflow-hidden relative">
-                <Image src={p.src} alt={p.name} fill className="object-cover" sizes="36px" />
+                <DynamicImage
+                  src={p.src}
+                  alt={p.name}
+                  fallback="/prog-school.png"
+                  className="object-cover"
+                />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[11px] font-semibold text-gray-800 dark:text-white truncate">
@@ -96,7 +199,7 @@ function OrgProfileMockup() {
                 <div className="text-[10px] text-teal-600 font-medium">{p.spots}</div>
                 <div className="text-[9px] text-teal-600 font-semibold mt-0.5">Записаться →</div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
@@ -284,31 +387,83 @@ const PROGRAMS = [
   },
 ]
 
-function ProgramsSection({ t }: { t: (key: string) => string }) {
+function ProgramsSection({
+  t,
+  marketplace,
+  locale,
+}: {
+  t: (key: string) => string
+  marketplace?: LandingMarketplaceData
+  locale: string
+}) {
+  const realItems = [
+    ...(marketplace?.cohorts ?? []).slice(0, 3).map((cohort) => ({
+      href: `/${locale}/marketplace?tab=programs`,
+      src: cohort.coverUrl || '/prog-school.png',
+      name: cohort.title,
+      age:
+        cohort.ageMin != null
+          ? cohort.ageMax != null
+            ? `${cohort.ageMin}-${cohort.ageMax} лет`
+            : `от ${cohort.ageMin} лет`
+          : cohort.orgName,
+      days: cohort.schedule || '',
+      spots: cohort.spotsLeft > 0 ? `${cohort.spotsLeft} мест` : 'Идет набор',
+      price: cohort.price === 0 ? 'Бесплатно' : `${cohort.price.toLocaleString('ru-RU')}`,
+      priceSuffix: cohort.price === 0 ? '' : ` ${cohort.currency}/мес`,
+    })),
+    ...(marketplace?.events ?? []).slice(0, 1).map((event) => ({
+      href: `/${locale}/marketplace?tab=events`,
+      src: event.coverUrl || '/cat-events.png',
+      name: event.title,
+      age: new Date(event.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }),
+      days: event.city || event.location,
+      spots: event.spotsLeft > 0 ? `Осталось ${event.spotsLeft}` : 'Регистрация открыта',
+      price: event.price === 0 ? 'Бесплатно' : `${event.price.toLocaleString('ru-RU')}`,
+      priceSuffix: event.price === 0 ? '' : ` ${event.currency}`,
+    })),
+  ]
+  const items =
+    realItems.length > 0
+      ? realItems
+      : PROGRAMS.map((program) => ({
+          ...program,
+          href: `/${locale}/marketplace?tab=programs`,
+          priceSuffix: ' сом/мес',
+        }))
+
   return (
     <div className="mt-24 lg:mt-32">
-      <div className="mb-8">
-        <span className="text-xs font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-widest">
-          {t('s3eyebrow')}
-        </span>
-        <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mt-2 mb-3 leading-tight">
-          {t('s3title')}
-        </h2>
-        <p className="text-gray-500 dark:text-gray-400 text-lg max-w-xl">{t('s3subtitle')}</p>
+      <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <span className="text-xs font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-widest">
+            {t('s3eyebrow')}
+          </span>
+          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mt-2 mb-3 leading-tight">
+            {t('s3title')}
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400 text-lg max-w-xl">{t('s3subtitle')}</p>
+        </div>
+        <Link
+          href={`/${locale}/marketplace?tab=programs`}
+          className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:border-teal-300 hover:text-teal-700 dark:border-gray-700 dark:text-gray-300"
+        >
+          Смотреть все <ArrowRight className="h-4 w-4" />
+        </Link>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {PROGRAMS.map((p) => (
-          <div
+        {items.map((p) => (
+          <Link
             key={p.name}
+            href={p.href}
             className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden shadow-sm hover:shadow-md transition-shadow group"
           >
             <div className="relative w-full aspect-video overflow-hidden">
-              <Image
+              <DynamicImage
                 src={p.src}
                 alt={p.name}
-                fill
+                fallback="/prog-school.png"
                 className="object-cover group-hover:scale-105 transition-transform duration-500"
-                sizes="(max-width: 768px) 50vw, 25vw"
               />
             </div>
             <div className="p-3">
@@ -321,10 +476,13 @@ function ProgramsSection({ t }: { t: (key: string) => string }) {
               </div>
               <div className="flex items-center justify-between mt-2">
                 <span className="text-xs text-gray-400">{p.spots}</span>
-                <span className="text-xs font-bold text-teal-600">{p.price} сом/мес</span>
+                <span className="text-xs font-bold text-teal-600">
+                  {p.price}
+                  {p.priceSuffix}
+                </span>
               </div>
             </div>
-          </div>
+          </Link>
         ))}
       </div>
     </div>
@@ -332,8 +490,16 @@ function ProgramsSection({ t }: { t: (key: string) => string }) {
 }
 
 // ─── Section ───────────────────────────────────────────────────────────────
-export function ProductShowcase() {
+export function ProductShowcase({
+  marketplace,
+  locale,
+}: {
+  marketplace?: LandingMarketplaceData
+  locale: string
+}) {
   const t = useTranslations('landing.showcase')
+  const featuredCenter =
+    marketplace?.orgs.find((org) => org.plan !== 'nuroo') ?? marketplace?.orgs[0]
 
   return (
     <section className="py-20 lg:py-28 bg-white dark:bg-gray-950">
@@ -361,9 +527,19 @@ export function ProductShowcase() {
                 </li>
               ))}
             </ul>
+            <Link
+              href={`/${locale}/marketplace?tab=centers`}
+              className="mt-7 inline-flex items-center gap-2 rounded-xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-700"
+            >
+              Смотреть все центры <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
           <div>
-            <OrgProfileMockup />
+            <OrgProfileMockup
+              org={featuredCenter}
+              cohorts={marketplace?.cohorts ?? []}
+              locale={locale}
+            />
           </div>
         </div>
 
@@ -398,11 +574,17 @@ export function ProductShowcase() {
                 {t('s2tryCta')}
               </p>
             </div>
+            <Link
+              href={`/${locale}/marketplace?tab=specialists`}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl border border-teal-200 px-5 py-3 text-sm font-semibold text-teal-700 transition-colors hover:border-teal-400 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-300 dark:hover:bg-teal-950/40"
+            >
+              Смотреть специалистов <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
         </div>
 
         {/* Programs grid */}
-        <ProgramsSection t={t} />
+        <ProgramsSection t={t} marketplace={marketplace} locale={locale} />
       </div>
     </section>
   )

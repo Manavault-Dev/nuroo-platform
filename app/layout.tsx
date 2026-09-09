@@ -62,13 +62,61 @@ export const metadata: Metadata = {
       'max-snippet': -1,
     },
   },
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/logo.png', sizes: '828x828', type: 'image/png' },
+    ],
+    apple: [{ url: '/logo.png', sizes: '180x180', type: 'image/png' }],
+    shortcut: '/favicon.svg',
+  },
   verification: {
     google: 'yxwxk4p78_GGey4ZCj-VaVm5BxvhEfRqk3IvBgbNq5A',
   },
 }
 
-// The <html> tag with the correct lang attribute is rendered in app/[locale]/layout.tsx
-// so each locale page gets lang="ru" / lang="en" / lang="ky" properly.
+// Organization structured data — tells Google which image to use as the site logo in search results
+const organizationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'Nuroo',
+  url: 'https://usenuroo.com',
+  logo: 'https://usenuroo.com/logo.png',
+  sameAs: ['https://www.instagram.com/nuroo.kg'],
+  contactPoint: {
+    '@type': 'ContactPoint',
+    email: 'support@usenuroo.com',
+    contactType: 'customer support',
+  },
+}
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return children
+  return (
+    <html lang="ru" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var p=window.location.pathname||'/';if(/^\\/(en|ru|ky)\\/b2b(\\/|$)/.test(p))return;var r=document.documentElement;r.classList.remove('dark');r.classList.add('light');r.style.colorScheme='light'})();`,
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <meta name="theme-color" content="#14b8a6" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="preconnect"
+          href="https://firebasestorage.googleapis.com"
+          crossOrigin="anonymous"
+        />
+        <link rel="preconnect" href="https://storage.googleapis.com" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://encrypted-tbn0.gstatic.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://firebasestorage.googleapis.com" />
+        <link rel="dns-prefetch" href="https://storage.googleapis.com" />
+      </head>
+      <body className="font-sans overflow-x-hidden">{children}</body>
+    </html>
+  )
 }

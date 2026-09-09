@@ -18,6 +18,7 @@ import {
   AlertCircle,
   Ban,
   Rocket,
+  Trash2,
 } from 'lucide-react'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 
@@ -58,12 +59,14 @@ function CohortCard({
   isAdmin,
   onCancel,
   onPublish,
+  onDelete,
 }: {
   cohort: Cohort
   orgId: string
   isAdmin: boolean
   onCancel: (c: Cohort) => void
   onPublish: (c: Cohort) => void
+  onDelete: (c: Cohort) => void
 }) {
   const t = useTranslations('b2b.pages.courses')
   const statusBg = STATUS_BG[cohort.status]
@@ -170,6 +173,18 @@ function CohortCard({
                   {t('cancelCohort.confirm')}
                 </button>
               )}
+              {(cohort.status === 'cancelled' || cohort.status === 'completed') && (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    onDelete(cohort)
+                  }}
+                  className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1 transition-colors font-medium"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Удалить
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -187,6 +202,8 @@ export default function CoursesPage() {
   const [cancelModal, setCancelModal] = useState<Cohort | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const [_publishing, setPublishing] = useState<string | null>(null)
+  const [deleteModal, setDeleteModal] = useState<Cohort | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (authLoading || !orgId) return
@@ -226,6 +243,20 @@ export default function CoursesPage() {
       setError(t('errorCancelCohort'))
     } finally {
       setCancelling(false)
+    }
+  }
+
+  const handleHardDelete = async () => {
+    if (!deleteModal || !orgId) return
+    setDeleting(true)
+    try {
+      await apiClient.hardDeleteCohort(orgId, deleteModal.id)
+      setCohorts((prev) => prev.filter((c) => c.id !== deleteModal.id))
+      setDeleteModal(null)
+    } catch {
+      setError('Не удалось удалить набор')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -297,6 +328,7 @@ export default function CoursesPage() {
                     isAdmin={isAdmin}
                     onCancel={setCancelModal}
                     onPublish={handlePublish}
+                    onDelete={setDeleteModal}
                   />
                 ))}
               </div>
@@ -317,6 +349,7 @@ export default function CoursesPage() {
                     isAdmin={isAdmin}
                     onCancel={setCancelModal}
                     onPublish={handlePublish}
+                    onDelete={setDeleteModal}
                   />
                 ))}
               </div>
@@ -340,6 +373,24 @@ export default function CoursesPage() {
           loading={cancelling}
           onConfirm={handleCancel}
           onCancel={() => setCancelModal(null)}
+        />
+      )}
+
+      {deleteModal && (
+        <ConfirmModal
+          title="Удалить набор навсегда?"
+          subtitle="Это действие необратимо"
+          description={
+            <span>
+              Набор <span className="font-semibold text-gray-900">«{deleteModal.title}»</span> и все
+              связанные данные будут удалены без возможности восстановления.
+            </span>
+          }
+          confirmLabel="Удалить навсегда"
+          cancelLabel="Отмена"
+          loading={deleting}
+          onConfirm={handleHardDelete}
+          onCancel={() => setDeleteModal(null)}
         />
       )}
     </div>

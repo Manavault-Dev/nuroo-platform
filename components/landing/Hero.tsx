@@ -5,23 +5,46 @@ import { Search, CheckCircle } from 'lucide-react'
 import { AppStoreButton } from './AppStoreButton'
 import { GooglePlayButton } from './GooglePlayButton'
 
+type LandingOrg = {
+  id: string
+  name: string
+  logoUrl: string | null
+  coverImageUrl: string | null
+  city: string | null
+  categories: string[]
+  averageRating: number
+  reviewCount: number
+  plan?: 'nuroo' | 'nuroo_business'
+  specialization?: string
+  priceFrom?: number | null
+  currency?: string
+}
+
+type LandingMarketplaceData = {
+  orgs: LandingOrg[]
+}
+
+type HeroCard = {
+  src: string
+  imageMode: 'cover' | 'logo'
+  name: string
+  role: string
+  price: string
+  rating: string
+  href: string
+}
+
 const MARKETPLACE_TABS = [
-  { id: 'specialists', label: 'Специалисты' },
   { id: 'centers', label: 'Центры' },
+  { id: 'specialists', label: 'Специалисты' },
   { id: 'programs', label: 'Программы' },
   { id: 'events', label: 'Мероприятия' },
 ] as const
 
-const HERO_CARDS = [
-  {
-    src: '/hero-specialist.jpg',
-    name: 'Айзада М.',
-    role: 'Логопед',
-    price: 'от 1 800 сом',
-    rating: '4.9',
-  },
+const HERO_CENTER_CARDS: Array<Omit<HeroCard, 'href'>> = [
   {
     src: '/hero-center.png',
+    imageMode: 'cover',
     name: 'Happy Kids',
     role: 'Детский центр',
     price: 'от 2 500 сом',
@@ -29,21 +52,84 @@ const HERO_CARDS = [
   },
   {
     src: '/hero-program.png',
-    name: 'Подготовка к школе',
-    role: 'Программа · 5–6 лет',
+    imageMode: 'cover',
+    name: 'Центр развития',
+    role: 'Детский центр',
     price: 'от 3 500 сом',
     rating: '4.9',
+  },
+  {
+    src: '/cat-centers.png',
+    imageMode: 'cover',
+    name: 'Семейный центр',
+    role: 'Детский центр',
+    price: 'Онлайн-запись',
+    rating: 'Новый',
   },
 ]
 
 const SLOTS = ['10:00', '11:30', '16:00', '17:30']
 
-export async function Hero() {
-  const t = await getTranslations('landing.hero')
-  const locale = await getLocale()
+function getHeroCards(orgs: LandingOrg[]): HeroCard[] {
+  const centers = orgs.filter((org) => org.plan !== 'nuroo')
+  const realCards = centers.slice(0, 3).map((org) => {
+    const hasCover = Boolean(org.coverImageUrl)
+
+    return {
+      src: org.coverImageUrl || org.logoUrl || '/hero-center.png',
+      imageMode: hasCover ? 'cover' : 'logo',
+      name: org.name,
+      role: org.categories?.[0] || 'Детский центр',
+      price: org.priceFrom
+        ? `от ${org.priceFrom.toLocaleString('ru-RU')} ${org.currency || 'KGS'}`
+        : 'Онлайн-запись',
+      rating: org.averageRating > 0 ? org.averageRating.toFixed(1) : 'Новый',
+      href: `/marketplace/${org.id}`,
+    } satisfies HeroCard
+  })
+
+  return [
+    ...realCards,
+    ...HERO_CENTER_CARDS.map((card) => ({ ...card, href: '/marketplace?tab=centers' })),
+  ].slice(0, 3)
+}
+
+function HeroImage({
+  src,
+  alt,
+  priority,
+  mode,
+}: {
+  src: string
+  alt: string
+  priority: boolean
+  mode: HeroCard['imageMode']
+}) {
+  const className = mode === 'cover' ? 'object-cover' : 'object-contain p-4'
+
+  if (src.startsWith('/')) {
+    return (
+      <Image src={src} alt={alt} fill className={className} sizes="120px" priority={priority} />
+    )
+  }
 
   return (
-    <section className="relative pt-24 pb-0 md:pt-28 bg-white dark:bg-gray-950 overflow-hidden">
+    <img
+      src={src}
+      alt={alt}
+      className={`h-full w-full ${className}`}
+      loading={priority ? 'eager' : 'lazy'}
+    />
+  )
+}
+
+export async function Hero({ marketplace }: { marketplace?: LandingMarketplaceData }) {
+  const t = await getTranslations('landing.hero')
+  const locale = await getLocale()
+  const heroCards = getHeroCards(marketplace?.orgs ?? [])
+
+  return (
+    <section className="relative pt-28 pb-0 md:pt-32 bg-white dark:bg-gray-950 overflow-hidden">
       <div className="absolute inset-0 pointer-events-none" aria-hidden>
         <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-teal-50/50 dark:bg-teal-950/20 rounded-full blur-3xl" />
       </div>
@@ -69,14 +155,16 @@ export async function Hero() {
 
             <div className="flex flex-col sm:flex-row gap-3 mb-5">
               <Link
-                href="/marketplace"
+                href={`/${locale}/marketplace`}
+                prefetch={false}
                 className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold text-base transition-colors shadow-sm"
               >
                 <Search className="w-4 h-4" />
                 {t('ctaPrimary')}
               </Link>
               <Link
-                href="/b2b/register"
+                href={`/${locale}/b2b/register`}
+                prefetch={false}
                 className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-900 dark:text-white font-semibold text-base transition-colors"
               >
                 {t('ctaSecondary')}
@@ -97,7 +185,7 @@ export async function Hero() {
             <div className="w-full bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-800 px-4 py-3 flex items-center gap-3">
               <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
               <span className="text-sm text-gray-400 flex-1">
-                Поиск специалистов, центров, программ...
+                Поиск центров, специалистов, программ...
               </span>
               <span className="hidden sm:inline-flex items-center px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-semibold">
                 Бишкек
@@ -106,12 +194,13 @@ export async function Hero() {
 
             {/* Category tabs */}
             <div className="w-full flex gap-2">
-              {MARKETPLACE_TABS.map((tab, i) => (
+              {MARKETPLACE_TABS.map((tab) => (
                 <Link
                   key={tab.id}
                   href={`/${locale}/marketplace?tab=${tab.id}`}
+                  prefetch={false}
                   className={`flex-1 text-center py-2 rounded-xl text-xs font-semibold border transition-colors ${
-                    i === 0
+                    tab.id === 'centers'
                       ? 'bg-teal-600 text-white border-teal-600'
                       : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-900 hover:border-teal-300 hover:text-teal-600'
                   }`}
@@ -125,19 +214,37 @@ export async function Hero() {
             <div className="w-full flex gap-3 items-start">
               {/* 3 photo cards */}
               <div className="flex-1 grid grid-cols-3 gap-2">
-                {HERO_CARDS.map((card) => (
-                  <div
+                {heroCards.map((card, i) => (
+                  <Link
                     key={card.name}
+                    href={`/${locale}${card.href}`}
+                    prefetch={false}
                     className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
                   >
-                    <div className="relative w-full aspect-square">
-                      <Image
-                        src={card.src}
-                        alt={card.name}
-                        fill
-                        className="object-cover"
-                        sizes="120px"
-                      />
+                    <div
+                      className={`relative w-full aspect-square overflow-hidden ${
+                        card.imageMode === 'logo'
+                          ? 'bg-gradient-to-br from-teal-50 via-white to-cyan-50 dark:from-gray-800 dark:via-gray-900 dark:to-teal-950/40'
+                          : 'bg-gray-100 dark:bg-gray-800'
+                      }`}
+                    >
+                      {card.imageMode === 'logo' ? (
+                        <div className="absolute inset-3 rounded-2xl bg-white shadow-sm ring-1 ring-gray-100 dark:bg-white overflow-hidden">
+                          <HeroImage
+                            src={card.src}
+                            alt={card.name}
+                            priority={i === 0}
+                            mode={card.imageMode}
+                          />
+                        </div>
+                      ) : (
+                        <HeroImage
+                          src={card.src}
+                          alt={card.name}
+                          priority={i === 0}
+                          mode={card.imageMode}
+                        />
+                      )}
                     </div>
                     <div className="p-2">
                       <div className="text-[11px] font-semibold text-gray-900 dark:text-white leading-tight truncate">
@@ -151,7 +258,7 @@ export async function Hero() {
                         {card.price}
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
 

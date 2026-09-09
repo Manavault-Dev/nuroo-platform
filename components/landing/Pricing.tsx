@@ -1,24 +1,36 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { Link } from '@/i18n/navigation'
 import { useTranslations } from 'next-intl'
 import { Check, Shield, RotateCcw, TrendingUp, ArrowRight } from 'lucide-react'
 import { Analytics } from '@/lib/analytics'
 
-const NUROO_FEATURE_KEYS = ['nF1', 'nF2', 'nF3', 'nF4', 'nF5', 'nF6', 'nF7', 'nF8', 'nF9'] as const
+const NUROO_FEATURE_KEYS = [
+  'nF1',
+  'nF2',
+  'nF3',
+  'nF4',
+  'nF5',
+  'nF6',
+  'nF7',
+  'nF8',
+  'nF9',
+  'nF10',
+  'nF11',
+] as const
 
 const BUSINESS_FEATURE_KEYS = [
   'bF1',
   'bF2',
-  'bF3',
   'bF4',
   'bF5',
-  'bF6',
   'bF7',
   'bF8',
   'bF9',
   'bF10',
+  'bF11',
 ] as const
 
 export function Pricing() {
@@ -83,7 +95,7 @@ export function Pricing() {
                 />
               </div>
               {/* Маскот */}
-              <img
+              <Image
                 src="/mascot-3.svg"
                 alt="Нури — ваш помощник"
                 width={200}

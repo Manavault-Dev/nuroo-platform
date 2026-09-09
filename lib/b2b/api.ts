@@ -1121,7 +1121,12 @@ export class ApiClient {
     })
   }
 
-  async uploadOrganizationImage(orgId: string, file: File, kind: 'logo' | 'cover') {
+  async getOrgDetails(orgId: string): Promise<{ photos?: string[]; [key: string]: unknown }> {
+    const res = await this.request<{ ok: boolean; org: Record<string, unknown> }>(`/orgs/${orgId}`)
+    return res.org as { photos?: string[]; [key: string]: unknown }
+  }
+
+  async uploadOrganizationImage(orgId: string, file: File, kind: 'logo' | 'cover' | 'photo') {
     const formData = new FormData()
     formData.append('kind', kind)
     formData.append('media', file)
@@ -1142,10 +1147,16 @@ export class ApiClient {
 
     return response.json() as Promise<{
       ok: boolean
-      kind: 'logo' | 'cover'
+      kind: 'logo' | 'cover' | 'photo'
       url: string
-      path: string
     }>
+  }
+
+  async removeOrgPhoto(orgId: string, url: string) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/media/photo`, {
+      method: 'DELETE',
+      body: JSON.stringify({ url }),
+    })
   }
 
   async getOrgBranding(orgId: string) {
@@ -2134,21 +2145,6 @@ export class ApiClient {
     )
   }
 
-  async seedDemoData(orgId: string) {
-    return this.request<{
-      ok: boolean
-      created: { children: number; tasks: number }
-      message: string
-    }>(`/orgs/${orgId}/demo/seed`, { method: 'POST' })
-  }
-
-  async clearDemoData(orgId: string) {
-    return this.request<{ ok: boolean; deleted: { children: number; tasks: number } }>(
-      `/orgs/${orgId}/demo/seed`,
-      { method: 'DELETE' }
-    )
-  }
-
   // ── Organization reviews ────────────────────────────────────────────────────
 
   async getOrgReviewsAdmin(orgId: string) {
@@ -2381,6 +2377,12 @@ export class ApiClient {
 
   async deleteCohort(orgId: string, cohortId: string) {
     return this.request<{ ok: boolean }>(`/orgs/${orgId}/cohorts/${cohortId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async hardDeleteCohort(orgId: string, cohortId: string) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/cohorts/${cohortId}?force=true`, {
       method: 'DELETE',
     })
   }
