@@ -6,7 +6,8 @@ const nextConfig = {
   poweredByHeader: false,
   transpilePackages: ['next-intl'],
   experimental: {
-    optimizePackageImports: ['lucide-react'],
+    // Tree-shake barrel imports — each added package can save 50-200 KB
+    optimizePackageImports: ['lucide-react', 'next-intl'],
   },
   images: {
     remotePatterns: [
@@ -26,9 +27,27 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'static.wixstatic.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'media.licdn.com',
+      },
+      // Google-cached thumbnails (encrypted-tbn0..N.gstatic.com)
+      {
+        protocol: 'https',
+        hostname: '**.gstatic.com',
+      },
+      // Google user-content (profile photos, Drive, etc.)
+      {
+        protocol: 'https',
+        hostname: '**.googleusercontent.com',
+      },
     ],
     formats: ['image/avif', 'image/webp'],
-    minimumCacheTTL: 60 * 60 * 24,
+    minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days
+    deviceSizes: [390, 640, 828, 1080, 1200, 1920],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256],
+    dangerouslyAllowSVG: true,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
   webpack: (config) => {
     config.resolve.fallback = {
@@ -88,7 +107,7 @@ module.exports = withNextIntl(nextConfig)
 
 // Injected content via Sentry wizard below
 
-const { withSentryConfig } = require('@sentry/nextjs')
+const { withSentryConfig } = require('@sentry/nextjs/config')
 
 module.exports = withSentryConfig(module.exports, {
   // For all available options, see:
@@ -104,7 +123,10 @@ module.exports = withSentryConfig(module.exports, {
   // https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/
 
   // Upload a larger set of source maps for prettier stack traces (increases build time)
-  widenClientFileUpload: true,
+  widenClientFileUpload: false,
+
+  // Hide source maps from the client bundle — reduces chunk size significantly
+  hideSourceMaps: true,
 
   // Route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
   // This can increase your server load as well as your hosting bill.
@@ -120,10 +142,7 @@ module.exports = withSentryConfig(module.exports, {
     // https://vercel.com/docs/cron-jobs
     automaticVercelMonitors: true,
 
-    // Tree-shaking options for reducing bundle size
-    treeshake: {
-      // Automatically tree-shake Sentry logger statements to reduce bundle size
-      removeDebugLogging: true,
-    },
+    // Tree-shake Sentry logger statements — removes debug code from bundle
+    disableLogger: true,
   },
 })
