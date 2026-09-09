@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from '@/i18n/navigation'
 import { usePathname as useNextPathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import Image from 'next/image'
 import { Menu, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { LocaleSwitcher } from './LocaleSwitcher'
@@ -21,7 +22,21 @@ export function Header() {
   const pathname = fullPathname.replace(/^\/(en|ru|ky)/, '') || '/'
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
-  const isMarketplaceHero = pathname.startsWith('/marketplace') && !isScrolled
+  const [isDownloadOpen, setIsDownloadOpen] = useState(false)
+  const downloadRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (downloadRef.current && !downloadRef.current.contains(e.target as Node)) {
+        setIsDownloadOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+  // Only the marketplace listing page gets the transparent hero header, not org detail pages
+  const isMarketplaceHero =
+    (pathname === '/marketplace' || pathname.startsWith('/marketplace?')) && !isScrolled
 
   const navLinkClass = clsx(
     'transition-colors text-sm whitespace-nowrap',
@@ -57,9 +72,12 @@ export function Header() {
               isMarketplaceHero ? 'text-white' : 'gradient-text'
             )}
           >
-            <img
+            <Image
               src="/Logo.svg"
               alt="Nuroo Logo"
+              width={32}
+              height={32}
+              priority
               className={clsx(
                 'w-6 h-6 md:w-8 md:h-8 rounded-lg transition-all',
                 isMarketplaceHero && 'ring-1 ring-white/35 shadow-sm shadow-primary-950/20'
@@ -81,7 +99,11 @@ export function Header() {
             <Link href={LANDING_LINKS.pricing} className={navLinkClass}>
               {t('pricing')}
             </Link>
-            <Link href="/marketplace" className={clsx(navLinkClass, 'font-semibold')}>
+            <Link
+              href="/marketplace"
+              prefetch={false}
+              className={clsx(navLinkClass, 'font-semibold')}
+            >
               {t('marketplace')}
             </Link>
             <LocaleSwitcher inverse={isMarketplaceHero} />
@@ -115,18 +137,62 @@ export function Header() {
             >
               {t('getStarted')}
             </Link>
-            <a
-              href="https://apps.apple.com/us/app/nuroo-ai/id6753772410"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={clsx(
-                isMarketplaceHero
-                  ? 'rounded-lg bg-white/20 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/25 transition-all duration-200 hover:bg-white/30'
-                  : 'btn-primary text-sm'
+            <div ref={downloadRef} className="relative">
+              <button
+                onClick={() => setIsDownloadOpen((v) => !v)}
+                className={clsx(
+                  isMarketplaceHero
+                    ? 'rounded-lg bg-white/20 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/25 transition-all duration-200 hover:bg-white/30'
+                    : 'btn-primary text-sm'
+                )}
+              >
+                {t('downloadApp')}
+              </button>
+              {isDownloadOpen && (
+                <div className="absolute right-0 top-full mt-2 w-52 rounded-xl bg-white shadow-lg ring-1 ring-gray-200 z-50 overflow-hidden">
+                  <a
+                    href="https://apps.apple.com/us/app/nuroo-ai/id6753772410"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setIsDownloadOpen(false)}
+                    className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zm-5.02-13.03c.15-2.23 1.66-4.07 3.74-4.25-.29 2.58-2.34 4.5-3.74 4.25z" />
+                    </svg>
+                    <div>
+                      <p className="font-semibold leading-tight">App Store</p>
+                      <p className="text-xs text-gray-400">iPhone / iPad</p>
+                    </div>
+                  </a>
+                  <div className="h-px bg-gray-100" />
+                  <a
+                    href="https://play.google.com/store/apps/details?id=nuroo.app&pcampaignid=web_share"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setIsDownloadOpen(false)}
+                    className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M3 20.5v-17c0-.59.34-1.11.84-1.35L13.69 12 3.84 21.85c-.5-.25-.84-.76-.84-1.35z"
+                        fill="#4285F4"
+                      />
+                      <path d="M16.81 15.12L6.05 21.34l8.49-8.49 2.27 2.27z" fill="#34A853" />
+                      <path
+                        d="M20.16 10.81c.34.27.59.69.59 1.19 0 .5-.22.9-.57 1.18L17.89 14.5l-2.5-2.5 2.5-2.5 2.27 1.31z"
+                        fill="#FBBC04"
+                      />
+                      <path d="M16.81 8.88L6.05 2.66l8.49 8.49 2.27-2.27z" fill="#EA4335" />
+                    </svg>
+                    <div>
+                      <p className="font-semibold leading-tight">Google Play</p>
+                      <p className="text-xs text-gray-400">Android</p>
+                    </div>
+                  </a>
+                </div>
               )}
-            >
-              {t('downloadApp')}
-            </a>
+            </div>
           </div>
 
           <div className="lg:hidden flex items-center gap-2 flex-shrink-0">
@@ -183,6 +249,7 @@ export function Header() {
               </Link>
               <Link
                 href="/marketplace"
+                prefetch={false}
                 className="block px-3 py-2 text-primary-600 dark:text-primary-400 hover:text-primary-700 transition-colors text-sm font-medium"
                 onClick={() => setIsMenuOpen(false)}
               >
@@ -209,15 +276,41 @@ export function Header() {
                   {t('createAccount')}
                 </Link>
               </div>
-              <a
-                href="https://apps.apple.com/us/app/nuroo-ai/id6753772410"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block mx-3 my-2 btn-primary text-center text-sm py-2"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                {t('downloadApp')}
-              </a>
+              <div className="mx-3 my-2 flex flex-col gap-2">
+                <a
+                  href="https://apps.apple.com/us/app/nuroo-ai/id6753772410"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-black text-white text-sm font-semibold"
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zm-5.02-13.03c.15-2.23 1.66-4.07 3.74-4.25-.29 2.58-2.34 4.5-3.74 4.25z" />
+                  </svg>
+                  App Store
+                </a>
+                <a
+                  href="https://play.google.com/store/apps/details?id=nuroo.app&pcampaignid=web_share"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-900 text-sm font-semibold"
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M3 20.5v-17c0-.59.34-1.11.84-1.35L13.69 12 3.84 21.85c-.5-.25-.84-.76-.84-1.35z"
+                      fill="#4285F4"
+                    />
+                    <path d="M16.81 15.12L6.05 21.34l8.49-8.49 2.27 2.27z" fill="#34A853" />
+                    <path
+                      d="M20.16 10.81c.34.27.59.69.59 1.19 0 .5-.22.9-.57 1.18L17.89 14.5l-2.5-2.5 2.5-2.5 2.27 1.31z"
+                      fill="#FBBC04"
+                    />
+                    <path d="M16.81 8.88L6.05 2.66l8.49 8.49 2.27-2.27z" fill="#EA4335" />
+                  </svg>
+                  Google Play
+                </a>
+              </div>
             </div>
           </div>
         )}
