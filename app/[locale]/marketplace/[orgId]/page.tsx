@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import Image from 'next/image'
 import { useTranslations } from 'next-intl'
 import { useParams } from 'next/navigation'
 import {
@@ -16,16 +17,18 @@ import {
   User,
   Clock,
   Calendar,
+  ChevronLeft,
 } from 'lucide-react'
 import Link from 'next/link'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3101'
+const API_URL = `${(process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3101').replace(/\/+$/, '')}/v1`
 
 interface Org {
   id: string
   name: string
   logoUrl: string | null
   coverImageUrl: string | null
+  photos?: string[]
   description: string | null
   city: string | null
   country: string | null
@@ -115,6 +118,7 @@ export default function OrgPage() {
   const user = useUser()
 
   const [org, setOrg] = useState<Org | null>(null)
+  const [coverIdx, setCoverIdx] = useState(0)
   const [specialists, setSpecialists] = useState<Specialist[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -255,34 +259,112 @@ export default function OrgPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Cover */}
-      <div className="relative h-52 bg-gradient-to-br from-primary-600 to-primary-700 overflow-hidden">
-        {org.coverImageUrl && (
-          <img src={org.coverImageUrl} alt="" className="w-full h-full object-cover" />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-        <Link
-          href={`/${locale}/marketplace`}
-          className="absolute top-4 left-4 flex items-center gap-2 text-white/90 hover:text-white text-sm bg-black/20 hover:bg-black/30 px-3 py-2 rounded-full transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          {t('back')}
-        </Link>
-        {/* Logo */}
-        <div className="absolute bottom-4 left-6 w-16 h-16 rounded-2xl bg-white dark:bg-gray-800 shadow-lg overflow-hidden flex items-center justify-center">
-          {org.logoUrl ? (
-            <img
-              src={org.logoUrl}
-              alt={org.name}
-              className="object-cover scale-[1.3]"
-              style={{ width: '100%', height: '100%' }}
-            />
-          ) : (
-            <Building2 className="w-8 h-8 text-primary-400" />
-          )}
-        </div>
-      </div>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pt-14 md:pt-16">
+      {/* Cover / Gallery carousel */}
+      {(() => {
+        const allImages = [
+          ...(org.coverImageUrl ? [org.coverImageUrl] : []),
+          ...(org.photos ?? []).filter((p) => p !== org.coverImageUrl),
+        ]
+        const total = allImages.length
+        const currentImg = allImages[coverIdx] ?? null
+        return (
+          <div className="relative h-72 md:h-96 bg-gradient-to-br from-primary-600 to-primary-700 overflow-hidden group">
+            {/* Blurred background — fills space, any aspect ratio */}
+            {currentImg && (
+              <Image
+                key={`bg-${currentImg}`}
+                src={currentImg}
+                alt=""
+                fill
+                sizes="100vw"
+                className="object-cover scale-110 blur-xl brightness-50"
+                priority
+                aria-hidden
+              />
+            )}
+            {/* Full image — no crop, centered */}
+            {currentImg && (
+              <Image
+                key={currentImg}
+                src={currentImg}
+                alt=""
+                fill
+                sizes="100vw"
+                className="object-contain transition-opacity duration-300"
+                priority
+              />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
+
+            {/* Back button */}
+            <Link
+              href={`/${locale}/marketplace`}
+              className="absolute top-4 left-4 flex items-center gap-2 text-white/90 hover:text-white text-sm bg-black/25 hover:bg-black/40 px-3 py-2 rounded-full transition-colors z-10"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              {t('back')}
+            </Link>
+
+            {/* Prev arrow */}
+            {total > 1 && coverIdx > 0 && (
+              <button
+                onClick={() => setCoverIdx((i) => i - 1)}
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/85 hover:bg-white flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity z-10"
+              >
+                <ChevronLeft className="w-5 h-5 text-gray-800" />
+              </button>
+            )}
+
+            {/* Next arrow */}
+            {total > 1 && coverIdx < total - 1 && (
+              <button
+                onClick={() => setCoverIdx((i) => i + 1)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/85 hover:bg-white flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity z-10"
+              >
+                <ChevronRight className="w-5 h-5 text-gray-800" />
+              </button>
+            )}
+
+            {/* Counter badge */}
+            {total > 1 && (
+              <div className="absolute top-4 right-4 bg-black/50 text-white text-xs font-bold px-2.5 py-1 rounded-full z-10">
+                {coverIdx + 1}/{total}
+              </div>
+            )}
+
+            {/* Dot indicators */}
+            {total > 1 && total <= 8 && (
+              <div className="absolute bottom-16 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+                {allImages.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setCoverIdx(i)}
+                    className={`w-1.5 h-1.5 rounded-full transition-all ${i === coverIdx ? 'bg-white w-4' : 'bg-white/50'}`}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Logo */}
+            <div className="absolute bottom-4 left-6 w-16 h-16 rounded-2xl bg-white dark:bg-gray-800 shadow-lg overflow-hidden flex items-center justify-center z-10">
+              {org.logoUrl ? (
+                <div className="relative w-full h-full">
+                  <Image
+                    src={org.logoUrl}
+                    alt={org.name}
+                    fill
+                    sizes="64px"
+                    className="object-cover scale-[1.3]"
+                  />
+                </div>
+              ) : (
+                <Building2 className="w-8 h-8 text-primary-400" />
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       <div className="max-w-5xl mx-auto px-4">
         {/* Org header */}
@@ -363,12 +445,14 @@ export default function OrgPage() {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-800 overflow-hidden flex items-center justify-center flex-shrink-0">
+                      <div className="relative w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-800 overflow-hidden flex items-center justify-center flex-shrink-0">
                         {spec.avatarUrl ? (
-                          <img
+                          <Image
                             src={spec.avatarUrl}
                             alt={spec.fullName}
-                            className="w-full h-full object-cover"
+                            fill
+                            sizes="40px"
+                            className="object-cover"
                           />
                         ) : (
                           <User className="w-5 h-5 text-primary-400" />
