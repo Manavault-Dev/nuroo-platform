@@ -6,6 +6,9 @@ import cors from '@fastify/cors'
 import compress from '@fastify/compress'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
+import fastifySwagger from '@fastify/swagger'
+import fastifySwaggerUi from '@fastify/swagger-ui'
+import { swaggerConfig, swaggerUiConfig } from './config/swagger.js'
 import type { DecodedIdToken } from 'firebase-admin/auth'
 import { config } from './config/index.js'
 import { initializeFirebaseAdmin, getAuth } from './infrastructure/database/firebase.js'
@@ -128,12 +131,25 @@ async function buildServer() {
     errorResponseBuilder: () => ({ error: 'Too many requests, please slow down.' }),
   })
 
+  // ── Swagger / OpenAPI docs (/docs) ───────────────────────────────────────────
+  // Docs are always available. In production consider restricting via IP/auth if needed.
+  await fastify.register(fastifySwagger, swaggerConfig)
+  await fastify.register(fastifySwaggerUi, {
+    ...swaggerUiConfig,
+    // In production: disable tryItOut so devs don't accidentally hit prod from docs
+    uiConfig: {
+      ...swaggerUiConfig.uiConfig,
+      tryItOutEnabled: !isProduction,
+    },
+  })
+
   fastify.addHook('preHandler', async (request, reply) => {
     const { url, method } = request
 
     if (url === '/health' || method === 'OPTIONS') return
     if (url.startsWith('/bootstrap/')) return
     if (url.startsWith('/public/')) return
+    if (url.startsWith('/docs')) return // Swagger UI — public access
 
     // Strip optional /v1 prefix for whitelist matching — routes are versioned but
     // public-route checks are path-only (no auth needed regardless of version prefix).
@@ -188,6 +204,16 @@ async function buildServer() {
     } catch {
       return reply.code(401).send({ error: 'Invalid token' })
     }
+  })
+
+  // Auto-set Cache-Control for authenticated GET responses.
+  // Public endpoints (orgs, marketplace) set their own longer headers and are skipped.
+  // POST/PUT/PATCH/DELETE mutations must never be cached — skip those too.
+  fastify.addHook('onSend', async (request, reply) => {
+    if (request.method !== 'GET') return
+    if (reply.hasHeader('cache-control')) return
+    if (!request.user) return // unauthenticated — no private cache hint needed
+    reply.header('Cache-Control', 'private, max-age=60, stale-while-revalidate=120')
   })
 
   // System routes (health, bootstrap) — no version prefix, needed by infra/load-balancers

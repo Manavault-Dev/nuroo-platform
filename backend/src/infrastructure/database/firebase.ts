@@ -14,9 +14,6 @@ export function initializeFirebaseAdmin() {
     return null
   }
 
-  console.log(`[FIREBASE] Initializing Firebase Admin for ${env} environment`)
-  console.log(`[FIREBASE] Project ID: ${projectId}`)
-
   try {
     if (config.FIREBASE_CLIENT_EMAIL && config.FIREBASE_PRIVATE_KEY && projectId) {
       const privateKey = config.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
@@ -28,8 +25,6 @@ export function initializeFirebaseAdmin() {
         }),
         projectId,
       })
-      console.log(`[FIREBASE] Firebase Admin initialized for ${env} environment`)
-      console.log(`[FIREBASE] Using project: ${projectId}`)
       return app
     }
 
@@ -37,8 +32,6 @@ export function initializeFirebaseAdmin() {
       credential: admin.credential.applicationDefault(),
       projectId,
     })
-    console.log(`[FIREBASE] Firebase Admin initialized using application default credentials`)
-    console.log(`[FIREBASE] Using project: ${projectId}`)
     return app
   } catch (error) {
     console.error('Failed to initialize Firebase Admin:', error)
