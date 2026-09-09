@@ -280,8 +280,10 @@ export const cohortsRoute: FastifyPluginAsync = async (fastify) => {
   )
 
   // ── DELETE /orgs/:orgId/cohorts/:cohortId ────────────────────────────────
+  // ?force=true — permanently deletes (only allowed for cancelled/completed)
+  // default     — soft-cancel (sets status to 'cancelled')
 
-  fastify.delete<{ Params: { orgId: string; cohortId: string } }>(
+  fastify.delete<{ Params: { orgId: string; cohortId: string }; Querystring: { force?: string } }>(
     '/orgs/:orgId/cohorts/:cohortId',
     { config: { rateLimit: RATE } },
     async (request, reply) => {
@@ -290,12 +292,23 @@ export const cohortsRoute: FastifyPluginAsync = async (fastify) => {
       if (reply.sent) return
 
       const { orgId, cohortId } = request.params
+      const force = request.query.force === 'true'
       const ref = db.doc(COL.cohort(orgId, cohortId))
       const snap = await ref.get()
       if (!snap.exists) return reply.code(404).send({ error: 'Cohort not found' })
       if (!canManageCohort(member, snap.data() as CohortDoc)) return denyNotInstructor(reply)
 
-      await ref.update({ status: 'cancelled', updatedAt: nowIso(), updatedBy: request.user!.uid })
+      const cohort = snap.data() as CohortDoc
+      if (force) {
+        // Hard delete — only allowed for cancelled or completed cohorts (use computed status)
+        const effectiveStatus = computeStatus(cohort)
+        if (!['cancelled', 'completed'].includes(effectiveStatus)) {
+          return reply.code(409).send({ error: 'Cancel the cohort before deleting it permanently' })
+        }
+        await ref.delete()
+      } else {
+        await ref.update({ status: 'cancelled', updatedAt: nowIso(), updatedBy: request.user!.uid })
+      }
       return { ok: true }
     }
   )

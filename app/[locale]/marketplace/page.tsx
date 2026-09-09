@@ -3,9 +3,38 @@ import { setRequestLocale } from 'next-intl/server'
 import { getAbsoluteUrl, getSiteUrl } from '@/lib/seo/site'
 import { MarketplaceClient } from './MarketplaceClient'
 
+// ISR: revalidate marketplace data every 60 seconds
+export const revalidate = 60
+
 type Props = {
   params: { locale: string }
   searchParams?: { q?: string }
+}
+
+const SERVER_API_URL = `${(process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3101').replace(/\/+$/, '')}/v1`
+
+async function fetchMarketplaceData() {
+  try {
+    const [orgRes, cohortRes, eventRes] = await Promise.all([
+      fetch(`${SERVER_API_URL}/api/organizations/public`, { next: { revalidate: 60 } }),
+      fetch(`${SERVER_API_URL}/marketplace/cohorts?limit=100`, { next: { revalidate: 60 } }),
+      fetch(`${SERVER_API_URL}/marketplace/events?limit=100`, { next: { revalidate: 60 } }),
+    ])
+
+    const [orgData, cohortData, eventData] = await Promise.all([
+      orgRes.ok ? orgRes.json() : { organizations: [] },
+      cohortRes.ok ? cohortRes.json().catch(() => ({ cohorts: [] })) : { cohorts: [] },
+      eventRes.ok ? eventRes.json().catch(() => ({ events: [] })) : { events: [] },
+    ])
+
+    return {
+      orgs: orgData.organizations ?? [],
+      cohorts: Array.isArray(cohortData) ? cohortData : (cohortData?.cohorts ?? []),
+      events: Array.isArray(eventData?.events) ? eventData.events : [],
+    }
+  } catch {
+    return { orgs: [], cohorts: [], events: [] }
+  }
 }
 
 const BASE = getSiteUrl()
@@ -147,9 +176,12 @@ const jsonLd = {
   ],
 }
 
-export default function MarketplacePage({ params, searchParams }: Props) {
+export default async function MarketplacePage({ params, searchParams }: Props) {
   setRequestLocale(params.locale)
   const initialQuery = typeof searchParams?.q === 'string' ? searchParams.q : ''
+
+  // Fetch data on the server — no client-side waterfall on first load
+  const { orgs, cohorts, events } = await fetchMarketplaceData()
 
   return (
     <>
@@ -157,7 +189,13 @@ export default function MarketplacePage({ params, searchParams }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <MarketplaceClient locale={params.locale} initialQuery={initialQuery} />
+      <MarketplaceClient
+        locale={params.locale}
+        initialQuery={initialQuery}
+        initialOrgs={orgs}
+        initialCohorts={cohorts}
+        initialEvents={events}
+      />
     </>
   )
 }
