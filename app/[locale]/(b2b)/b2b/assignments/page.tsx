@@ -3,9 +3,22 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import dynamic from 'next/dynamic'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
-import { ContentManagement } from '@/components/b2b/ContentManagement'
 import { PlanGate } from '@/components/b2b/PlanGate'
+
+// Dynamic import — keeps ContentManagement (~1648 lines) out of the initial bundle
+const ContentManagement = dynamic(
+  () =>
+    import('@/components/b2b/ContentManagement').then((m) => ({ default: m.ContentManagement })),
+  {
+    loading: () => (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500" />
+      </div>
+    ),
+  }
+)
 
 export default function AssignmentsPage() {
   const router = useRouter()

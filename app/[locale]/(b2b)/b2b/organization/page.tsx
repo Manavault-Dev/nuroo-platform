@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { ChangeEvent, FormEvent, type CSSProperties, useEffect, useRef, useState } from 'react'
 import { Link } from '@/i18n/navigation'
 import { useRouter } from '@/i18n/navigation'
@@ -9,11 +10,10 @@ import { getCurrentUser, getIdToken } from '@/lib/b2b/authClient'
 import { useAuth } from '@/lib/b2b/AuthContext'
 import { apiClient } from '@/lib/b2b/api'
 import { Select } from '@/components/ui/Select'
+import { OrgPageTabs } from '@/components/b2b/OrgPageTabs'
 import {
   Building2,
   Users,
-  UserCog,
-  Key,
   Save,
   Loader2,
   Globe,
@@ -23,6 +23,7 @@ import {
   MessageCircle,
   MapPin,
   Image as ImageIcon,
+  ImagePlus,
   AlignLeft,
   Upload,
   X,
@@ -130,15 +131,15 @@ export default function OrganizationPage() {
   const [coverPositionY, setCoverPositionY] = useState<number | null>(null)
   const [coverScale, setCoverScale] = useState<number | null>(null)
   const [isPublicMarketplaceEnabled, setIsPublicMarketplaceEnabled] = useState(false)
+  const [galleryPhotos, setGalleryPhotos] = useState<string[]>([])
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const galleryInputRef = useRef<HTMLInputElement | null>(null)
 
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState<'logo' | 'cover' | null>(null)
   const [uploadedImages, setUploadedImages] = useState<Set<string>>(new Set())
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
-  const [demoSeeding, setDemoSeeding] = useState(false)
-  const [demoClearing, setDemoClearing] = useState(false)
-  const [demoMessage, setDemoMessage] = useState('')
 
   // Reviews
   type AdminReview = {
@@ -205,7 +206,24 @@ export default function OrganizationPage() {
     setCoverPositionY(o.coverPositionY ?? null)
     setCoverScale(o.coverScale ?? null)
     setIsPublicMarketplaceEnabled(o.isPublicMarketplaceEnabled ?? false)
+    // NOTE: galleryPhotos is intentionally NOT set here.
+    // The profile cache never includes photos[], so syncing from currentOrg
+    // would reset the gallery to [] every time the profile updates (e.g. after save).
+    // Photos are loaded once by the separate apiClient.getOrgDetails() effect below.
   }, [currentOrg])
+
+  // Load full org data (incl. photos[]) from backend — profile cache doesn't include gallery
+  useEffect(() => {
+    if (!currentOrgId || !isAdmin) return
+    apiClient
+      .getOrgDetails(currentOrgId)
+      .then((org) => {
+        if (Array.isArray(org.photos)) setGalleryPhotos(org.photos)
+      })
+      .catch(() => {
+        /* silent — fallback to profile cache */
+      })
+  }, [currentOrgId, isAdmin])
 
   // Load reviews when org is known
   useEffect(() => {
@@ -495,6 +513,50 @@ export default function OrganizationPage() {
       }
     }
 
+  const handleGalleryUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? [])
+    if (!files.length || !currentOrgId) return
+    if (galleryPhotos.length + files.length > 8) {
+      setError('Максимум 8 фото в галерее')
+      return
+    }
+    try {
+      const idToken = await getIdToken(true)
+      if (!idToken) {
+        router.push('/b2b/login')
+        return
+      }
+      apiClient.setToken(idToken)
+      setUploadingPhoto(true)
+      const urls: string[] = []
+      for (const file of files) {
+        const { url } = await apiClient.uploadOrganizationImage(currentOrgId, file, 'photo')
+        urls.push(url)
+      }
+      setGalleryPhotos((prev) => [...prev, ...urls])
+      setError('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка загрузки фото')
+    } finally {
+      setUploadingPhoto(false)
+      if (galleryInputRef.current) galleryInputRef.current.value = ''
+    }
+  }
+
+  const removeGalleryPhoto = async (url: string) => {
+    if (!currentOrgId) return
+    setGalleryPhotos((prev) => prev.filter((p) => p !== url))
+    try {
+      const idToken = await getIdToken(true)
+      if (!idToken) return
+      apiClient.setToken(idToken)
+      await apiClient.removeOrgPhoto(currentOrgId, url)
+    } catch {
+      // restore on error
+      setGalleryPhotos((prev) => [...prev, url])
+    }
+  }
+
   const removeImage = async (kind: 'logo' | 'cover') => {
     if (!currentOrgId) return
     if (kind === 'logo') {
@@ -581,9 +643,10 @@ export default function OrganizationPage() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
-      <div className="mb-8">
+      <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">{t('title')}</h2>
-        <p className="text-gray-600 mt-2">{t('subtitle')}</p>
+        <p className="text-gray-600 mt-1 mb-4">{t('subtitle')}</p>
+        <OrgPageTabs orgId={currentOrgId} />
       </div>
 
       <div className="max-w-4xl space-y-6">
@@ -1069,31 +1132,82 @@ export default function OrganizationPage() {
           </div>
         </form>
 
-        {/* Quick actions */}
+        {/* Gallery photos */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-base font-semibold text-gray-900 mb-4">{t('quickActions')}</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Link
-              href={`/b2b/team${currentOrgId ? `?orgId=${currentOrgId}` : ''}`}
-              className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:border-primary-300 hover:bg-primary-50 transition-colors"
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">Галерея фотографий</h3>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Фото центра для карточки в маркетплейсе — до 8 штук
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={uploadingPhoto || galleryPhotos.length >= 8}
+              onClick={() => galleryInputRef.current?.click()}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
             >
-              <UserCog className="w-5 h-5 text-primary-600 shrink-0" />
-              <div>
-                <p className="font-medium text-gray-900 text-sm">{t('manageSpecialists')}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{t('viewManageTeam')}</p>
-              </div>
-            </Link>
-            <Link
-              href={`/b2b/invites${currentOrgId ? `?orgId=${currentOrgId}` : ''}`}
-              className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:border-primary-300 hover:bg-primary-50 transition-colors"
-            >
-              <Key className="w-5 h-5 text-primary-600 shrink-0" />
-              <div>
-                <p className="font-medium text-gray-900 text-sm">{t('inviteCodes')}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{t('createManageInvites')}</p>
-              </div>
-            </Link>
+              {uploadingPhoto ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <ImagePlus className="w-4 h-4" />
+              )}
+              {uploadingPhoto ? 'Загружаем...' : 'Добавить фото'}
+            </button>
+            <input
+              ref={galleryInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleGalleryUpload}
+            />
           </div>
+
+          {galleryPhotos.length === 0 ? (
+            <button
+              type="button"
+              onClick={() => galleryInputRef.current?.click()}
+              className="w-full border-2 border-dashed border-gray-200 rounded-xl p-8 flex flex-col items-center gap-2 text-gray-400 hover:border-primary-300 hover:text-primary-500 transition-colors"
+            >
+              <ImagePlus className="w-8 h-8" />
+              <span className="text-sm">Нажмите, чтобы добавить фото</span>
+            </button>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {galleryPhotos.map((url) => (
+                <div
+                  key={url}
+                  className="relative group aspect-video rounded-lg overflow-hidden bg-gray-100"
+                >
+                  <Image
+                    src={url}
+                    alt=""
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 640px) 50vw, 25vw"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeGalleryPhoto(url)}
+                    className="absolute top-1.5 right-1.5 w-6 h-6 bg-black/60 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              {galleryPhotos.length < 8 && (
+                <button
+                  type="button"
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="aspect-video rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 hover:border-primary-300 hover:text-primary-500 transition-colors"
+                >
+                  <ImagePlus className="w-6 h-6" />
+                </button>
+              )}
+            </div>
+          )}
+          <p className="mt-3 text-xs text-gray-400">{galleryPhotos.length}/8 фото</p>
         </div>
 
         {/* ── Reviews ── */}
@@ -1194,91 +1308,6 @@ export default function OrganizationPage() {
             </div>
           )}
         </div>
-
-        {/* Demo data seeder — admin only */}
-        {isAdmin && (
-          <div className="bg-gradient-to-br from-violet-50 to-indigo-50 rounded-xl border border-violet-200 p-6">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
-                <Users className="w-5 h-5 text-violet-600" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-gray-900">Демо-данные для показа</h3>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  Быстро заполните платформу тестовыми детьми и заданиями, чтобы показать клиенту
-                  как всё работает.
-                </p>
-              </div>
-            </div>
-
-            {demoMessage && (
-              <div className="mb-4 px-3 py-2 bg-white rounded-lg border border-violet-200 text-sm text-violet-700">
-                {demoMessage}
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                disabled={demoSeeding || !currentOrgId}
-                onClick={async () => {
-                  if (!currentOrgId) return
-                  setDemoSeeding(true)
-                  setDemoMessage('')
-                  try {
-                    const res = await apiClient.seedDemoData(currentOrgId)
-                    setDemoMessage(`✓ ${res.message}`)
-                  } catch {
-                    setDemoMessage('Ошибка при создании демо-данных')
-                  } finally {
-                    setDemoSeeding(false)
-                  }
-                }}
-                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors"
-              >
-                {demoSeeding ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Users className="w-4 h-4" />
-                )}
-                {demoSeeding ? 'Создаём...' : 'Загрузить демо-данные'}
-              </button>
-
-              <button
-                type="button"
-                disabled={demoClearing || !currentOrgId}
-                onClick={async () => {
-                  if (!currentOrgId) return
-                  if (!confirm('Удалить все демо-данные (дети и задания с пометкой demo)?')) return
-                  setDemoClearing(true)
-                  setDemoMessage('')
-                  try {
-                    const res = await apiClient.clearDemoData(currentOrgId)
-                    setDemoMessage(
-                      `✓ Удалено: ${res.deleted.children} детей, ${res.deleted.tasks} заданий`
-                    )
-                  } catch {
-                    setDemoMessage('Ошибка при удалении демо-данных')
-                  } finally {
-                    setDemoClearing(false)
-                  }
-                }}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
-              >
-                {demoClearing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <RotateCcw className="w-4 h-4" />
-                )}
-                {demoClearing ? 'Удаляем...' : 'Очистить демо'}
-              </button>
-            </div>
-
-            <p className="mt-3 text-xs text-gray-400">
-              Создаёт 3 тестовых ребёнка и 5 заданий. Можно удалить одной кнопкой.
-            </p>
-          </div>
-        )}
       </div>
     </div>
   )
