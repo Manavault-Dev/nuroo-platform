@@ -344,10 +344,9 @@ export const meRoute: FastifyPluginAsync = async (fastify) => {
       const avatarUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`
 
       const db = getFirestore()
-      await db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}`).set(
-        { avatarUrl, updatedAt: admin.firestore.Timestamp.now() },
-        { merge: true }
-      )
+      await db
+        .doc(`${COLLECTIONS.SPECIALISTS}/${uid}`)
+        .set({ avatarUrl, updatedAt: admin.firestore.Timestamp.now() }, { merge: true })
 
       return { ok: true, avatarUrl }
     })
@@ -439,5 +438,4 @@ export const meRoute: FastifyPluginAsync = async (fastify) => {
       specialist: { uid, email: email || '', name: newData.fullName },
     }
   })
-
 }
