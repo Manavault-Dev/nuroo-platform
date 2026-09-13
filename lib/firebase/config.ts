@@ -1,6 +1,7 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app'
 import { getAuth, Auth } from 'firebase/auth'
 import { getFirestore, Firestore } from 'firebase/firestore'
+import { getStorage, FirebaseStorage } from 'firebase/storage'
 import type { Analytics } from 'firebase/analytics'
 
 // Next.js automatically loads .env.local, .env.development, .env.production
@@ -17,6 +18,7 @@ const firebaseConfig = {
 let app: FirebaseApp | undefined
 let auth: Auth | undefined
 let db: Firestore | undefined
+let storage: FirebaseStorage | undefined
 let analytics: Analytics | undefined
 let analyticsPromise: Promise<Analytics | undefined> | null = null
 
@@ -30,6 +32,7 @@ if (typeof window !== 'undefined') {
       }
       auth = getAuth(app)
       db = getFirestore(app)
+      storage = getStorage(app)
     } catch (error) {
       console.error('❌ Failed to initialize Firebase:', error)
     }
@@ -69,4 +72,4 @@ export function getClientAnalytics(): Promise<Analytics | undefined> {
   return analyticsPromise
 }
 
-export { auth, db }
+export { auth, db, storage }
