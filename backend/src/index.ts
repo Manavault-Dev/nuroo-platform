@@ -18,6 +18,7 @@ import type { AuthenticatedUser } from './shared/types/domain.js'
 // Domain imports — structured by bounded context
 import { systemDomain, notificationsDomain } from './domains/system/index.js'
 import { usersDomain } from './domains/users/index.js'
+import { meRoute } from './domains/users/me.routes.js'
 import { organizationsDomain } from './domains/organizations/index.js'
 import { invitationsDomain } from './domains/invitations/index.js'
 import { messagingDomain } from './domains/messaging/index.js'
@@ -255,6 +256,9 @@ async function buildServer() {
     },
     { prefix: '/v1' }
   )
+
+  // Legacy alias — old app builds call /me without /v1 prefix
+  await fastify.register(meRoute)
 
   return fastify
 }
