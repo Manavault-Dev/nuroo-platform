@@ -49,7 +49,10 @@ export const swaggerConfig: FastifyDynamicSwaggerOptions = {
       url: 'https://usenuroo.com',
     },
     servers: [
-      { url: 'https://api.usenuroo.com/v1', description: 'Production' },
+      {
+        url: 'https://nuroo-backend-872609122621.us-central1.run.app/v1',
+        description: 'Production (Cloud Run)',
+      },
       { url: 'http://localhost:3101/v1', description: 'Local development' },
     ],
     components: {
@@ -64,26 +67,91 @@ export const swaggerConfig: FastifyDynamicSwaggerOptions = {
     },
     security: [{ BearerAuth: [] }],
     tags: [
-      { name: 'System', description: 'Health, session, user profile, plans' },
-      { name: 'Auth', description: 'Password reset, Google Calendar OAuth' },
-      { name: 'Organizations', description: 'Create and manage organizations' },
-      { name: 'Team', description: 'Team members, invites, branches' },
-      { name: 'Children', description: 'Child profiles, records, intake, timeline' },
-      { name: 'Booking', description: 'Specialist slots, booking, scheduling' },
-      { name: 'Cohorts', description: 'Group programs, participants, sessions' },
-      { name: 'Courses', description: 'Online courses, modules, lessons' },
-      { name: 'Events', description: 'Events and registrations' },
-      { name: 'Finance', description: 'Finance overview, attendance reports' },
-      { name: 'Payments', description: 'Billing, invoices, subscriptions, webhooks' },
-      { name: 'Groups', description: 'Internal groups and assignments' },
-      { name: 'Messaging', description: 'Conversations and messages' },
-      { name: 'AI', description: 'AI assistant, task generation, reports' },
-      { name: 'Content', description: 'Roadmaps and task templates' },
-      { name: 'Marketplace', description: 'Public discovery, favorites, reviews' },
-      { name: 'Invitations', description: 'Parent invite links and connections' },
-      { name: 'Legal', description: 'Consent management, legal documents' },
-      { name: 'Notifications', description: 'Push tokens, preferences' },
-      { name: 'Verifications', description: 'Child document verification' },
+      {
+        name: 'System',
+        description:
+          '`GET /health` · `GET /v1/me` · `POST /v1/me` — профиль пользователя и определение роли. Вызывается мобильным приложением при каждом запуске.',
+      },
+      {
+        name: 'Auth',
+        description:
+          'Сброс пароля, OAuth Google Calendar. Firebase ID токен передаётся в заголовке `Authorization: Bearer <token>`.',
+      },
+      {
+        name: 'Organizations',
+        description:
+          'Создание и редактирование организаций, настройка брендинга. Доступно только роли `org_admin`.',
+      },
+      {
+        name: 'Team',
+        description:
+          'Участники организации, приглашения, филиалы. Управление ролями: `org_admin` / `specialist`.',
+      },
+      {
+        name: 'Children',
+        description: 'Профили детей, медкарты, анкеты intake, таймлайн развития, опекуны.',
+      },
+      {
+        name: 'Booking',
+        description: 'Слоты специалиста, создание, отмена и перенос записей, расписание.',
+      },
+      {
+        name: 'Cohorts',
+        description: 'Групповые программы, участники, сессии, посещаемость, лист ожидания.',
+      },
+      {
+        name: 'Courses',
+        description: 'Онлайн-курсы, модули, уроки, прогресс. Маркетплейс курсов для родителей.',
+      },
+      {
+        name: 'Events',
+        description: 'Создание мероприятий, регистрация участников.',
+      },
+      {
+        name: 'Finance',
+        description:
+          'Обзор доходов, отчёты посещаемости, статистика оплат. Только для плана `nuroo_business`.',
+      },
+      {
+        name: 'Payments',
+        description: 'Биллинг, счета, подписки, вебхуки платёжных провайдеров (Finik, Stripe).',
+      },
+      {
+        name: 'Groups',
+        description: 'Внутренние группы организации, назначения заданий.',
+      },
+      {
+        name: 'Messaging',
+        description: 'Чаты между специалистом и родителем, заметки.',
+      },
+      {
+        name: 'AI',
+        description: 'AI-ассистент: генерация задач для ребёнка, отчёты, рекомендации специалиста.',
+      },
+      {
+        name: 'Content',
+        description: 'Дорожные карты развития, шаблоны заданий.',
+      },
+      {
+        name: 'Marketplace',
+        description: 'Публичный поиск организаций и специалистов, избранное, отзывы.',
+      },
+      {
+        name: 'Invitations',
+        description: 'Ссылки для родителей, подключение к организации, принятие инвайтов.',
+      },
+      {
+        name: 'Legal',
+        description: 'Управление юридическими согласиями пользователей.',
+      },
+      {
+        name: 'Notifications',
+        description: 'Push-токены устройств, настройки уведомлений.',
+      },
+      {
+        name: 'Verifications',
+        description: 'Проверка документов ребёнка.',
+      },
     ],
   },
 }
@@ -91,13 +159,49 @@ export const swaggerConfig: FastifyDynamicSwaggerOptions = {
 export const swaggerUiConfig: FastifySwaggerUiOptions = {
   routePrefix: '/docs',
   uiConfig: {
-    docExpansion: 'list',
+    docExpansion: 'none',
     deepLinking: true,
     displayRequestDuration: true,
     filter: true,
     persistAuthorization: true,
     tryItOutEnabled: false,
+    defaultModelsExpandDepth: -1,
+    defaultModelExpandDepth: 3,
+    displayOperationId: false,
+    tagsSorter: 'alpha',
+    operationsSorter: 'alpha',
+    syntaxHighlight: { theme: 'monokai' },
+    layout: 'BaseLayout',
+  },
+  theme: {
+    title: 'Nuroo API Docs',
+    favicon: [
+      {
+        filename: 'favicon.png',
+        rel: 'icon',
+        sizes: '32x32',
+        type: 'image/png',
+        content: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAA7EAAAOxAGVKw4bAAAB' +
+          'mklEQVRYhe2Xv0oDQRDGf3uXxCIWsUkhFoKFjQcWQrCwsbGwsLGwsLCwsQiCCIKIiIiIiIiI' +
+          'iIiIiIiIiIiIiIiIiIiIiOiFF3Y3m52d2dk5AiGEEEIIIYQQQgghhBBCCCGEEEIIIYQQQggh' +
+          'hBBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIYT4Z7wDZ8BlYA3YAY6B0+YZMAEWwDdwDSwD96r5' +
+          'BXgClsBHYLN5BjYHAAAASUVORK5CYII=',
+          'base64'
+        ),
+      },
+    ],
   },
   staticCSP: false,
   transformSpecificationClone: true,
+  logo: {
+    type: 'image/svg+xml',
+    content: Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 32">
+        <rect width="120" height="32" rx="6" fill="#179C95"/>
+        <text x="12" y="22" font-family="system-ui,sans-serif" font-weight="700"
+          font-size="16" fill="white" letter-spacing="-0.5">Nuroo API</text>
+      </svg>`
+    ),
+  },
 }
