@@ -1,7 +1,9 @@
 import { FastifyPluginAsync } from 'fastify'
 import admin from 'firebase-admin'
+import path from 'path'
+import multipart from '@fastify/multipart'
 
-import { getFirestore } from '../../infrastructure/database/firebase.js'
+import { getFirestore, getStorageBucket } from '../../infrastructure/database/firebase.js'
 import type { SpecialistProfile } from '../../shared/types/domain.js'
 import { z } from 'zod'
 import { eventDispatcher } from '../../modules/notifications/event.dispatcher.js'
@@ -299,6 +301,58 @@ function buildNewProfileData(uid: string, email: string | undefined, name: strin
 }
 
 export const meRoute: FastifyPluginAsync = async (fastify) => {
+  // Avatar upload in isolated sub-plugin so multipart doesn't affect GET/POST /me
+  fastify.register(async (sub) => {
+    await sub.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } })
+
+    sub.post('/me/avatar', async (request, reply) => {
+      if (!request.user) {
+        return reply.code(401).send({ error: 'Unauthorized' })
+      }
+
+      const { uid } = request.user
+
+      let fileBuffer: Buffer | null = null
+      let mimeType = 'image/jpeg'
+      let filename = 'avatar'
+
+      for await (const part of request.parts()) {
+        if (part.type === 'file') {
+          mimeType = part.mimetype
+          filename = part.filename || 'avatar'
+          const chunks: Buffer[] = []
+          for await (const chunk of part.file) chunks.push(chunk)
+          fileBuffer = Buffer.concat(chunks)
+        }
+      }
+
+      if (!fileBuffer) {
+        return reply.code(400).send({ error: 'No file uploaded' })
+      }
+      if (!mimeType.startsWith('image/')) {
+        return reply.code(400).send({ error: 'Only image files are allowed' })
+      }
+
+      const ext = path.extname(filename).replace('.', '') || 'jpg'
+      const storagePath = `specialists/${uid}/avatar.${ext}`
+
+      const bucket = await getStorageBucket()
+      const file = bucket.file(storagePath)
+      await file.save(fileBuffer, { contentType: mimeType, resumable: false })
+      await file.makePublic()
+
+      const avatarUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`
+
+      const db = getFirestore()
+      await db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}`).set(
+        { avatarUrl, updatedAt: admin.firestore.Timestamp.now() },
+        { merge: true }
+      )
+
+      return { ok: true, avatarUrl }
+    })
+  })
+
   fastify.get('/me', async (request, reply) => {
     if (!request.user) {
       return reply.code(401).send({ error: 'Unauthorized' })
@@ -385,4 +439,5 @@ export const meRoute: FastifyPluginAsync = async (fastify) => {
       specialist: { uid, email: email || '', name: newData.fullName },
     }
   })
+
 }
