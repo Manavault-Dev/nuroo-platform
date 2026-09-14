@@ -174,6 +174,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (currentUser) {
         setSentryUserAsync({ id: currentUser.uid })
+        // Clear any cached data from a previous user before loading the new user's profile
+        apiClient.clearCache()
         const cachedToken = await currentUser.getIdToken().catch(() => null)
         if (cachedToken) apiClient.setToken(cachedToken)
 
