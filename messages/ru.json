@@ -1114,7 +1114,12 @@
         "removeConfirm": "Удалить этого участника из организации?",
         "failedRemove": "Не удалось удалить участника",
         "failedUpdateRole": "Не удалось изменить роль",
-        "unnamedMember": "Имя не указано"
+        "unnamedMember": "Имя не указано",
+        "editDisplayName": "Изменить отображаемое имя",
+        "saveDisplayName": "Сохранить отображаемое имя",
+        "cancelEditDisplayName": "Отменить изменение отображаемого имени",
+        "editDisplayNameHint": "Наведите на имя, чтобы изменить отображаемое название",
+        "failedUpdateDisplayName": "Не удалось обновить имя"
       },
       "invites": {
         "title": "Создание и управление приглашениями",
@@ -1897,6 +1902,98 @@
             "rejected": "Отклонённые"
           }
         },
+        "detail": {
+          "actions": {
+            "add": "Добавить",
+            "back": "Назад",
+            "cancel": "Отмена",
+            "openEnrollment": "Открыть набор",
+            "pause": "Приостановить",
+            "save": "Сохранить"
+          },
+          "attendance": {
+            "absent": "Отсутствовал",
+            "late": "Опоздал",
+            "mark": "Отметить посещаемость",
+            "noActiveParticipants": "Нет активных участников",
+            "present": "Присутствовал",
+            "title": "Посещаемость"
+          },
+          "cohortStatus": {
+            "cancelled": "Отменён",
+            "completed": "Завершён",
+            "draft": "Черновик",
+            "full": "Мест нет",
+            "inProgress": "Идут занятия",
+            "open": "Набор открыт"
+          },
+          "errors": {
+            "addSession": "Не удалось добавить занятие",
+            "cancelSession": "Не удалось отменить занятие",
+            "cohortNotFound": "Набор не найден",
+            "saveAttendance": "Не удалось сохранить посещаемость",
+            "updatePayment": "Не удалось обновить статус оплаты",
+            "updateStatus": "Не удалось обновить статус"
+          },
+          "format": {
+            "offline": "Офлайн",
+            "online": "Онлайн"
+          },
+          "navigation": {
+            "allGroups": "Все группы"
+          },
+          "participants": {
+            "completed": "Завершил",
+            "dropped": "Выбыл",
+            "emptyHint": "Родители записываются через каталог курсов",
+            "emptyTitle": "Участников пока нет",
+            "inactiveTitle": "Выбыли",
+            "occupiedSeats": "{active} из {max} мест занято",
+            "paidCount": "{count} оплатили",
+            "parentMissing": "Родитель не указан",
+            "pendingCount": "{count} ожидают"
+          },
+          "paymentStatus": {
+            "paid": "Оплачено",
+            "partial": "Частично",
+            "pending": "Ожидает"
+          },
+          "sessions": {
+            "addSession": "Добавить занятие",
+            "cancelConfirm": "Отменить занятие",
+            "cancelDescription": "Занятие будет отмечено как отменённое.",
+            "cancelTitle": "Отменить занятие?",
+            "connectGoogleCalendar": "Подключить Google Calendar →",
+            "dateRequired": "Дата *",
+            "emptyHint": "Нажмите «Добавить занятие» выше",
+            "emptyTitle": "Занятия ещё не добавлены",
+            "end": "Конец",
+            "meetingLink": "Ссылка на встречу",
+            "meetingUrlLabel": "Ссылка на встречу (Zoom / Google Meet)",
+            "meetMissing": "Ссылка на Meet не создана",
+            "openGoogleMeet": "Открыть Google Meet",
+            "start": "Начало",
+            "topicOptional": "Тема (необязательно)",
+            "topicPlaceholder": "Тема занятия"
+          },
+          "sessionStatus": {
+            "cancelled": "Отменено",
+            "completed": "Проведено",
+            "postponed": "Перенесено",
+            "scheduled": "Запланировано"
+          },
+          "stats": {
+            "ageRange": "Возраст: {min}–{max} лет",
+            "completed": "Проведено",
+            "participants": "Участников",
+            "totalSeats": "Мест всего",
+            "upcoming": "Предстоит"
+          },
+          "tabs": {
+            "participants": "Участники",
+            "sessions": "Занятия"
+          }
+        },
         "new": {
           "title": "Новый курс",
           "adminOnly": "Только администраторы могут создавать курсы.",
@@ -2533,5 +2630,11 @@
     "enter_email": "Введите адрес электронной почты",
     "too_many_requests": "Слишком много попыток. Попробуйте позже",
     "send_failed": "Не удалось отправить письмо. Попробуйте позже"
+  },
+  "error": {
+    "description": "Мы уже знаем о проблеме и работаем над её устранением.",
+    "home": "На главную",
+    "retry": "Попробовать снова",
+    "title": "Что-то пошло не так"
   }
 }
