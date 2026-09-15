@@ -172,7 +172,9 @@ export const teamRoute: FastifyPluginAsync = async (fastify) => {
       const member = await requireOrgMember(request, reply, orgId)
 
       if (member.role !== 'org_admin') {
-        return reply.code(403).send({ error: 'Only organization admins can update member display names' })
+        return reply
+          .code(403)
+          .send({ error: 'Only organization admins can update member display names' })
       }
 
       const body = updateMemberDisplayNameSchema.parse(request.body)
