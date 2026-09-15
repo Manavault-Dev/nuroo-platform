@@ -5,7 +5,19 @@ import { Link, useRouter } from '@/i18n/navigation'
 import { useTranslations } from 'next-intl'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
 import { apiClient } from '@/lib/b2b/api'
-import { Users, UserCog, Mail, Crown, Shield, UserPlus, Trash2, Loader2 } from 'lucide-react'
+import {
+  Users,
+  UserCog,
+  Mail,
+  Crown,
+  Shield,
+  UserPlus,
+  Trash2,
+  Loader2,
+  Pencil,
+  Check,
+  X,
+} from 'lucide-react'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useAlert } from '@/components/ui/AlertDialog'
 import { PlanGate } from '@/components/b2b/PlanGate'
@@ -14,8 +26,111 @@ interface TeamMember {
   uid: string
   email: string
   name: string
+  orgDisplayName: string | null
   role: 'admin' | 'specialist'
   joinedAt: Date | string
+}
+
+function EditableName({
+  member,
+  onSave,
+  t,
+}: {
+  member: TeamMember
+  onSave: (uid: string, name: string | null) => Promise<void>
+  t: ReturnType<typeof useTranslations<'b2b.pages.team'>>
+}) {
+  const displayName = member.orgDisplayName || member.name
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(member.orgDisplayName ?? member.name ?? '')
+  const [saving, setSaving] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleEdit = () => {
+    setValue(member.orgDisplayName ?? member.name ?? '')
+    setEditing(true)
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }
+
+  const handleCancel = () => {
+    setEditing(false)
+  }
+
+  const handleSave = async () => {
+    const trimmed = value.trim()
+    // If same as real name — clear orgDisplayName (reset to default)
+    const newVal = trimmed === member.name ? null : trimmed || null
+    setSaving(true)
+    try {
+      await onSave(member.uid, newVal)
+    } finally {
+      setSaving(false)
+      setEditing(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSave()
+            if (e.key === 'Escape') handleCancel()
+          }}
+          className="border border-primary-300 rounded-lg px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-400 w-48"
+          placeholder={member.name}
+          disabled={saving}
+        />
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="p-1 text-green-600 hover:bg-green-50 rounded-md disabled:opacity-50"
+          aria-label={t('saveDisplayName')}
+          title={t('saveDisplayName')}
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+        </button>
+        <button
+          type="button"
+          onClick={handleCancel}
+          disabled={saving}
+          className="p-1 text-gray-400 hover:bg-gray-100 rounded-md"
+          aria-label={t('cancelEditDisplayName')}
+          title={t('cancelEditDisplayName')}
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap group">
+      <p className="font-medium text-gray-900">
+        {displayName && displayName.trim() ? (
+          displayName
+        ) : (
+          <span className="text-amber-600 italic">{t('unnamedMember')}</span>
+        )}
+      </p>
+      {member.orgDisplayName && member.orgDisplayName !== member.name && (
+        <span className="text-xs text-gray-400">({member.name})</span>
+      )}
+      <button
+        type="button"
+        onClick={handleEdit}
+        className="p-1 text-gray-300 hover:text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity rounded-md"
+        aria-label={t('editDisplayName')}
+        title={t('editDisplayName')}
+      >
+        <Pencil className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  )
 }
 
 export default function TeamPage() {
@@ -41,6 +156,7 @@ export default function TeamPage() {
       setTeamMembers(
         members.map((m) => ({
           ...m,
+          orgDisplayName: (m as TeamMember).orgDisplayName ?? null,
           joinedAt: typeof m.joinedAt === 'string' ? new Date(m.joinedAt) : (m.joinedAt as Date),
         }))
       )
@@ -93,6 +209,20 @@ export default function TeamPage() {
       alert(err instanceof Error ? err.message : t('failedUpdateRole'), { type: 'error' })
     } finally {
       setUpdatingUid(null)
+    }
+  }
+
+  const handleUpdateDisplayName = async (uid: string, orgDisplayName: string | null) => {
+    if (!orgId) return
+    try {
+      await apiClient.request(`/orgs/${orgId}/members/${uid}/display-name`, {
+        method: 'PATCH',
+        body: JSON.stringify({ orgDisplayName }),
+      })
+      setTeamMembers((prev) => prev.map((m) => (m.uid === uid ? { ...m, orgDisplayName } : m)))
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t('failedUpdateDisplayName'), { type: 'error' })
+      throw err
     }
   }
 
@@ -150,7 +280,10 @@ export default function TeamPage() {
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100">
           <div className="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <h3 className="text-lg font-semibold text-gray-900">{t('teamMembers')}</h3>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">{t('teamMembers')}</h3>
+              <p className="text-xs text-gray-400 mt-0.5">{t('editDisplayNameHint')}</p>
+            </div>
             <Link
               href={`/b2b/invites${orgId ? `?orgId=${orgId}` : ''}`}
               className="inline-flex w-full items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium sm:w-auto"
@@ -193,13 +326,21 @@ export default function TeamPage() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-medium text-gray-900">
-                              {member.name && member.name.trim() ? (
-                                member.name
-                              ) : (
-                                <span className="text-amber-600 italic">{t('unnamedMember')}</span>
-                              )}
-                            </p>
+                            {isCurrentUser ? (
+                              <p className="font-medium text-gray-900">
+                                {member.orgDisplayName || member.name || (
+                                  <span className="text-amber-600 italic">
+                                    {t('unnamedMember')}
+                                  </span>
+                                )}
+                              </p>
+                            ) : (
+                              <EditableName
+                                member={member}
+                                onSave={handleUpdateDisplayName}
+                                t={t}
+                              />
+                            )}
                             {member.role === 'admin' && (
                               <span className="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">
                                 {t('admin')}

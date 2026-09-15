@@ -16,6 +16,10 @@ const updateMemberRoleSchema = z.object({
   role: z.enum(['org_admin', 'specialist']),
 })
 
+const updateMemberDisplayNameSchema = z.object({
+  orgDisplayName: z.string().max(100).nullable(),
+})
+
 function isActiveMember(memberData: admin.firestore.DocumentData): boolean {
   return !memberData.status || memberData.status === 'active'
 }
@@ -48,6 +52,7 @@ function transformTeamMember(
     uid: specialistUid,
     email: specialistData?.email || '',
     name: specialistData?.fullName || specialistData?.name || 'Unknown',
+    orgDisplayName: memberData.orgDisplayName || null,
     role: normalizeRole(memberData.role) as 'admin' | 'specialist',
     joinedAt: extractJoinedAt(memberData),
   }
@@ -153,6 +158,46 @@ export const teamRoute: FastifyPluginAsync = async (fastify) => {
       console.error('[TEAM] Error updating member role:', error)
       return reply.code(500).send({
         error: 'Failed to update member role',
+        message: err.message || 'Unknown error',
+      })
+    }
+  })
+
+  fastify.patch<{
+    Params: { orgId: string; uid: string }
+    Body: z.infer<typeof updateMemberDisplayNameSchema>
+  }>('/orgs/:orgId/members/:uid/display-name', async (request, reply) => {
+    try {
+      const { orgId, uid: targetUid } = request.params
+      const member = await requireOrgMember(request, reply, orgId)
+
+      if (member.role !== 'org_admin') {
+        return reply
+          .code(403)
+          .send({ error: 'Only organization admins can update member display names' })
+      }
+
+      const body = updateMemberDisplayNameSchema.parse(request.body)
+      const db = getFirestore()
+
+      const memberRef = db.doc(`${COLLECTIONS.ORG_MEMBERS(orgId)}/${targetUid}`)
+      const memberSnap = await memberRef.get()
+      if (!memberSnap.exists) {
+        return reply.code(404).send({ error: 'Member not found' })
+      }
+
+      const now = admin.firestore.Timestamp.fromDate(new Date())
+      await memberRef.update({
+        orgDisplayName: body.orgDisplayName ?? admin.firestore.FieldValue.delete(),
+        updatedAt: now,
+      })
+
+      return { ok: true, orgDisplayName: body.orgDisplayName }
+    } catch (error: unknown) {
+      const err = error as { message?: string; stack?: string }
+      console.error('[TEAM] Error updating member display name:', error)
+      return reply.code(500).send({
+        error: 'Failed to update member display name',
         message: err.message || 'Unknown error',
       })
     }

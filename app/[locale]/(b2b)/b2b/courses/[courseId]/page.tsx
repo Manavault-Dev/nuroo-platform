@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
 import { apiClient } from '@/lib/b2b/api'
+import { useTranslations } from 'next-intl'
 import {
   ArrowLeft,
   Loader2,
@@ -32,6 +33,7 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal'
 type CohortStatus = 'draft' | 'open' | 'full' | 'in_progress' | 'completed' | 'cancelled'
 type SessionStatus = 'scheduled' | 'completed' | 'cancelled' | 'postponed'
 type PaymentStatus = 'paid' | 'partial' | 'pending'
+type CourseDetailT = ReturnType<typeof useTranslations<'b2b.pages.courses.detail'>>
 
 interface Cohort {
   id: string
@@ -84,30 +86,42 @@ type AttendanceRecord = Record<string, 'present' | 'absent' | 'late'>
 
 // ─── Status configs ───────────────────────────────────────────────────────────
 
-const SESSION_STATUS: Record<SessionStatus, { dot: string; badge: string; label: string }> = {
-  scheduled: { dot: 'bg-blue-400', badge: 'bg-blue-100 text-blue-700', label: 'Запланировано' },
+const SESSION_STATUS: Record<SessionStatus, { dot: string; badge: string; labelKey: string }> = {
+  scheduled: {
+    dot: 'bg-blue-400',
+    badge: 'bg-blue-100 text-blue-700',
+    labelKey: 'sessionStatus.scheduled',
+  },
   completed: {
     dot: 'bg-emerald-400',
     badge: 'bg-emerald-100 text-emerald-700',
-    label: 'Проведено',
+    labelKey: 'sessionStatus.completed',
   },
-  cancelled: { dot: 'bg-gray-300', badge: 'bg-gray-100 text-gray-500', label: 'Отменено' },
-  postponed: { dot: 'bg-amber-400', badge: 'bg-amber-100 text-amber-700', label: 'Перенесено' },
+  cancelled: {
+    dot: 'bg-gray-300',
+    badge: 'bg-gray-100 text-gray-500',
+    labelKey: 'sessionStatus.cancelled',
+  },
+  postponed: {
+    dot: 'bg-amber-400',
+    badge: 'bg-amber-100 text-amber-700',
+    labelKey: 'sessionStatus.postponed',
+  },
 }
 
-const PAYMENT_STYLE: Record<PaymentStatus, { bg: string; label: string }> = {
-  paid: { bg: 'bg-emerald-100 text-emerald-700', label: 'Оплачено' },
-  partial: { bg: 'bg-amber-100 text-amber-700', label: 'Частично' },
-  pending: { bg: 'bg-gray-100 text-gray-600', label: 'Ожидает' },
+const PAYMENT_STYLE: Record<PaymentStatus, { bg: string; labelKey: string }> = {
+  paid: { bg: 'bg-emerald-100 text-emerald-700', labelKey: 'paymentStatus.paid' },
+  partial: { bg: 'bg-amber-100 text-amber-700', labelKey: 'paymentStatus.partial' },
+  pending: { bg: 'bg-gray-100 text-gray-600', labelKey: 'paymentStatus.pending' },
 }
 
-const COHORT_STATUS: Record<CohortStatus, { bg: string; label: string }> = {
-  draft: { bg: 'bg-gray-100 text-gray-500', label: 'Черновик' },
-  open: { bg: 'bg-emerald-100 text-emerald-700', label: 'Набор открыт' },
-  full: { bg: 'bg-amber-100 text-amber-700', label: 'Мест нет' },
-  in_progress: { bg: 'bg-blue-100 text-blue-700', label: 'Идут занятия' },
-  completed: { bg: 'bg-gray-100 text-gray-600', label: 'Завершён' },
-  cancelled: { bg: 'bg-red-100 text-red-600', label: 'Отменён' },
+const COHORT_STATUS: Record<CohortStatus, { bg: string; labelKey: string }> = {
+  draft: { bg: 'bg-gray-100 text-gray-500', labelKey: 'cohortStatus.draft' },
+  open: { bg: 'bg-emerald-100 text-emerald-700', labelKey: 'cohortStatus.open' },
+  full: { bg: 'bg-amber-100 text-amber-700', labelKey: 'cohortStatus.full' },
+  in_progress: { bg: 'bg-blue-100 text-blue-700', labelKey: 'cohortStatus.inProgress' },
+  completed: { bg: 'bg-gray-100 text-gray-600', labelKey: 'cohortStatus.completed' },
+  cancelled: { bg: 'bg-red-100 text-red-600', labelKey: 'cohortStatus.cancelled' },
 }
 
 // ─── Attendance Modal ─────────────────────────────────────────────────────────
@@ -119,6 +133,7 @@ function AttendanceModal({
   cohortId,
   onClose,
   onSaved,
+  t,
 }: {
   session: Session
   participants: Participant[]
@@ -126,6 +141,7 @@ function AttendanceModal({
   cohortId: string
   onClose: () => void
   onSaved: (sessionId: string) => void
+  t: CourseDetailT
 }) {
   const activeParticipants = participants.filter((p) => p.status === 'active')
   const [records, setRecords] = useState<AttendanceRecord>(() =>
@@ -170,7 +186,7 @@ function AttendanceModal({
       onSaved(session.id)
       onClose()
     } catch {
-      alert('Не удалось сохранить посещаемость')
+      alert(t('errors.saveAttendance'))
     } finally {
       setSaving(false)
     }
@@ -182,13 +198,17 @@ function AttendanceModal({
     return <MinusCircle className="w-5 h-5 text-amber-400" />
   }
 
-  const statusLabel = { present: 'Присутствовал', absent: 'Отсутствовал', late: 'Опоздал' }
+  const statusLabel = {
+    present: t('attendance.present'),
+    absent: t('attendance.absent'),
+    late: t('attendance.late'),
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col">
         <div className="p-5 border-b border-gray-100">
-          <h3 className="font-bold text-gray-900">Посещаемость</h3>
+          <h3 className="font-bold text-gray-900">{t('attendance.title')}</h3>
           <p className="text-sm text-gray-500 mt-0.5">
             {session.date} · {session.startTime}–{session.endTime}
           </p>
@@ -198,7 +218,9 @@ function AttendanceModal({
             <Loader2 className="w-5 h-5 animate-spin text-primary-500" />
           </div>
         ) : activeParticipants.length === 0 ? (
-          <div className="p-6 text-center text-sm text-gray-400">Нет активных участников</div>
+          <div className="p-6 text-center text-sm text-gray-400">
+            {t('attendance.noActiveParticipants')}
+          </div>
         ) : (
           <div className="overflow-y-auto flex-1 p-4 space-y-2">
             {activeParticipants.map((p) => {
@@ -227,7 +249,7 @@ function AttendanceModal({
             onClick={onClose}
             className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
-            Отмена
+            {t('actions.cancel')}
           </button>
           <button
             onClick={save}
@@ -235,7 +257,7 @@ function AttendanceModal({
             className="flex-1 px-4 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Сохранить
+            {t('actions.save')}
           </button>
         </div>
       </div>
@@ -251,12 +273,14 @@ function AddSessionModal({
   defaultFormat,
   onClose,
   onAdded,
+  t,
 }: {
   orgId: string
   cohortId: string
   defaultFormat: 'online' | 'offline'
   onClose: () => void
   onAdded: (session: Session) => void
+  t: CourseDetailT
 }) {
   const [form, setForm] = useState({
     date: '',
@@ -286,7 +310,7 @@ function AddSessionModal({
       onAdded(res.session)
       onClose()
     } catch {
-      alert('Не удалось добавить занятие')
+      alert(t('errors.addSession'))
     } finally {
       setSaving(false)
     }
@@ -295,10 +319,12 @@ function AddSessionModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-        <h3 className="font-bold text-gray-900 mb-4">Добавить занятие</h3>
+        <h3 className="font-bold text-gray-900 mb-4">{t('sessions.addSession')}</h3>
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-gray-600 mb-1 block">Дата *</label>
+            <label className="text-xs font-medium text-gray-600 mb-1 block">
+              {t('sessions.dateRequired')}
+            </label>
             <input
               type="date"
               value={form.date}
@@ -308,7 +334,9 @@ function AddSessionModal({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Начало</label>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">
+                {t('sessions.start')}
+              </label>
               <input
                 type="time"
                 value={form.startTime}
@@ -317,7 +345,9 @@ function AddSessionModal({
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Конец</label>
+              <label className="text-xs font-medium text-gray-600 mb-1 block">
+                {t('sessions.end')}
+              </label>
               <input
                 type="time"
                 value={form.endTime}
@@ -328,19 +358,19 @@ function AddSessionModal({
           </div>
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1 block">
-              Тема (необязательно)
+              {t('sessions.topicOptional')}
             </label>
             <input
               type="text"
               value={form.topic}
               onChange={f('topic')}
-              placeholder="Тема занятия"
+              placeholder={t('sessions.topicPlaceholder')}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1 block">
-              Ссылка на встречу (Zoom / Google Meet)
+              {t('sessions.meetingUrlLabel')}
             </label>
             <input
               type="url"
@@ -356,7 +386,7 @@ function AddSessionModal({
             onClick={onClose}
             className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
-            Отмена
+            {t('actions.cancel')}
           </button>
           <button
             onClick={save}
@@ -364,7 +394,7 @@ function AddSessionModal({
             className="flex-1 px-4 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-            Добавить
+            {t('actions.add')}
           </button>
         </div>
       </div>
@@ -382,6 +412,7 @@ function SessionsTab({
   isAdmin,
   cohortFormat,
   onSessionsChange,
+  t,
 }: {
   sessions: Session[]
   participants: Participant[]
@@ -390,6 +421,7 @@ function SessionsTab({
   isAdmin: boolean
   cohortFormat: 'online' | 'offline'
   onSessionsChange: (s: Session[]) => void
+  t: CourseDetailT
 }) {
   const [attendanceModal, setAttendanceModal] = useState<Session | null>(null)
   const [addModal, setAddModal] = useState(false)
@@ -407,7 +439,7 @@ function SessionsTab({
       )
       setCancelModal(null)
     } catch {
-      alert('Не удалось отменить занятие')
+      alert(t('errors.cancelSession'))
     } finally {
       setCancelling(false)
     }
@@ -426,15 +458,15 @@ function SessionsTab({
           className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
         >
           <Plus className="w-4 h-4" />
-          Добавить занятие
+          {t('sessions.addSession')}
         </button>
       )}
 
       {sorted.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
           <Calendar className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 text-sm">Занятия ещё не добавлены</p>
-          {isAdmin && <p className="text-gray-400 text-xs mt-1">Нажмите «Добавить занятие» выше</p>}
+          <p className="text-gray-500 text-sm">{t('sessions.emptyTitle')}</p>
+          {isAdmin && <p className="text-gray-400 text-xs mt-1">{t('sessions.emptyHint')}</p>}
         </div>
       ) : (
         sorted.map((s) => {
@@ -454,7 +486,7 @@ function SessionsTab({
                       {s.startTime}–{s.endTime}
                     </span>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${st.badge}`}>
-                      {st.label}
+                      {t(st.labelKey)}
                     </span>
                   </div>
                   {s.topic && <p className="text-sm text-gray-600 mt-0.5 truncate">{s.topic}</p>}
@@ -476,7 +508,7 @@ function SessionsTab({
                       className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
-                      Ссылка на встречу
+                      {t('sessions.meetingLink')}
                     </a>
                   )}
                   {s.notes && <p className="text-sm text-gray-600">{s.notes}</p>}
@@ -488,7 +520,7 @@ function SessionsTab({
                           className="flex items-center gap-1.5 text-xs text-primary-600 border border-primary-200 rounded-lg px-3 py-1.5 hover:bg-primary-50 transition-colors"
                         >
                           <Check className="w-3.5 h-3.5" />
-                          Отметить посещаемость
+                          {t('attendance.mark')}
                         </button>
                       )}
                       <button
@@ -496,7 +528,7 @@ function SessionsTab({
                         className="flex items-center gap-1.5 text-xs text-red-500 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        Отменить
+                        {t('actions.cancel')}
                       </button>
                     </div>
                   )}
@@ -517,6 +549,7 @@ function SessionsTab({
             onSessionsChange([...sessions, s])
             setAddModal(false)
           }}
+          t={t}
         />
       )}
 
@@ -533,16 +566,17 @@ function SessionsTab({
             )
             setAttendanceModal(null)
           }}
+          t={t}
         />
       )}
 
       {cancelModal && (
         <ConfirmModal
-          title="Отменить занятие?"
+          title={t('sessions.cancelTitle')}
           subtitle={`${cancelModal.date} · ${cancelModal.startTime}–${cancelModal.endTime}`}
-          description="Занятие будет отмечено как отменённое."
-          confirmLabel="Отменить занятие"
-          cancelLabel="Назад"
+          description={t('sessions.cancelDescription')}
+          confirmLabel={t('sessions.cancelConfirm')}
+          cancelLabel={t('actions.back')}
           loading={cancelling}
           onConfirm={handleCancelSession}
           onCancel={() => setCancelModal(null)}
@@ -561,6 +595,7 @@ function ParticipantsTab({
   isAdmin,
   cohort,
   onParticipantsChange,
+  t,
 }: {
   participants: Participant[]
   orgId: string
@@ -568,6 +603,7 @@ function ParticipantsTab({
   isAdmin: boolean
   cohort: Cohort
   onParticipantsChange: (p: Participant[]) => void
+  t: CourseDetailT
 }) {
   const [saving, setSaving] = useState<string | null>(null)
 
@@ -590,7 +626,7 @@ function ParticipantsTab({
         )
       )
     } catch {
-      alert('Не удалось обновить статус оплаты')
+      alert(t('errors.updatePayment'))
     } finally {
       setSaving(null)
     }
@@ -600,8 +636,8 @@ function ParticipantsTab({
     return (
       <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
         <Users className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-        <p className="text-gray-500 text-sm">Участников пока нет</p>
-        <p className="text-gray-400 text-xs mt-1">Родители записываются через каталог курсов</p>
+        <p className="text-gray-500 text-sm">{t('participants.emptyTitle')}</p>
+        <p className="text-gray-400 text-xs mt-1">{t('participants.emptyHint')}</p>
       </div>
     )
   }
@@ -615,14 +651,14 @@ function ParticipantsTab({
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-sm text-gray-500">
-          {active.length} из {cohort.maxParticipants} мест занято
+          {t('participants.occupiedSeats', { active: active.length, max: cohort.maxParticipants })}
         </p>
         <div className="flex items-center gap-2 text-xs">
           <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">
-            {paidCount} оплатили
+            {t('participants.paidCount', { count: paidCount })}
           </span>
           <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
-            {pendingCount} ожидают
+            {t('participants.pendingCount', { count: pendingCount })}
           </span>
         </div>
       </div>
@@ -641,7 +677,7 @@ function ParticipantsTab({
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-900 truncate">{p.childName}</p>
                 <p className="text-xs text-gray-500 truncate">
-                  {p.parentName || 'Родитель не указан'}
+                  {p.parentName || t('participants.parentMissing')}
                   {p.parentPhone && ` · ${p.parentPhone}`}
                 </p>
               </div>
@@ -655,9 +691,9 @@ function ParticipantsTab({
                       onChange={(e) => updatePayment(p, e.target.value as PaymentStatus)}
                       className={`text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer ${py.bg}`}
                     >
-                      <option value="paid">Оплачено</option>
-                      <option value="partial">Частично</option>
-                      <option value="pending">Ожидает</option>
+                      <option value="paid">{t('paymentStatus.paid')}</option>
+                      <option value="partial">{t('paymentStatus.partial')}</option>
+                      <option value="pending">{t('paymentStatus.pending')}</option>
                     </select>
                   )}
                   {cohort.price > 0 && (
@@ -669,7 +705,7 @@ function ParticipantsTab({
                 </div>
               ) : (
                 <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${py.bg}`}>
-                  {py.label}
+                  {t(py.labelKey)}
                 </span>
               )}
             </div>
@@ -679,7 +715,9 @@ function ParticipantsTab({
 
       {dropped.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Выбыли</p>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+            {t('participants.inactiveTitle')}
+          </p>
           <div className="space-y-2 opacity-60">
             {dropped.map((p) => (
               <div
@@ -694,7 +732,7 @@ function ParticipantsTab({
                   <p className="text-xs text-gray-400 truncate">{p.parentName}</p>
                 </div>
                 <span className="text-xs text-gray-400">
-                  {p.status === 'dropped' ? 'Выбыл' : 'Завершил'}
+                  {p.status === 'dropped' ? t('participants.dropped') : t('participants.completed')}
                 </span>
               </div>
             ))}
@@ -714,6 +752,7 @@ export default function CohortDetailPage() {
   const searchParams = useSearchParams()
   const cohortId = params.courseId as string
   const orgId = searchParams.get('orgId') ?? ''
+  const t = useTranslations('b2b.pages.courses.detail')
 
   const { isAdmin, isSpecialist, profile, isLoading: authLoading } = usePageAuth()
   const [cohort, setCohort] = useState<Cohort | null>(null)
@@ -754,7 +793,7 @@ export default function CohortDetailPage() {
       const res = await apiClient.updateCohort(orgId, cohortId, { status })
       setCohort(res.cohort)
     } catch {
-      alert('Не удалось обновить статус')
+      alert(t('errors.updateStatus'))
     } finally {
       setStatusChanging(false)
     }
@@ -773,7 +812,7 @@ export default function CohortDetailPage() {
       <div className="p-6 max-w-3xl mx-auto">
         <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
           <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-          <p className="text-sm">{error ?? 'Набор не найден'}</p>
+          <p className="text-sm">{error ?? t('errors.cohortNotFound')}</p>
         </div>
       </div>
     )
@@ -793,7 +832,7 @@ export default function CohortDetailPage() {
         className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-5 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
-        Все группы
+        {t('navigation.allGroups')}
       </Link>
 
       {/* Cohort Header */}
@@ -802,15 +841,15 @@ export default function CohortDetailPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${st.bg}`}>
-                {st.label}
+                {t(st.labelKey)}
               </span>
               {cohort.format === 'online' ? (
                 <span className="flex items-center gap-1 text-xs text-blue-600">
-                  <Video className="w-3.5 h-3.5" /> Онлайн
+                  <Video className="w-3.5 h-3.5" /> {t('format.online')}
                 </span>
               ) : (
                 <span className="flex items-center gap-1 text-xs text-gray-500">
-                  <MapPin className="w-3.5 h-3.5" /> Офлайн
+                  <MapPin className="w-3.5 h-3.5" /> {t('format.offline')}
                 </span>
               )}
               {cohort.category && (
@@ -841,7 +880,7 @@ export default function CohortDetailPage() {
                   ) : (
                     <Check className="w-3.5 h-3.5" />
                   )}
-                  Открыть набор
+                  {t('actions.openEnrollment')}
                 </button>
               )}
               {cohort.status === 'open' && (
@@ -851,7 +890,7 @@ export default function CohortDetailPage() {
                   className="flex items-center gap-1.5 text-sm px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
-                  Приостановить
+                  {t('actions.pause')}
                 </button>
               )}
             </div>
@@ -862,19 +901,19 @@ export default function CohortDetailPage() {
         <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="text-center">
             <p className="text-lg font-bold text-gray-900">{cohort.enrolledCount}</p>
-            <p className="text-xs text-gray-500">Участников</p>
+            <p className="text-xs text-gray-500">{t('stats.participants')}</p>
           </div>
           <div className="text-center">
             <p className="text-lg font-bold text-gray-900">{cohort.maxParticipants}</p>
-            <p className="text-xs text-gray-500">Мест всего</p>
+            <p className="text-xs text-gray-500">{t('stats.totalSeats')}</p>
           </div>
           <div className="text-center">
             <p className="text-lg font-bold text-gray-900">{completedSessions}</p>
-            <p className="text-xs text-gray-500">Проведено</p>
+            <p className="text-xs text-gray-500">{t('stats.completed')}</p>
           </div>
           <div className="text-center">
             <p className="text-lg font-bold text-gray-900">{upcomingSessions}</p>
-            <p className="text-xs text-gray-500">Предстоит</p>
+            <p className="text-xs text-gray-500">{t('stats.upcoming')}</p>
           </div>
         </div>
 
@@ -889,9 +928,7 @@ export default function CohortDetailPage() {
             </span>
           )}
           {cohort.ageMin != null && (
-            <span>
-              Возраст: {cohort.ageMin}–{cohort.ageMax ?? '∞'} лет
-            </span>
+            <span>{t('stats.ageRange', { min: cohort.ageMin, max: cohort.ageMax ?? '∞' })}</span>
           )}
         </div>
 
@@ -904,7 +941,7 @@ export default function CohortDetailPage() {
             className="mt-3 inline-flex items-center gap-2 text-sm text-primary-600 font-medium hover:underline"
           >
             <Video className="w-4 h-4" />
-            Открыть Google Meet
+            {t('sessions.openGoogleMeet')}
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
         )}
@@ -912,13 +949,13 @@ export default function CohortDetailPage() {
           <div className="mt-3 flex items-center gap-2 flex-wrap">
             <span className="text-xs text-amber-600 flex items-center gap-1.5">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              Ссылка на Meet не создана
+              {t('sessions.meetMissing')}
             </span>
             <Link
               href="/b2b/settings/calendar"
               className="text-xs text-primary-600 font-medium underline underline-offset-2 hover:text-primary-700"
             >
-              Подключить Google Calendar →
+              {t('sessions.connectGoogleCalendar')}
             </Link>
           </div>
         )}
@@ -930,13 +967,13 @@ export default function CohortDetailPage() {
           [
             {
               key: 'sessions',
-              label: 'Занятия',
+              label: t('tabs.sessions'),
               icon: Calendar,
               count: sessions.filter((s) => s.status !== 'cancelled').length,
             },
             {
               key: 'participants',
-              label: 'Участники',
+              label: t('tabs.participants'),
               icon: Users,
               count: participants.filter((p) => p.status === 'active').length,
             },
@@ -969,6 +1006,7 @@ export default function CohortDetailPage() {
           isAdmin={canManage}
           cohortFormat={cohort.format}
           onSessionsChange={setSessions}
+          t={t}
         />
       ) : (
         <ParticipantsTab
@@ -978,6 +1016,7 @@ export default function CohortDetailPage() {
           isAdmin={canManage}
           cohort={cohort}
           onParticipantsChange={setParticipants}
+          t={t}
         />
       )}
     </div>

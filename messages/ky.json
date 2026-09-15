@@ -1114,7 +1114,12 @@
         "removeConfirm": "Бул мүчөнү уюмдан чыгарабы?",
         "failedRemove": "Мүчөнү чыгаруу мүмкүн болбоду",
         "failedUpdateRole": "Ролду өзгөртүү мүмкүн болбоду",
-        "unnamedMember": "Аты белгисиз"
+        "unnamedMember": "Аты белгисиз",
+        "editDisplayName": "Көрсөтүлүүчү атты өзгөртүү",
+        "saveDisplayName": "Көрсөтүлүүчү атты сактоо",
+        "cancelEditDisplayName": "Көрсөтүлүүчү атты өзгөртүүдөн баш тартуу",
+        "editDisplayNameHint": "Көрсөтүлүүчү атын өзгөртүү үчүн аттын үстүнө алып барыңыз",
+        "failedUpdateDisplayName": "Көрсөтүлүүчү атты жаңыртуу мүмкүн болбоду"
       },
       "invites": {
         "title": "Чакыруу түзүү жана башкаруу",
@@ -1897,6 +1902,98 @@
             "rejected": "Отклонённые"
           }
         },
+        "detail": {
+          "actions": {
+            "add": "Кошуу",
+            "back": "Артка",
+            "cancel": "Жокко чыгаруу",
+            "openEnrollment": "Катталууну ачуу",
+            "pause": "Токтотуу",
+            "save": "Сактоо"
+          },
+          "attendance": {
+            "absent": "Катышкан жок",
+            "late": "Кечикти",
+            "mark": "Катышууну белгилөө",
+            "noActiveParticipants": "Активдүү катышуучулар жок",
+            "present": "Катышты",
+            "title": "Катышуу"
+          },
+          "cohortStatus": {
+            "cancelled": "Жокко чыгарылды",
+            "completed": "Аяктады",
+            "draft": "Черновик",
+            "full": "Орун жок",
+            "inProgress": "Сабактар жүрүүдө",
+            "open": "Катталуу ачык"
+          },
+          "errors": {
+            "addSession": "Сабакты кошуу мүмкүн болгон жок",
+            "cancelSession": "Сабакты жокко чыгаруу мүмкүн болгон жок",
+            "cohortNotFound": "Группа табылган жок",
+            "saveAttendance": "Катышууну сактоо мүмкүн болгон жок",
+            "updatePayment": "Төлөм статусун жаңыртуу мүмкүн болгон жок",
+            "updateStatus": "Статусту жаңыртуу мүмкүн болгон жок"
+          },
+          "format": {
+            "offline": "Офлайн",
+            "online": "Онлайн"
+          },
+          "navigation": {
+            "allGroups": "Бардык группалар"
+          },
+          "participants": {
+            "completed": "Аяктады",
+            "dropped": "Чыгып кетти",
+            "emptyHint": "Ата-энелер курстар каталогу аркылуу катталат",
+            "emptyTitle": "Азырынча катышуучулар жок",
+            "inactiveTitle": "Активдүү эмес",
+            "occupiedSeats": "{active} / {max} орун толду",
+            "paidCount": "{count} төлөдү",
+            "parentMissing": "Ата-эне көрсөтүлгөн эмес",
+            "pendingCount": "{count} күтүлүүдө"
+          },
+          "paymentStatus": {
+            "paid": "Төлөндү",
+            "partial": "Жарым-жартылай",
+            "pending": "Күтүлүүдө"
+          },
+          "sessions": {
+            "addSession": "Сабак кошуу",
+            "cancelConfirm": "Сабакты жокко чыгаруу",
+            "cancelDescription": "Сабак жокко чыгарылган деп белгиленет.",
+            "cancelTitle": "Сабакты жокко чыгарасызбы?",
+            "connectGoogleCalendar": "Google Calendar туташтыруу →",
+            "dateRequired": "Дата *",
+            "emptyHint": "Жогору жактагы «Сабак кошуу» баскычын басыңыз",
+            "emptyTitle": "Азырынча сабак кошулган жок",
+            "end": "Аягы",
+            "meetingLink": "Жолугушуу шилтемеси",
+            "meetingUrlLabel": "Жолугушуу шилтемеси (Zoom / Google Meet)",
+            "meetMissing": "Meet шилтемеси түзүлгөн жок",
+            "openGoogleMeet": "Google Meet ачуу",
+            "start": "Башталышы",
+            "topicOptional": "Тема (милдеттүү эмес)",
+            "topicPlaceholder": "Сабактын темасы"
+          },
+          "sessionStatus": {
+            "cancelled": "Жокко чыгарылды",
+            "completed": "Өткөрүлдү",
+            "postponed": "Кийинкиге жылдырылды",
+            "scheduled": "Пландалды"
+          },
+          "stats": {
+            "ageRange": "Жашы: {min}–{max} жаш",
+            "completed": "Өткөрүлдү",
+            "participants": "Катышуучулар",
+            "totalSeats": "Жалпы орун",
+            "upcoming": "Алдыда"
+          },
+          "tabs": {
+            "participants": "Катышуучулар",
+            "sessions": "Сабактар"
+          }
+        },
         "new": {
           "title": "Новый курс",
           "adminOnly": "Только администраторы могут создавать курсы.",
@@ -2533,5 +2630,11 @@
     "enter_email": "Электрондук почтаңызды киргизиңиз",
     "too_many_requests": "Өтө көп аракет. Кийинчерээк кайталаңыз",
     "send_failed": "Кат жөнөтүлгөн жок. Кайталап көрүңүз"
+  },
+  "error": {
+    "description": "Маселе тууралуу билебиз жана аны оңдоонун үстүндө иштеп жатабыз.",
+    "home": "Башкы бетке",
+    "retry": "Кайра аракет кылуу",
+    "title": "Бир жерден ката кетти"
   }
 }
