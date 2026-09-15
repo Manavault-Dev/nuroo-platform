@@ -1114,7 +1114,12 @@
         "removeConfirm": "Remove this member from the organization?",
         "failedRemove": "Failed to remove member",
         "failedUpdateRole": "Failed to update role",
-        "unnamedMember": "Name not set"
+        "unnamedMember": "Name not set",
+        "editDisplayName": "Edit display name",
+        "saveDisplayName": "Save display name",
+        "cancelEditDisplayName": "Cancel display name edit",
+        "editDisplayNameHint": "Hover over a name to edit its display name",
+        "failedUpdateDisplayName": "Failed to update display name"
       },
       "invites": {
         "title": "Create and manage invites",
@@ -1897,6 +1902,98 @@
             "rejected": "Rejected"
           }
         },
+        "detail": {
+          "actions": {
+            "add": "Add",
+            "back": "Back",
+            "cancel": "Cancel",
+            "openEnrollment": "Open enrollment",
+            "pause": "Pause",
+            "save": "Save"
+          },
+          "attendance": {
+            "absent": "Absent",
+            "late": "Late",
+            "mark": "Mark attendance",
+            "noActiveParticipants": "No active participants",
+            "present": "Present",
+            "title": "Attendance"
+          },
+          "cohortStatus": {
+            "cancelled": "Cancelled",
+            "completed": "Completed",
+            "draft": "Draft",
+            "full": "No seats",
+            "inProgress": "In progress",
+            "open": "Enrollment open"
+          },
+          "errors": {
+            "addSession": "Could not add the session",
+            "cancelSession": "Could not cancel the session",
+            "cohortNotFound": "Group not found",
+            "saveAttendance": "Could not save attendance",
+            "updatePayment": "Could not update payment status",
+            "updateStatus": "Could not update status"
+          },
+          "format": {
+            "offline": "Offline",
+            "online": "Online"
+          },
+          "navigation": {
+            "allGroups": "All groups"
+          },
+          "participants": {
+            "completed": "Completed",
+            "dropped": "Dropped",
+            "emptyHint": "Parents enroll through the course catalog",
+            "emptyTitle": "No participants yet",
+            "inactiveTitle": "Inactive",
+            "occupiedSeats": "{active} of {max} seats occupied",
+            "paidCount": "{count} paid",
+            "parentMissing": "Parent not specified",
+            "pendingCount": "{count} pending"
+          },
+          "paymentStatus": {
+            "paid": "Paid",
+            "partial": "Partial",
+            "pending": "Pending"
+          },
+          "sessions": {
+            "addSession": "Add session",
+            "cancelConfirm": "Cancel session",
+            "cancelDescription": "The session will be marked as cancelled.",
+            "cancelTitle": "Cancel session?",
+            "connectGoogleCalendar": "Connect Google Calendar →",
+            "dateRequired": "Date *",
+            "emptyHint": "Press “Add session” above",
+            "emptyTitle": "No sessions added yet",
+            "end": "End",
+            "meetingLink": "Meeting link",
+            "meetingUrlLabel": "Meeting link (Zoom / Google Meet)",
+            "meetMissing": "Meet link has not been created",
+            "openGoogleMeet": "Open Google Meet",
+            "start": "Start",
+            "topicOptional": "Topic (optional)",
+            "topicPlaceholder": "Session topic"
+          },
+          "sessionStatus": {
+            "cancelled": "Cancelled",
+            "completed": "Completed",
+            "postponed": "Postponed",
+            "scheduled": "Scheduled"
+          },
+          "stats": {
+            "ageRange": "Age: {min}–{max} years",
+            "completed": "Completed",
+            "participants": "Participants",
+            "totalSeats": "Total seats",
+            "upcoming": "Upcoming"
+          },
+          "tabs": {
+            "participants": "Participants",
+            "sessions": "Sessions"
+          }
+        },
         "new": {
           "title": "New course",
           "adminOnly": "Only administrators can create courses.",
@@ -2533,5 +2630,11 @@
     "enter_email": "Please enter your email address",
     "too_many_requests": "Too many attempts. Please try again later",
     "send_failed": "Failed to send email. Please try again"
+  },
+  "error": {
+    "description": "We already know about the issue and are working on a fix.",
+    "home": "Home",
+    "retry": "Try again",
+    "title": "Something went wrong"
   }
 }
