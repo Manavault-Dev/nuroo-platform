@@ -183,10 +183,10 @@ export const swaggerUiConfig: FastifySwaggerUiOptions = {
         type: 'image/png',
         content: Buffer.from(
           'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAA7EAAAOxAGVKw4bAAAB' +
-          'mklEQVRYhe2Xv0oDQRDGf3uXxCIWsUkhFoKFjQcWQrCwsbGwsLGwsLCwsQiCCIKIiIiIiIiI' +
-          'iIiIiIiIiIiIiIiIiIiIiOiFF3Y3m52d2dk5AiGEEEIIIYQQQgghhBBCCCGEEEIIIYQQQggh' +
-          'hBBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIYT4Z7wDZ8BlYA3YAY6B0+YZMAEWwDdwDSwD96r5' +
-          'BXgClsBHYLN5BjYHAAAASUVORK5CYII=',
+            'mklEQVRYhe2Xv0oDQRDGf3uXxCIWsUkhFoKFjQcWQrCwsbGwsLGwsLCwsQiCCIKIiIiIiIiI' +
+            'iIiIiIiIiIiIiIiIiIiIiOiFF3Y3m52d2dk5AiGEEEIIIYQQQgghhBBCCCGEEEIIIYQQQggh' +
+            'hBBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIYT4Z7wDZ8BlYA3YAY6B0+YZMAEWwDdwDSwD96r5' +
+            'BXgClsBHYLN5BjYHAAAASUVORK5CYII=',
           'base64'
         ),
       },
