@@ -1,4 +1,5 @@
 import admin from 'firebase-admin'
+import { dispatch } from '../../modules/notifications/index.js'
 
 export const COLLECTIONS = {
   ORG_CHILDREN: (orgId: string) => `organizations/${orgId}/children`,
@@ -758,6 +759,73 @@ export async function createChildTask(
   return { id: taskRef.id, taskData, now }
 }
 
+export async function reviewChildTask(
+  db: admin.firestore.Firestore,
+  orgId: string,
+  childId: string,
+  taskId: string,
+  reviewerUid: string,
+  grade: 'approved' | 'needs_revision',
+  feedback?: string
+) {
+  const taskRef = db.doc(`${COLLECTIONS.CHILD_TASKS(childId)}/${taskId}`)
+  const taskSnap = await taskRef.get()
+  if (!taskSnap.exists) {
+    throw Object.assign(new Error('Task not found'), { statusCode: 404 })
+  }
+
+  const now = admin.firestore.Timestamp.fromDate(new Date())
+  await taskRef.update({
+    grade,
+    feedback: feedback ?? null,
+    feedbackBy: reviewerUid,
+    feedbackAt: now,
+    submissionStatus: 'graded',
+    status: grade === 'approved' ? 'completed' : 'pending',
+    updatedAt: now,
+  })
+
+  try {
+    const orgChildSnap = await db.doc(`${COLLECTIONS.ORG_CHILDREN(orgId)}/${childId}`).get()
+    const parentUserId = orgChildSnap.data()?.parentUserId
+    if (parentUserId) {
+      const taskTitle = taskSnap.data()?.title || 'your assignment'
+      await dispatch({
+        userId: parentUserId,
+        orgId,
+        role: 'parent',
+        type: 'task_reviewed',
+        category: 'assignments',
+        title: grade === 'approved' ? 'Assignment approved' : 'Assignment needs revision',
+        body:
+          grade === 'approved'
+            ? `"${taskTitle}" was reviewed and approved.`
+            : `"${taskTitle}" needs another look — check the specialist's feedback.`,
+        metadata: { childId, taskId, orgId },
+        dedupKey: `task_reviewed:${childId}:${taskId}:${now.toMillis()}`,
+      })
+    }
+  } catch {
+    // best-effort — grading must not fail if the notification can't be sent
+  }
+
+  const updatedSnap = await taskRef.get()
+  const d = updatedSnap.data()!
+  return {
+    id: taskId,
+    title: d.title || 'Untitled Task',
+    description: d.description ?? null,
+    status: d.status || 'pending',
+    submissionStatus: d.submissionStatus ?? 'pending',
+    grade: d.grade ?? null,
+    feedback: d.feedback ?? null,
+    feedbackAt: d.feedbackAt?.toDate() ?? null,
+    submissionText: d.submissionText ?? null,
+    fileUrl: d.fileUrl ?? null,
+    submittedAt: d.submittedAt?.toDate() ?? null,
+  }
+}
+
 export async function listChildTasks(db: admin.firestore.Firestore, childId: string) {
   const tasksRef = db.collection(COLLECTIONS.CHILD_TASKS(childId))
   const snapshot = await tasksRef.orderBy('updatedAt', 'desc').get()
@@ -775,6 +843,11 @@ export async function listChildTasks(db: admin.firestore.Firestore, childId: str
       submissionText: d.submissionText ?? null,
       fileUrl: d.fileUrl ?? null,
       submittedAt: d.submittedAt?.toDate() ?? null,
+      submissionStatus: d.submissionStatus ?? 'pending',
+      grade: d.grade ?? null,
+      feedback: d.feedback ?? null,
+      feedbackAt: d.feedbackAt?.toDate() ?? null,
+      groupAssignmentId: d.groupAssignmentId ?? null,
     }
   })
 }
