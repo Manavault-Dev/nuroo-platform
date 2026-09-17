@@ -23,6 +23,7 @@ import {
   Wallet,
   ChevronRight,
   BookOpen,
+  PlayCircle,
   Plug,
   Shield,
 } from 'lucide-react'
@@ -202,6 +203,7 @@ export function Sidebar({
         businessFeature: 'reports' as BusinessFeature,
       },
       { href: withOrg('/b2b/courses'), labelKey: t('courses'), icon: BookOpen },
+      { href: withOrg('/b2b/video-courses'), labelKey: 'Видеокурсы', icon: PlayCircle },
       { href: withOrg('/b2b/bookings'), labelKey: t('bookings'), icon: CalendarDays },
       { href: withOrg('/b2b/events'), labelKey: t('events'), icon: PartyPopper },
       ...(!isOrgAdmin
