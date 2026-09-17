@@ -92,6 +92,11 @@ export interface ChildTask {
   submissionText: string | null
   fileUrl: string | null
   submittedAt: string | null
+  submissionStatus?: 'pending' | 'submitted' | 'graded'
+  grade?: 'approved' | 'needs_revision' | null
+  feedback?: string | null
+  feedbackAt?: string | null
+  groupAssignmentId?: string | null
 }
 
 export type ChildTaskResponse = ChildTask & {
@@ -998,6 +1003,23 @@ export class ApiClient {
       method: 'POST',
       body: JSON.stringify(payload),
     })
+  }
+
+  async reviewChildTask(
+    orgId: string,
+    childId: string,
+    taskId: string,
+    payload: { grade: 'approved' | 'needs_revision'; feedback?: string }
+  ) {
+    cache.invalidate(`childTasks:${orgId}:${childId}`)
+    cache.invalidate(`child:${orgId}:${childId}`)
+    return this.request<{ ok: boolean; task: ChildTask }>(
+      `/orgs/${orgId}/children/${childId}/tasks/${taskId}/review`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }
+    )
   }
 
   // Team
