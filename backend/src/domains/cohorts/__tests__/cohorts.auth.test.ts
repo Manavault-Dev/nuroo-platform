@@ -23,17 +23,26 @@ import type { CohortStatus } from '../cohorts.types.js'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function member(role: 'org_admin' | 'specialist' | 'parent', uid = 'u1'): OrgMember {
+function member(
+  role: 'org_admin' | 'specialist' | 'parent',
+  uid = 'u1',
+  branchId: string | null = null
+): OrgMember {
   return {
     uid,
     role,
     status: 'active',
     addedAt: new Date('2026-01-01T00:00:00Z'),
+    branchId,
   } as unknown as OrgMember
 }
 
-function makeCohort(instructorId: string | null, status: CohortStatus = 'draft') {
-  return { instructorId, status }
+function makeCohort(
+  instructorId: string | null,
+  status: CohortStatus = 'draft',
+  branchId: string | null = null
+) {
+  return { instructorId, status, branchId }
 }
 
 function mockReply() {
@@ -100,15 +109,54 @@ describe('isInstructor', () => {
 
 describe('canManageCohort', () => {
   it('true for org_admin regardless of instructorId', () => {
-    expect(canManageCohort(member('org_admin', 'admin1'), { instructorId: 'sp1' })).toBe(true)
+    expect(
+      canManageCohort(member('org_admin', 'admin1'), { instructorId: 'sp1', branchId: null })
+    ).toBe(true)
   })
 
   it('true for specialist who is instructor', () => {
-    expect(canManageCohort(member('specialist', 'sp1'), { instructorId: 'sp1' })).toBe(true)
+    expect(
+      canManageCohort(member('specialist', 'sp1'), { instructorId: 'sp1', branchId: null })
+    ).toBe(true)
   })
 
   it('false for specialist who is NOT instructor', () => {
-    expect(canManageCohort(member('specialist', 'sp2'), { instructorId: 'sp1' })).toBe(false)
+    expect(
+      canManageCohort(member('specialist', 'sp2'), { instructorId: 'sp1', branchId: null })
+    ).toBe(false)
+  })
+
+  it('true for HQ org_admin (no branch scope) on any branch', () => {
+    expect(
+      canManageCohort(member('org_admin', 'admin1', null), makeCohort('sp1', 'draft', 'branch-a'))
+    ).toBe(true)
+  })
+
+  it('true for branch-scoped org_admin managing a cohort in their own branch', () => {
+    expect(
+      canManageCohort(
+        member('org_admin', 'admin1', 'branch-a'),
+        makeCohort('sp1', 'draft', 'branch-a')
+      )
+    ).toBe(true)
+  })
+
+  it('false for branch-scoped org_admin managing a cohort in a different branch', () => {
+    expect(
+      canManageCohort(
+        member('org_admin', 'admin1', 'branch-a'),
+        makeCohort('sp1', 'draft', 'branch-b')
+      )
+    ).toBe(false)
+  })
+
+  it('true for the instructor even outside their branch scope', () => {
+    expect(
+      canManageCohort(
+        member('specialist', 'sp1', 'branch-a'),
+        makeCohort('sp1', 'draft', 'branch-b')
+      )
+    ).toBe(true)
   })
 })
 
@@ -124,21 +172,27 @@ describe('canCreateCohort', () => {
 
 describe('canPublishCohort', () => {
   it('admin can always publish', () => {
-    expect(canPublishCohort(member('org_admin', 'a1'), { instructorId: 'sp1' }, true)).toBe(true)
+    expect(
+      canPublishCohort(member('org_admin', 'a1'), { instructorId: 'sp1', branchId: null }, true)
+    ).toBe(true)
   })
 
   it('specialist-instructor can publish when approval NOT required', () => {
-    expect(canPublishCohort(member('specialist', 'sp1'), { instructorId: 'sp1' }, false)).toBe(true)
+    expect(
+      canPublishCohort(member('specialist', 'sp1'), { instructorId: 'sp1', branchId: null }, false)
+    ).toBe(true)
   })
 
   it('specialist-instructor CANNOT publish when approval IS required', () => {
-    expect(canPublishCohort(member('specialist', 'sp1'), { instructorId: 'sp1' }, true)).toBe(false)
+    expect(
+      canPublishCohort(member('specialist', 'sp1'), { instructorId: 'sp1', branchId: null }, true)
+    ).toBe(false)
   })
 
   it('non-instructor specialist cannot publish', () => {
-    expect(canPublishCohort(member('specialist', 'sp2'), { instructorId: 'sp1' }, false)).toBe(
-      false
-    )
+    expect(
+      canPublishCohort(member('specialist', 'sp2'), { instructorId: 'sp1', branchId: null }, false)
+    ).toBe(false)
   })
 })
 
@@ -146,11 +200,15 @@ describe('canPublishCohort', () => {
 
 describe('canSubmitForApproval', () => {
   it('true for instructor specialist', () => {
-    expect(canSubmitForApproval(member('specialist', 'sp1'), { instructorId: 'sp1' })).toBe(true)
+    expect(
+      canSubmitForApproval(member('specialist', 'sp1'), { instructorId: 'sp1', branchId: null })
+    ).toBe(true)
   })
 
   it('false for non-instructor specialist', () => {
-    expect(canSubmitForApproval(member('specialist', 'sp2'), { instructorId: 'sp1' })).toBe(false)
+    expect(
+      canSubmitForApproval(member('specialist', 'sp2'), { instructorId: 'sp1', branchId: null })
+    ).toBe(false)
   })
 })
 

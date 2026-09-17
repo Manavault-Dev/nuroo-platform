@@ -35,6 +35,7 @@ export const recurringTemplateSchema = z.object({
 })
 
 export const cohortCreateSchema = z.object({
+  branchId: z.string().max(200).nullable().optional(),
   title: z.string().min(1).max(200),
   description: z.string().max(2000).default(''),
   instructorId: z.string().nullable().optional(),

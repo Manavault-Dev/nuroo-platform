@@ -31,6 +31,7 @@ export interface RecurringTemplate {
 export interface CohortDoc {
   id: string
   orgId: string
+  branchId: string | null
   title: string
   description: string
   instructorId: string | null // specialist uid
@@ -127,6 +128,7 @@ export interface AttendanceDoc {
 export interface PublicCohort {
   id: string
   orgId: string
+  branchId: string | null
   orgName: string | null
   orgLogoUrl: string | null
   title: string
