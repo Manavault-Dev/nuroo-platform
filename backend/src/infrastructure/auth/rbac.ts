@@ -110,7 +110,17 @@ export async function requireOrgMember(
     role,
     status: data.status,
     addedAt: data.addedAt?.toDate() || new Date(),
+    branchId: data.branchId ?? null,
+    branchRole: data.branchRole ?? null,
   }
+}
+
+/**
+ * Resolves the branch a member is restricted to, or `null` for HQ-level access
+ * (sees every branch — the default for every member unless explicitly assigned).
+ */
+export function memberBranchScope(member: OrgMember): string | null {
+  return member.branchId ?? null
 }
 
 export async function requireChildAccess(

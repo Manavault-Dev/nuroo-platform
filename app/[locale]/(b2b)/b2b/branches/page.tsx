@@ -6,23 +6,65 @@ import { usePageAuth } from '@/lib/b2b/usePageAuth'
 import { apiClient, type Branch } from '@/lib/b2b/api'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useAlert } from '@/components/ui/AlertDialog'
-import { GitBranch, Plus, Edit2, Trash2, X, Save, Loader2, MapPin, Phone, User } from 'lucide-react'
+import {
+  GitBranch,
+  Plus,
+  Edit2,
+  Trash2,
+  X,
+  Save,
+  Loader2,
+  MapPin,
+  Phone,
+  User,
+  UserPlus,
+  BookOpen,
+  Wallet,
+  AlertCircle,
+  Users,
+} from 'lucide-react'
 import { PlanGate } from '@/components/b2b/PlanGate'
+
+interface BranchStats {
+  leads: number
+  conversionRate: number
+  activePrograms: number
+  revenueThisMonth: number
+  unpaidCount: number
+  unpaidAmount: number
+  teamCount: number
+}
 
 interface BranchForm {
   name: string
   address: string
   phone: string
   contactPerson: string
+  description: string
+  photoUrl: string
 }
 
-const EMPTY_FORM: BranchForm = { name: '', address: '', phone: '', contactPerson: '' }
+const EMPTY_FORM: BranchForm = {
+  name: '',
+  address: '',
+  phone: '',
+  contactPerson: '',
+  description: '',
+  photoUrl: '',
+}
 
 export default function BranchesPage() {
   const t = useTranslations('b2b.pages.branches')
   const { orgId, isAdmin, isLoading } = usePageAuth()
 
   const [branches, setBranches] = useState<Branch[]>([])
+  const [stats, setStats] = useState<Record<string, BranchStats>>({})
+  const [totals, setTotals] = useState<{
+    revenueThisMonth: number
+    unpaidCount: number
+    unpaidAmount: number
+    teamCount: number
+  } | null>(null)
   const [loadingBranches, setLoadingBranches] = useState(false)
   const [error, setError] = useState('')
   const { confirm } = useAlert()
@@ -52,6 +94,38 @@ export default function BranchesPage() {
     if (orgId) loadBranches(orgId)
   }, [orgId, loadBranches])
 
+  // Quick per-branch overview: leads + conversion (CRM), active programs (courses),
+  // revenue/unpaid invoices and team size (enterprise dashboard).
+  // Best-effort — silently skipped if the org doesn't have those features enabled.
+  useEffect(() => {
+    if (!orgId || branches.length === 0) return
+    Promise.all([
+      apiClient.getLeadsAnalytics(orgId).catch(() => null),
+      apiClient.getCohorts(orgId).catch(() => null),
+      apiClient.getBranchStats(orgId).catch(() => null),
+    ]).then(([analytics, cohortsRes, branchStats]) => {
+      const next: Record<string, BranchStats> = {}
+      for (const b of branches) {
+        const branchAnalytics = analytics?.byBranch.find((s) => s.branchId === b.id)
+        const activePrograms = (cohortsRes?.cohorts ?? []).filter(
+          (c: any) => c.branchId === b.id && ['open', 'full', 'in_progress'].includes(c.status)
+        ).length
+        const financeStats = branchStats?.stats.find((s) => s.branchId === b.id)
+        next[b.id] = {
+          leads: branchAnalytics?.total ?? 0,
+          conversionRate: branchAnalytics?.conversionRate ?? 0,
+          activePrograms,
+          revenueThisMonth: financeStats?.revenueThisMonth ?? 0,
+          unpaidCount: financeStats?.unpaidCount ?? 0,
+          unpaidAmount: financeStats?.unpaidAmount ?? 0,
+          teamCount: financeStats?.teamCount ?? 0,
+        }
+      }
+      setStats(next)
+      setTotals(branchStats?.totals ?? null)
+    })
+  }, [orgId, branches])
+
   const openCreate = () => {
     setEditingBranch(null)
     setForm(EMPTY_FORM)
@@ -65,6 +139,8 @@ export default function BranchesPage() {
       address: branch.address ?? '',
       phone: branch.phone ?? '',
       contactPerson: branch.contactPerson ?? '',
+      description: branch.description ?? '',
+      photoUrl: branch.photoUrl ?? '',
     })
     setShowModal(true)
   }
@@ -85,6 +161,8 @@ export default function BranchesPage() {
         address: form.address.trim() || undefined,
         phone: form.phone.trim() || undefined,
         contactPerson: form.contactPerson.trim() || undefined,
+        description: form.description.trim() || undefined,
+        photoUrl: form.photoUrl.trim() || undefined,
       }
       if (editingBranch) {
         await apiClient.updateBranch(orgId, editingBranch.id, data)
@@ -143,6 +221,40 @@ export default function BranchesPage() {
           </div>
         )}
 
+        {/* HQ summary — enterprise dashboard totals across all branches */}
+        {totals && branches.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+            <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+              <div className="flex items-center gap-2 text-gray-500 text-xs font-medium mb-1.5">
+                <Wallet className="w-4 h-4 text-primary-500" />
+                Выручка за месяц
+              </div>
+              <p className="text-xl font-bold text-gray-900">
+                {totals.revenueThisMonth.toLocaleString('ru-RU')} KGS
+              </p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+              <div className="flex items-center gap-2 text-gray-500 text-xs font-medium mb-1.5">
+                <AlertCircle className="w-4 h-4 text-amber-500" />
+                Неоплаченные счета
+              </div>
+              <p className="text-xl font-bold text-gray-900">
+                {totals.unpaidCount}{' '}
+                <span className="text-sm font-medium text-gray-400">
+                  ({totals.unpaidAmount.toLocaleString('ru-RU')} KGS)
+                </span>
+              </p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+              <div className="flex items-center gap-2 text-gray-500 text-xs font-medium mb-1.5">
+                <Users className="w-4 h-4 text-teal-500" />
+                Сотрудников в филиалах
+              </div>
+              <p className="text-xl font-bold text-gray-900">{totals.teamCount}</p>
+            </div>
+          </div>
+        )}
+
         {/* Empty state */}
         {branches.length === 0 ? (
           <div className="bg-gray-50 rounded-xl p-16 text-center">
@@ -190,6 +302,10 @@ export default function BranchesPage() {
                   )}
                 </div>
 
+                {branch.description && (
+                  <p className="text-sm text-gray-500 mb-3 line-clamp-2">{branch.description}</p>
+                )}
+
                 <div className="space-y-1.5 text-sm text-gray-600">
                   {branch.address && (
                     <div className="flex items-start gap-2">
@@ -210,6 +326,33 @@ export default function BranchesPage() {
                     </div>
                   )}
                 </div>
+
+                {stats[branch.id] && (
+                  <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <UserPlus className="w-3.5 h-3.5 text-primary-400 shrink-0" />
+                      <span>
+                        {stats[branch.id].leads} заявок · {stats[branch.id].conversionRate}%
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <BookOpen className="w-3.5 h-3.5 text-primary-400 shrink-0" />
+                      <span>{stats[branch.id].activePrograms} активных программ</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <Wallet className="w-3.5 h-3.5 text-primary-400 shrink-0" />
+                      <span>{stats[branch.id].revenueThisMonth.toLocaleString('ru-RU')} KGS</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>{stats[branch.id].unpaidCount} неоплачено</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500 col-span-2">
+                      <Users className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                      <span>{stats[branch.id].teamCount} сотрудников</span>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -255,6 +398,32 @@ export default function BranchesPage() {
                     />
                   </div>
                 ))}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {t('description')}
+                  </label>
+                  <textarea
+                    value={form.description}
+                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                    rows={3}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"
+                    placeholder={t('description')}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {t('photoUrl')}
+                  </label>
+                  <input
+                    type="text"
+                    value={form.photoUrl}
+                    onChange={(e) => setForm((f) => ({ ...f, photoUrl: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                    placeholder="https://..."
+                  />
+                </div>
 
                 {error && <p className="text-sm text-red-600">{error}</p>}
 

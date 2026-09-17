@@ -1696,6 +1696,8 @@
         "address": "Адрес",
         "phone": "Телефон",
         "contactPerson": "Контактное лицо",
+        "description": "Описание",
+        "photoUrl": "URL фото",
         "noBranches": "Нет филиалов. Добавьте первый.",
         "save": "Сохранить",
         "cancel": "Отмена",

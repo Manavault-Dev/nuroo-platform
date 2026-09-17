@@ -1,16 +1,17 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from '@/i18n/navigation'
 import { useSearchParams } from 'next/navigation'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
-import { apiClient } from '@/lib/b2b/api'
+import { apiClient, type Branch } from '@/lib/b2b/api'
 import { ArrowLeft, ImagePlus, Loader2, BookOpen, X, Plus } from 'lucide-react'
 import { Link } from '@/i18n/navigation'
 
 interface FormData {
   title: string
   description: string
+  branchId: string
   category: string
   format: 'online' | 'offline'
   targetAudience: 'children' | 'parents' | 'specialists' | 'all'
@@ -45,9 +46,12 @@ export default function NewCohortPage() {
   const router = useRouter()
   const { isAdmin, isSpecialist, isLoading: authLoading } = usePageAuth()
 
+  const [branches, setBranches] = useState<Branch[]>([])
+
   const [form, setForm] = useState<FormData>({
     title: '',
     description: '',
+    branchId: '',
     category: '',
     format: 'offline',
     targetAudience: 'children',
@@ -69,6 +73,14 @@ export default function NewCohortPage() {
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
   const coverInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!orgId) return
+    apiClient
+      .getBranches(orgId)
+      .then((res) => setBranches(res.branches ?? []))
+      .catch(() => setBranches([]))
+  }, [orgId])
 
   const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -115,6 +127,7 @@ export default function NewCohortPage() {
       const body: Record<string, unknown> = {
         title: form.title.trim(),
         description: form.description.trim(),
+        branchId: form.branchId || null,
         category: form.category.trim() || null,
         format: form.format,
         targetAudience: form.targetAudience,
@@ -275,6 +288,24 @@ export default function NewCohortPage() {
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
             />
           </div>
+
+          {branches.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Филиал</label>
+              <select
+                value={form.branchId}
+                onChange={set('branchId')}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+              >
+                <option value="">Без привязки к филиалу</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>

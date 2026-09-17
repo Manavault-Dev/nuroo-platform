@@ -87,7 +87,7 @@ function makeMockDb(invoiceId = 'invoice_abc') {
   const db = {
     collection: vi.fn().mockReturnValue(mockCollectionRef),
     doc: vi.fn().mockReturnValue({
-      get: vi.fn().mockResolvedValue({ exists: false }),
+      get: vi.fn().mockResolvedValue({ exists: false, data: () => undefined }),
       set: vi.fn().mockResolvedValue(undefined),
       update: vi.fn().mockResolvedValue(undefined),
     }),

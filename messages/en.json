@@ -1696,6 +1696,8 @@
         "address": "Address",
         "phone": "Phone",
         "contactPerson": "Contact Person",
+        "description": "Description",
+        "photoUrl": "Photo URL",
         "noBranches": "No branches yet. Add the first one.",
         "save": "Save",
         "cancel": "Cancel",
