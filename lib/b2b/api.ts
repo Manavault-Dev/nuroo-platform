@@ -2598,6 +2598,175 @@ export class ApiClient {
     )
   }
 
+  // ─── Pre-recorded Courses ───────────────────────────────────────────────────
+
+  async getOrgCourses(orgId: string) {
+    return this.request<{ courses: import('../b2b/types/course').Course[] }>(
+      `/orgs/${orgId}/courses`
+    )
+  }
+
+  async createOrgCourse(orgId: string, data: Record<string, unknown>) {
+    return this.request<{ id: string }>(`/orgs/${orgId}/courses`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getOrgCourse(orgId: string, courseId: string) {
+    return this.request<import('../b2b/types/course').Course>(`/orgs/${orgId}/courses/${courseId}`)
+  }
+
+  async updateOrgCourse(orgId: string, courseId: string, data: Record<string, unknown>) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/courses/${courseId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteOrgCourse(orgId: string, courseId: string) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/courses/${courseId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async publishOrgCourse(orgId: string, courseId: string, publish: boolean) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/courses/${courseId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: publish ? 'PUBLISHED' : 'DRAFT' }),
+    })
+  }
+
+  async getCourseFull(orgId: string, courseId: string) {
+    const [courseRes, modulesRes] = await Promise.all([
+      this.request<{ course: Record<string, unknown> }>(`/orgs/${orgId}/courses/${courseId}`),
+      this.request<{ modules: { id: string; [k: string]: unknown }[] }>(
+        `/orgs/${orgId}/courses/${courseId}/modules`
+      ),
+    ])
+    const modules = await Promise.all(
+      (modulesRes.modules ?? []).map(async (mod) => {
+        const lessonsRes = await this.request<{ lessons: unknown[] }>(
+          `/orgs/${orgId}/courses/${courseId}/modules/${mod.id}/lessons`
+        ).catch(() => ({ lessons: [] }))
+        return { ...mod, lessons: lessonsRes.lessons ?? [] }
+      })
+    )
+    return { ...(courseRes.course ?? courseRes), modules } as Record<string, unknown> & {
+      modules: { id: string; lessons: unknown[] }[]
+    }
+  }
+
+  async uploadCourseMedia(
+    orgId: string,
+    file: File,
+    kind: 'cover' | 'lesson-video' | 'lesson-image' | 'lesson-pdf'
+  ): Promise<{ url: string; path: string; filename?: string }> {
+    const formData = new FormData()
+    formData.append('media', file)
+    formData.append('kind', kind)
+
+    const headers = new Headers()
+    if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
+
+    const response = await fetch(`${this.baseUrl}/orgs/${orgId}/courses/media`, {
+      method: 'POST',
+      body: formData,
+      headers,
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
+      throw new Error(err.error || 'Upload failed')
+    }
+    return response.json()
+  }
+
+  async createCourseModule(
+    orgId: string,
+    courseId: string,
+    data: { title: string; description?: string; order: number }
+  ) {
+    return this.request<{ id: string }>(`/orgs/${orgId}/courses/${courseId}/modules`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateCourseModule(
+    orgId: string,
+    courseId: string,
+    moduleId: string,
+    data: Record<string, unknown>
+  ) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/courses/${courseId}/modules/${moduleId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteCourseModule(orgId: string, courseId: string, moduleId: string) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/courses/${courseId}/modules/${moduleId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async reorderCourseModules(orgId: string, courseId: string, order: string[]) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/courses/${courseId}/modules/reorder`, {
+      method: 'PATCH',
+      body: JSON.stringify({ order }),
+    })
+  }
+
+  async createCourseLesson(
+    orgId: string,
+    courseId: string,
+    moduleId: string,
+    data: Record<string, unknown>
+  ) {
+    return this.request<{ id: string }>(
+      `/orgs/${orgId}/courses/${courseId}/modules/${moduleId}/lessons`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    )
+  }
+
+  async updateCourseLesson(
+    orgId: string,
+    courseId: string,
+    moduleId: string,
+    lessonId: string,
+    data: Record<string, unknown>
+  ) {
+    return this.request<{ ok: boolean }>(
+      `/orgs/${orgId}/courses/${courseId}/modules/${moduleId}/lessons/${lessonId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }
+    )
+  }
+
+  async deleteCourseLesson(orgId: string, courseId: string, moduleId: string, lessonId: string) {
+    return this.request<{ ok: boolean }>(
+      `/orgs/${orgId}/courses/${courseId}/modules/${moduleId}/lessons/${lessonId}`,
+      {
+        method: 'DELETE',
+      }
+    )
+  }
+
+  async reorderCourseLessons(orgId: string, courseId: string, moduleId: string, order: string[]) {
+    return this.request<{ ok: boolean }>(
+      `/orgs/${orgId}/courses/${courseId}/modules/${moduleId}/lessons/reorder`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ order }),
+      }
+    )
+  }
+
   // Clear all cache (useful for logout)
   clearCache() {
     cache.invalidate()
