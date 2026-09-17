@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { randomUUID } from 'crypto'
 import { getFirestore } from '../../infrastructure/database/firebase.js'
-import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
+import { requireOrgMember, memberBranchScope } from '../../infrastructure/auth/rbac.js'
 import {
   canCreateCohort,
   canManageCohort,
@@ -33,20 +33,23 @@ export const cohortsRoute: FastifyPluginAsync = async (fastify) => {
 
   // ── GET /orgs/:orgId/cohorts ─────────────────────────────────────────────
 
-  fastify.get<{ Params: { orgId: string } }>(
+  fastify.get<{ Params: { orgId: string }; Querystring: { branchId?: string } }>(
     '/orgs/:orgId/cohorts',
     { config: { rateLimit: RATE } },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
-      await requireOrgMember(request, reply, request.params.orgId)
+      const member = await requireOrgMember(request, reply, request.params.orgId)
       if (reply.sent) return
 
       const { orgId } = request.params
-      const snap = await db
-        .collection(COL.cohorts(orgId))
-        .orderBy('createdAt', 'desc')
-        .limit(200)
-        .get()
+      // A branch-scoped member always sees only their branch; an HQ member may
+      // optionally filter by branchId via the query string.
+      const scope = memberBranchScope(member)
+      const effectiveBranchId = scope ?? request.query.branchId
+      let query = db.collection(COL.cohorts(orgId)) as FirebaseFirestore.Query
+      if (effectiveBranchId) query = query.where('branchId', '==', effectiveBranchId)
+
+      const snap = await query.orderBy('createdAt', 'desc').limit(200).get()
       const cohorts = snap.docs.map((d) => {
         const data = { id: d.id, ...d.data() } as CohortDoc
         return { ...data, status: computeStatus(data) }
@@ -75,9 +78,12 @@ export const cohortsRoute: FastifyPluginAsync = async (fastify) => {
       const { orgName, orgLogoUrl } = await getOrgMeta(db, orgId)
       const resolvedInstructorId = isAdmin(member) ? (body.instructorId ?? member.uid) : member.uid
       const instructorName = await getSpecialistName(db, resolvedInstructorId)
+      // A branch-scoped member always creates programs under their own branch.
+      const scope = memberBranchScope(member)
 
       const doc: Omit<CohortDoc, 'id'> = {
         orgId,
+        branchId: scope ?? body.branchId ?? null,
         title: body.title,
         description: body.description,
         instructorId: resolvedInstructorId,

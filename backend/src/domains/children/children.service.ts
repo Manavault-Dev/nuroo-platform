@@ -35,12 +35,16 @@ export async function fetchAssignedChildren(
   db: admin.firestore.Firestore,
   orgId: string,
   role: string,
-  uid: string
+  uid: string,
+  /** Enterprise branch scope — restricts results to one branch. `null` = see all (HQ). */
+  branchScope: string | null = null
 ): Promise<{ docs: admin.firestore.QueryDocumentSnapshot[] }> {
   const orgChildrenRef = db.collection(COLLECTIONS.ORG_CHILDREN(orgId))
 
   if (role === 'org_admin') {
-    return orgChildrenRef.where('assigned', '==', true).get()
+    let query = orgChildrenRef.where('assigned', '==', true) as admin.firestore.Query
+    if (branchScope) query = query.where('branchId', '==', branchScope)
+    return query.get()
   }
 
   const directSnap = await orgChildrenRef
@@ -49,7 +53,9 @@ export async function fetchAssignedChildren(
     .get()
 
   const seenIds = new Set(directSnap.docs.map((d) => d.id))
-  const allDocs: admin.firestore.QueryDocumentSnapshot[] = [...directSnap.docs]
+  const allDocs: admin.firestore.QueryDocumentSnapshot[] = branchScope
+    ? directSnap.docs.filter((d) => (d.data().branchId ?? null) === branchScope)
+    : [...directSnap.docs]
 
   const groupsSnap = await db
     .collection(`specialists/${uid}/groups`)
@@ -77,7 +83,10 @@ export async function fetchAssignedChildren(
       const batchSnap = await orgChildrenRef
         .where(admin.firestore.FieldPath.documentId(), 'in', batch)
         .get()
-      allDocs.push(...batchSnap.docs)
+      const docs = branchScope
+        ? batchSnap.docs.filter((d) => (d.data().branchId ?? null) === branchScope)
+        : batchSnap.docs
+      allDocs.push(...docs)
     }
   }
 
@@ -394,10 +403,12 @@ export async function createChildRecord(
     gender?: string
     diagnosis?: string
     primaryConcern?: string
+    branchId?: string | null
   }
 ) {
   const now = admin.firestore.Timestamp.fromDate(new Date())
   const fullName = [body.firstName.trim(), body.lastName?.trim()].filter(Boolean).join(' ')
+  const branchId = body.branchId || null
 
   const globalRef = db.collection('children').doc()
   const childData = {
@@ -409,6 +420,7 @@ export async function createChildRecord(
     diagnosis: body.diagnosis || null,
     primaryConcern: body.primaryConcern || null,
     orgId,
+    branchId,
     createdBy: createdByUid,
     createdAt: now,
     updatedAt: now,
@@ -419,6 +431,7 @@ export async function createChildRecord(
     assigned: true,
     childId: globalRef.id,
     name: fullName,
+    branchId,
     createdAt: now,
     updatedAt: now,
   })
