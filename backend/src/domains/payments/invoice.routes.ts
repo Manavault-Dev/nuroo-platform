@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { getFirestore } from '../../infrastructure/database/firebase.js'
-import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
+import { requireOrgMember, memberBranchScope } from '../../infrastructure/auth/rbac.js'
 import { createInvoice, listInvoices, getInvoice, cancelInvoice } from './invoice.service.js'
 import type { PaymentStatus } from './providers/PaymentProvider.interface.js'
 
@@ -36,7 +36,8 @@ export const invoiceRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { orgId } = request.params
-      await requireOrgMember(request, reply, orgId)
+      const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
 
       const body = request.body
 
@@ -50,6 +51,15 @@ export const invoiceRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const db = getFirestore()
+
+      const scope = memberBranchScope(member)
+      if (scope) {
+        const childLinkSnap = await db.doc(`organizations/${orgId}/children/${body.childId}`).get()
+        const childBranchId = (childLinkSnap.data()?.branchId as string | null | undefined) ?? null
+        if (childBranchId !== scope) {
+          return reply.code(403).send({ error: 'Child belongs to a different branch' })
+        }
+      }
 
       try {
         const invoice = await createInvoice(
@@ -86,19 +96,28 @@ export const invoiceRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /orgs/:orgId/invoices
   fastify.get<{
     Params: { orgId: string }
-    Querystring: { parentId?: string; status?: string; limit?: string; month?: string }
+    Querystring: {
+      parentId?: string
+      status?: string
+      limit?: string
+      month?: string
+      branchId?: string
+    }
   }>('/orgs/:orgId/invoices', async (request, reply) => {
     const { orgId } = request.params
-    await requireOrgMember(request, reply, orgId)
+    const member = await requireOrgMember(request, reply, orgId)
+    if (reply.sent) return
 
-    const { parentId, status, limit, month } = request.query
+    const { parentId, status, limit, month, branchId } = request.query
     const db = getFirestore()
+    const scope = memberBranchScope(member)
 
     const invoices = await listInvoices(db, orgId, {
       parentId,
       status: status as PaymentStatus | undefined,
       limit: limit ? parseInt(limit, 10) : 50,
       month,
+      branchId: scope ?? branchId,
     })
 
     return { ok: true, invoices }
@@ -109,13 +128,19 @@ export const invoiceRoutes: FastifyPluginAsync = async (fastify) => {
     Params: { orgId: string; invoiceId: string }
   }>('/orgs/:orgId/invoices/:invoiceId', async (request, reply) => {
     const { orgId, invoiceId } = request.params
-    await requireOrgMember(request, reply, orgId)
+    const member = await requireOrgMember(request, reply, orgId)
+    if (reply.sent) return
 
     const db = getFirestore()
     const invoice = await getInvoice(db, orgId, invoiceId)
 
     if (!invoice) {
       return reply.code(404).send({ error: 'Invoice not found', code: 'INVOICE_NOT_FOUND' })
+    }
+
+    const scope = memberBranchScope(member)
+    if (scope && (invoice.branchId ?? null) !== scope) {
+      return reply.code(403).send({ error: 'Invoice belongs to a different branch' })
     }
 
     return { ok: true, invoice }
@@ -126,9 +151,18 @@ export const invoiceRoutes: FastifyPluginAsync = async (fastify) => {
     Params: { orgId: string; invoiceId: string }
   }>('/orgs/:orgId/invoices/:invoiceId/cancel', async (request, reply) => {
     const { orgId, invoiceId } = request.params
-    await requireOrgMember(request, reply, orgId)
+    const member = await requireOrgMember(request, reply, orgId)
+    if (reply.sent) return
 
     const db = getFirestore()
+
+    const scope = memberBranchScope(member)
+    if (scope) {
+      const existing = await getInvoice(db, orgId, invoiceId)
+      if (existing && (existing.branchId ?? null) !== scope) {
+        return reply.code(403).send({ error: 'Invoice belongs to a different branch' })
+      }
+    }
 
     try {
       const invoice = await cancelInvoice(db, orgId, invoiceId)

@@ -303,4 +303,62 @@ export const parentsRoute: FastifyPluginAsync = async (fastify) => {
       }
     }
   )
+
+  // ── GET /api/parent/profile — parent reads own contact info from mobile app ─
+  fastify.get<{ Querystring: { orgId?: string } }>(
+    '/api/parent/profile',
+    async (request, reply) => {
+      try {
+        if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
+        const { uid } = request.user
+        const db = getFirestore()
+
+        let resolvedOrgId = request.query.orgId
+        if (!resolvedOrgId) {
+          // Fallback: scan organizations/{orgId}/children looking for this parent's orgId
+          // (avoids collectionGroup requiring an index when the caller already knows orgId)
+          try {
+            const orgChildrenSnap = await db
+              .collectionGroup('children')
+              .where('parentUserId', '==', uid)
+              .limit(1)
+              .get()
+            if (!orgChildrenSnap.empty) {
+              // path: organizations/{orgId}/children/{childId}  →  split[1] = orgId
+              resolvedOrgId = orgChildrenSnap.docs[0].ref.path.split('/')[1]
+            }
+          } catch {
+            /* ignore index errors */
+          }
+        }
+
+        if (!resolvedOrgId) {
+          return { ok: true, profile: null }
+        }
+
+        const snap = await db.doc(`orgParents/${resolvedOrgId}/parents/${uid}`).get()
+        if (!snap.exists) {
+          return { ok: true, profile: null }
+        }
+
+        const data = snap.data()!
+        return {
+          ok: true,
+          profile: {
+            fullName: data.fullName ?? null,
+            phone: data.phone ?? null,
+            whatsapp: data.whatsapp ?? null,
+            address: data.address ?? null,
+            notes: data.notes ?? null,
+          },
+        }
+      } catch (error: unknown) {
+        console.error('[PARENTS] Error fetching parent profile:', error)
+        return reply.code(500).send({
+          error: 'Failed to fetch parent profile',
+          details: error instanceof Error ? error.message : '',
+        })
+      }
+    }
+  )
 }

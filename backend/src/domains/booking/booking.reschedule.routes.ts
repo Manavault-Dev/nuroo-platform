@@ -220,6 +220,7 @@ export const bookingRescheduleRoute: FastifyPluginAsync = async (fastify) => {
           const newDoc: BookingDoc = {
             orgId,
             specialistId: original.specialistId,
+            branchId: original.branchId ?? null,
             parentId,
             childId: childId ?? original.childId,
             serviceId: original.serviceId,

@@ -3,7 +3,7 @@ import admin from 'firebase-admin'
 import { z } from 'zod'
 
 import { getFirestore } from '../../infrastructure/database/firebase.js'
-import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
+import { requireOrgMember, memberBranchScope } from '../../infrastructure/auth/rbac.js'
 import { config } from '../../config/index.js'
 import { checkOrgHasFeature } from '../payments/planLimits.js'
 
@@ -155,10 +155,15 @@ export const financeRoute: FastifyPluginAsync = async (fastify) => {
 
         const db = getFirestore()
 
+        const scope = memberBranchScope(member)
+
         let childDocs: admin.firestore.QueryDocumentSnapshot[]
         if (member.role === 'org_admin') {
           const snap = await db.collection(ORG_CHILDREN(orgId)).get()
-          childDocs = snap.docs.filter((doc) => isActiveOrgChild(doc.data()))
+          childDocs = snap.docs.filter(
+            (doc) =>
+              isActiveOrgChild(doc.data()) && (!scope || (doc.data().branchId ?? null) === scope)
+          )
         } else {
           // Collect child IDs from two sources:
           // 1. Children directly assigned via assignedSpecialistId
@@ -289,6 +294,13 @@ export const financeRoute: FastifyPluginAsync = async (fastify) => {
             .code(403)
             .send({ error: 'Only admins and specialists can mark attendance', code: 'FORBIDDEN' })
         }
+        const scope = memberBranchScope(member)
+        if (member.role === 'org_admin' && scope) {
+          const childBranchId = orgChildSnap.data()?.branchId ?? null
+          if (childBranchId !== scope) {
+            return reply.code(403).send({ error: 'Child belongs to a different branch' })
+          }
+        }
         if (member.role !== 'org_admin') {
           const childData = orgChildSnap.data()!
           const hasAccess =
@@ -326,7 +338,7 @@ export const financeRoute: FastifyPluginAsync = async (fastify) => {
     }
   )
 
-  fastify.get<{ Params: { orgId: string }; Querystring: { month?: string } }>(
+  fastify.get<{ Params: { orgId: string }; Querystring: { month?: string; branchId?: string } }>(
     '/orgs/:orgId/finance',
     async (request, reply) => {
       try {
@@ -342,6 +354,9 @@ export const financeRoute: FastifyPluginAsync = async (fastify) => {
         if (!featureCheck.ok) {
           return reply.code(403).send({ error: featureCheck.error, code: 'PLAN_UPGRADE_REQUIRED' })
         }
+
+        const scope = memberBranchScope(member)
+        const effectiveBranchId = scope ?? (request.query as any).branchId
 
         const now = new Date()
         const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -369,7 +384,9 @@ export const financeRoute: FastifyPluginAsync = async (fastify) => {
         const monthInvoices = allInvoices.filter((inv) => {
           const inDue = (inv.dueDate as string | undefined)?.startsWith(month)
           const inPeriod = (inv.periodStart as string | undefined)?.startsWith(month)
-          return inDue || inPeriod
+          if (!(inDue || inPeriod)) return false
+          if (effectiveBranchId && (inv.branchId ?? null) !== effectiveBranchId) return false
+          return true
         })
 
         // Also resolve child names for invoices that are for children no longer
@@ -466,6 +483,15 @@ export const financeRoute: FastifyPluginAsync = async (fastify) => {
         const body = feeSchema.parse(request.body)
         const now = new Date()
         const db = getFirestore()
+
+        const scope = memberBranchScope(member)
+        if (scope) {
+          const childSnap = await db.doc(`${ORG_CHILDREN(orgId)}/${body.childId}`).get()
+          const childBranchId = childSnap.data()?.branchId ?? null
+          if (childBranchId !== scope) {
+            return reply.code(403).send({ error: 'Child belongs to a different branch' })
+          }
+        }
 
         const docId = `${body.month}_${body.childId}`
         const ref = db.doc(`${ORG_MONTHLY_FEES(orgId)}/${docId}`)

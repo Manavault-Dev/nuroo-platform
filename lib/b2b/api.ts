@@ -119,7 +119,48 @@ export interface Branch {
   address?: string | null
   phone?: string | null
   contactPerson?: string | null
+  description?: string | null
+  photoUrl?: string | null
   createdAt?: string | null
+}
+
+export type LeadStatus = 'new' | 'contacted' | 'trial_booked' | 'active_client' | 'lost'
+
+/** Enterprise branch-level role label — informational, paired with a member's branchId. */
+export type BranchRole = 'branch_admin' | 'admissions_manager' | 'finance_manager' | 'teacher'
+
+export const BRANCH_ROLE_LABELS: Record<BranchRole, string> = {
+  branch_admin: 'Администратор филиала',
+  admissions_manager: 'Менеджер по заявкам',
+  finance_manager: 'Финансовый менеджер',
+  teacher: 'Преподаватель',
+}
+
+export interface Lead {
+  id: string
+  orgId: string
+  branchId: string | null
+  parentName: string
+  phone: string
+  email?: string | null
+  childName?: string | null
+  childAge?: string | null
+  programInterest?: string | null
+  message?: string | null
+  source: 'marketplace' | 'manual' | 'referral'
+  status: LeadStatus
+  assignedTo?: string | null
+  notes?: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface LeadBranchStat {
+  branchId: string | null
+  branchName: string
+  total: number
+  byStatus: Record<string, number>
+  conversionRate: number
 }
 
 export interface AttendanceRecord {
@@ -298,6 +339,7 @@ export interface Invoice {
   billingProfileId?: string
   periodStart?: string
   periodEnd?: string
+  branchId?: string | null
 }
 
 export interface CreateInvoiceInput {
@@ -793,11 +835,12 @@ export class ApiClient {
 
   async getInvoices(
     orgId: string,
-    params?: { parentId?: string; status?: string }
+    params?: { parentId?: string; status?: string; branchId?: string }
   ): Promise<{ ok: boolean; invoices: Invoice[] }> {
     const qs = new URLSearchParams()
     if (params?.parentId) qs.set('parentId', params.parentId)
     if (params?.status) qs.set('status', params.status)
+    if (params?.branchId) qs.set('branchId', params.branchId)
     const query = qs.toString() ? `?${qs}` : ''
     return this.cachedRequest<{ ok: boolean; invoices: Invoice[] }>(
       `/orgs/${orgId}/invoices${query}`,
@@ -1031,6 +1074,8 @@ export class ApiClient {
         name: string
         role: 'admin' | 'specialist'
         joinedAt: string
+        branchId: string | null
+        branchRole: BranchRole | null
       }>
     >(`/orgs/${orgId}/team`, `team:${orgId}`, 'default')
   }
@@ -1046,6 +1091,21 @@ export class ApiClient {
       method: 'PATCH',
       body: JSON.stringify({ role }),
     })
+  }
+
+  async assignMemberBranch(
+    orgId: string,
+    uid: string,
+    data: { branchId: string | null; branchRole?: BranchRole | null }
+  ) {
+    cache.invalidate(`team:${orgId}`)
+    return this.request<{ ok: boolean; branchId: string | null; branchRole: BranchRole | null }>(
+      `/orgs/${orgId}/members/${uid}/branch`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }
+    )
   }
 
   // Invites
@@ -1824,9 +1884,37 @@ export class ApiClient {
     )
   }
 
+  async getBranchStats(orgId: string) {
+    return this.request<{
+      ok: boolean
+      month: string
+      stats: Array<{
+        branchId: string
+        name: string
+        revenueThisMonth: number
+        unpaidCount: number
+        unpaidAmount: number
+        teamCount: number
+      }>
+      totals: {
+        revenueThisMonth: number
+        unpaidCount: number
+        unpaidAmount: number
+        teamCount: number
+      }
+    }>(`/orgs/${orgId}/branches/stats`)
+  }
+
   async createBranch(
     orgId: string,
-    data: { name: string; address?: string; phone?: string; contactPerson?: string }
+    data: {
+      name: string
+      address?: string
+      phone?: string
+      contactPerson?: string
+      description?: string
+      photoUrl?: string
+    }
   ) {
     cache.invalidate(`branches:${orgId}`)
     return this.request<{ ok: boolean; branch: Branch }>(`/orgs/${orgId}/branches`, {
@@ -1838,7 +1926,14 @@ export class ApiClient {
   async updateBranch(
     orgId: string,
     branchId: string,
-    data: Partial<{ name: string; address: string; phone: string; contactPerson: string }>
+    data: Partial<{
+      name: string
+      address: string
+      phone: string
+      contactPerson: string
+      description: string
+      photoUrl: string
+    }>
   ) {
     cache.invalidate(`branches:${orgId}`)
     return this.request<{ ok: boolean }>(`/orgs/${orgId}/branches/${branchId}`, {
@@ -1878,9 +1973,11 @@ export class ApiClient {
   }
 
   // Finance — Monthly Fees
-  async getMonthlyFees(orgId: string, month: string) {
+  async getMonthlyFees(orgId: string, month: string, branchId?: string) {
+    const qs = new URLSearchParams({ month })
+    if (branchId) qs.set('branchId', branchId)
     return this.request<{ ok: boolean; month: string; records: FeeRecord[] }>(
-      `/orgs/${orgId}/finance?month=${month}`
+      `/orgs/${orgId}/finance?${qs}`
     )
   }
 
@@ -2197,10 +2294,11 @@ export class ApiClient {
 
   // ── Bookings ──────────────────────────────────────────────────────────────
 
-  async getOrgBookings(orgId: string, status?: string, specialistId?: string) {
+  async getOrgBookings(orgId: string, status?: string, specialistId?: string, branchId?: string) {
     const params = new URLSearchParams()
     if (status) params.set('status', status)
     if (specialistId) params.set('specialistId', specialistId)
+    if (branchId) params.set('branchId', branchId)
     const q = params.size > 0 ? `?${params}` : ''
     return this.request<{
       ok: boolean
@@ -2208,6 +2306,7 @@ export class ApiClient {
         id: string
         orgId: string
         specialistId: string
+        branchId?: string | null
         parentId: string
         childId: string | null
         serviceId: string | null
@@ -2355,8 +2454,9 @@ export class ApiClient {
 
   // ── Cohorts ───────────────────────────────────────────────────────────────
 
-  async getCohorts(orgId: string) {
-    return this.request<{ ok: boolean; cohorts: any[] }>(`/orgs/${orgId}/cohorts`)
+  async getCohorts(orgId: string, params?: { branchId?: string }) {
+    const qs = params?.branchId ? `?branchId=${encodeURIComponent(params.branchId)}` : ''
+    return this.request<{ ok: boolean; cohorts: any[] }>(`/orgs/${orgId}/cohorts${qs}`)
   }
 
   async getCohort(orgId: string, cohortId: string) {

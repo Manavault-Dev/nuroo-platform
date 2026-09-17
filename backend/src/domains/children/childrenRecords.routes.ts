@@ -1,7 +1,11 @@
 import admin from 'firebase-admin'
 
 import { getFirestore } from '../../infrastructure/database/firebase.js'
-import { requireOrgMember, requireChildAccess } from '../../infrastructure/auth/rbac.js'
+import {
+  requireOrgMember,
+  requireChildAccess,
+  memberBranchScope,
+} from '../../infrastructure/auth/rbac.js'
 import { checkOrgCanAddChild } from '../payments/planLimits.js'
 import type { ChildDetail } from '../../shared/types/domain.js'
 import {
@@ -26,6 +30,7 @@ export const childrenRecordsRoute: import('fastify').FastifyPluginAsync = async 
       gender?: 'male' | 'female' | 'other'
       diagnosis?: string
       primaryConcern?: string
+      branchId?: string | null
     }
   }>('/orgs/:orgId/children', async (request, reply) => {
     try {
@@ -49,6 +54,7 @@ export const childrenRecordsRoute: import('fastify').FastifyPluginAsync = async 
         gender?: string
         diagnosis?: string
         primaryConcern?: string
+        branchId?: string | null
       }
 
       if (!body.firstName?.trim()) {
@@ -56,7 +62,18 @@ export const childrenRecordsRoute: import('fastify').FastifyPluginAsync = async 
       }
 
       const db = getFirestore()
-      const { id, childData, now } = await createChildRecord(db, orgId, request.user!.uid, body)
+      // A branch-scoped admin always creates the child under their own branch.
+      const scope = memberBranchScope(member)
+      const branchId = scope ?? body.branchId ?? null
+      if (branchId) {
+        const branchSnap = await db.doc(`organizations/${orgId}/branches/${branchId}`).get()
+        if (!branchSnap.exists) return reply.code(404).send({ error: 'Branch not found' })
+      }
+
+      const { id, childData, now } = await createChildRecord(db, orgId, request.user!.uid, {
+        ...body,
+        branchId,
+      })
 
       return reply.code(201).send({
         ok: true,
@@ -81,7 +98,8 @@ export const childrenRecordsRoute: import('fastify').FastifyPluginAsync = async 
       fastify.log.info(`[CHILDREN] Fetching children for org=${orgId}, user=${uid}, role=${role}`)
 
       const db = getFirestore()
-      const assignedChildrenSnap = await fetchAssignedChildren(db, orgId, role, uid)
+      const scope = memberBranchScope(member)
+      const assignedChildrenSnap = await fetchAssignedChildren(db, orgId, role, uid, scope)
       const childIds = assignedChildrenSnap.docs.map((doc) => doc.id)
 
       fastify.log.info(`[CHILDREN] Found ${childIds.length} assigned children for user ${uid}`)
@@ -117,6 +135,7 @@ export const childrenRecordsRoute: import('fastify').FastifyPluginAsync = async 
             id: childId,
             name: childName,
             parentId: parentUserId ?? null,
+            branchId: linkData?.branchId ?? null,
             age: childData?.age || childData?.childAge || userData?.age || userData?.childAge,
             speechStepId: progressData?.currentStepId,
             speechStepNumber: progressData?.currentStepNumber,
@@ -275,6 +294,16 @@ export const childrenRecordsRoute: import('fastify').FastifyPluginAsync = async 
         const db = getFirestore()
 
         const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+
+        const scope = memberBranchScope(member)
+        if (scope) {
+          const linkSnap = await db
+            .doc(`${COLLECTIONS.ORG_CHILDREN(orgId)}/${resolvedChildId}`)
+            .get()
+          if ((linkSnap.data()?.branchId ?? null) !== scope) {
+            return reply.code(403).send({ error: 'Child belongs to a different branch' })
+          }
+        }
 
         try {
           const { groupsCleaned } = await removeChildFromOrg(db, orgId, resolvedChildId, uid)
