@@ -1949,6 +1949,68 @@ export class ApiClient {
     })
   }
 
+  // Leads / Admissions CRM
+  async getLeads(orgId: string, params?: { branchId?: string; status?: LeadStatus }) {
+    const query = new URLSearchParams()
+    if (params?.branchId) query.set('branchId', params.branchId)
+    if (params?.status) query.set('status', params.status)
+    const qs = query.toString()
+    return this.request<{ ok: boolean; leads: Lead[]; count: number }>(
+      `/orgs/${orgId}/leads${qs ? `?${qs}` : ''}`,
+      { cache: 'no-store' }
+    )
+  }
+
+  async createLead(
+    orgId: string,
+    data: {
+      branchId?: string | null
+      parentName: string
+      phone: string
+      email?: string
+      childName?: string
+      programInterest?: string
+      notes?: string
+    }
+  ) {
+    return this.request<{ ok: boolean; lead: Lead }>(`/orgs/${orgId}/leads`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateLead(
+    orgId: string,
+    leadId: string,
+    data: Partial<{
+      status: LeadStatus
+      branchId: string | null
+      assignedTo: string | null
+      notes: string | null
+    }>
+  ) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/leads/${leadId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteLead(orgId: string, leadId: string) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/leads/${leadId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async getLeadsAnalytics(orgId: string) {
+    return this.request<{
+      ok: boolean
+      total: number
+      totalByStatus: Record<string, number>
+      conversionRate: number
+      byBranch: LeadBranchStat[]
+    }>(`/orgs/${orgId}/leads/analytics`, { cache: 'no-store' })
+  }
+
   // Finance — Attendance
   async getAttendance(orgId: string, date: string) {
     return this.request<{ ok: boolean; date: string; records: AttendanceRecord[] }>(
