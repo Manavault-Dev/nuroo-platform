@@ -3,11 +3,16 @@ import { z } from 'zod'
 import { getFirestore } from '../../infrastructure/database/firebase.js'
 import { requireOrgMember, requireChildAccess } from '../../infrastructure/auth/rbac.js'
 import { dispatch } from '../../modules/notifications/index.js'
-import { createChildTask, listChildTasks } from './children.service.js'
+import { createChildTask, listChildTasks, reviewChildTask } from './children.service.js'
 
 const createTaskSchema = z.object({
   title: z.string().min(1).max(500),
   description: z.string().max(2000).optional(),
+})
+
+const reviewTaskSchema = z.object({
+  grade: z.enum(['approved', 'needs_revision']),
+  feedback: z.string().max(2000).optional(),
 })
 
 export const childrenTasksRoute: import('fastify').FastifyPluginAsync = async (fastify) => {
@@ -85,6 +90,51 @@ export const childrenTasksRoute: import('fastify').FastifyPluginAsync = async (f
       fastify.log.error({ err: error }, 'Route handler failed')
       return reply.code(500).send({
         error: 'Failed to create task',
+        details: error instanceof Error ? error.message : '',
+      })
+    }
+  })
+
+  fastify.patch<{
+    Params: { orgId: string; childId: string; taskId: string }
+    Body: z.infer<typeof reviewTaskSchema>
+  }>('/orgs/:orgId/children/:childId/tasks/:taskId/review', async (request, reply) => {
+    try {
+      const { orgId, childId, taskId } = request.params
+      await requireOrgMember(request, reply, orgId)
+      const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+      if (!request.user) return
+
+      const parse = reviewTaskSchema.safeParse(request.body)
+      if (!parse.success) {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'Invalid body: grade must be "approved" or "needs_revision"',
+        })
+      }
+
+      const db = getFirestore()
+      try {
+        const task = await reviewChildTask(
+          db,
+          orgId,
+          resolvedChildId,
+          taskId,
+          request.user.uid,
+          parse.data.grade,
+          parse.data.feedback
+        )
+        return { ok: true, task }
+      } catch (err: any) {
+        if (err.statusCode === 404) {
+          return reply.code(404).send({ error: err.message })
+        }
+        throw err
+      }
+    } catch (error: unknown) {
+      fastify.log.error({ err: error }, 'Route handler failed')
+      return reply.code(500).send({
+        error: 'Failed to review task',
         details: error instanceof Error ? error.message : '',
       })
     }

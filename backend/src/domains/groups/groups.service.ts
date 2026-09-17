@@ -1,4 +1,5 @@
 import admin from 'firebase-admin'
+import { dispatch } from '../../modules/notifications/index.js'
 
 export const DEFAULT_GROUP_COLOR = '#6366f1'
 
@@ -718,7 +719,8 @@ export async function reviewSubmission(
   }
 
   const now = admin.firestore.Timestamp.fromDate(new Date())
-  await tasksSnap.docs[0].ref.update({
+  const taskDoc = tasksSnap.docs[0]
+  await taskDoc.ref.update({
     grade,
     feedback: feedback ?? null,
     feedbackBy: reviewerUid,
@@ -726,4 +728,28 @@ export async function reviewSubmission(
     status: grade === 'approved' ? 'completed' : 'pending',
     updatedAt: now,
   })
+
+  try {
+    const orgChildSnap = await db.doc(`${COLLECTIONS.ORG_CHILDREN(orgId)}/${childId}`).get()
+    const parentUserId = orgChildSnap.data()?.parentUserId
+    if (parentUserId) {
+      const taskTitle = taskDoc.data()?.title || 'your assignment'
+      await dispatch({
+        userId: parentUserId,
+        orgId,
+        role: 'parent',
+        type: 'task_reviewed',
+        category: 'assignments',
+        title: grade === 'approved' ? 'Assignment approved' : 'Assignment needs revision',
+        body:
+          grade === 'approved'
+            ? `"${taskTitle}" was reviewed and approved.`
+            : `"${taskTitle}" needs another look — check the specialist's feedback.`,
+        metadata: { childId, taskId: taskDoc.id, orgId },
+        dedupKey: `task_reviewed:${childId}:${taskDoc.id}:${now.toMillis()}`,
+      })
+    }
+  } catch {
+    // best-effort — grading must not fail if the notification can't be sent
+  }
 }
