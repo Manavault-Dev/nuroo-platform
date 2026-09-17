@@ -27,6 +27,7 @@ export type GatedFeature =
   | 'finance'
   | 'dedicatedOnboarding'
   | 'customIntegrations'
+  | 'crm'
 
 /** Which is the minimum plan that unlocks each feature. */
 export const FEATURE_MIN_PLAN: Record<GatedFeature, PlanId> = {
@@ -39,6 +40,7 @@ export const FEATURE_MIN_PLAN: Record<GatedFeature, PlanId> = {
   finance: 'enterprise',
   dedicatedOnboarding: 'enterprise',
   customIntegrations: 'enterprise',
+  crm: 'growth',
 }
 
 /**

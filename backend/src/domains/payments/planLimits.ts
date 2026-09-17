@@ -28,6 +28,7 @@ export interface PlanFeatures {
   finance: boolean
   dedicatedOnboarding: boolean
   customIntegrations: boolean
+  crm: boolean
 }
 
 export interface PlanConfig {
@@ -52,6 +53,7 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
       finance: false,
       dedicatedOnboarding: false,
       customIntegrations: false,
+      crm: false,
     },
   },
   growth: {
@@ -68,6 +70,7 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
       finance: false,
       dedicatedOnboarding: false,
       customIntegrations: false,
+      crm: true,
     },
   },
   enterprise: {
@@ -84,6 +87,7 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
       finance: true,
       dedicatedOnboarding: true,
       customIntegrations: true,
+      crm: true,
     },
   },
 }
@@ -414,6 +418,7 @@ export async function checkOrgHasFeature(
       finance: 'Finance module (Enterprise plan)',
       dedicatedOnboarding: 'Dedicated onboarding (Enterprise plan)',
       customIntegrations: 'Custom integrations (Enterprise plan)',
+      crm: 'Leads & admissions CRM (Growth plan)',
     }
     return {
       ok: false,
