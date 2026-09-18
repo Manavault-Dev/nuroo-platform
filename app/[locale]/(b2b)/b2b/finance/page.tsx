@@ -11,6 +11,7 @@ import {
   type CreateInvoiceInput,
   type ChildSummary,
   type ChildBillingProfile,
+  type Branch,
 } from '@/lib/b2b/api'
 import { PageSpinner, Spinner } from '@/components/ui/Spinner'
 import {
@@ -32,6 +33,7 @@ import {
   EyeOff,
   ShieldCheck,
   Pencil,
+  GitBranch,
 } from 'lucide-react'
 import { PlanGate } from '@/components/b2b/PlanGate'
 
@@ -120,6 +122,10 @@ export default function FinancePage() {
   const [expandedChild, setExpandedChild] = useState<string | null>(null)
   const financeLoadSeq = useRef(0)
 
+  // Branch filter (enterprise multi-branch orgs)
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [branchFilter, setBranchFilter] = useState('')
+
   const loadAttendance = useCallback(async (oid: string, date: string) => {
     setLoadingAttendance(true)
     try {
@@ -137,10 +143,10 @@ export default function FinancePage() {
     }
   }, [])
 
-  const loadInvoices = useCallback(async (oid: string) => {
+  const loadInvoices = useCallback(async (oid: string, branchId?: string) => {
     setLoadingInvoices(true)
     try {
-      const res = await apiClient.getInvoices(oid)
+      const res = await apiClient.getInvoices(oid, branchId ? { branchId } : undefined)
       setInvoices(res.invoices ?? [])
     } catch {
       setInvoices([])
@@ -180,7 +186,7 @@ export default function FinancePage() {
     }
   }, [])
 
-  const loadFinanceData = useCallback(async (oid: string) => {
+  const loadFinanceData = useCallback(async (oid: string, branchId?: string) => {
     const seq = ++financeLoadSeq.current
     setLoadingInvoices(true)
     setLoadingChildren(true)
@@ -189,7 +195,7 @@ export default function FinancePage() {
 
     const [invoicesResult, providersResult, childrenResult, profilesResult] =
       await Promise.allSettled([
-        apiClient.getInvoices(oid),
+        apiClient.getInvoices(oid, branchId ? { branchId } : undefined),
         apiClient.getPaymentProviders(oid),
         apiClient.getChildren(oid),
         apiClient.getBillingProfiles(oid),
@@ -240,9 +246,17 @@ export default function FinancePage() {
 
   useEffect(() => {
     if (orgId && activeTab === 'invoices') {
-      loadFinanceData(orgId)
+      loadFinanceData(orgId, branchFilter || undefined)
     }
-  }, [orgId, activeTab, loadFinanceData])
+  }, [orgId, activeTab, branchFilter, loadFinanceData])
+
+  useEffect(() => {
+    if (!orgId || !isAdmin) return
+    apiClient
+      .getBranches(orgId)
+      .then((res) => setBranches(res.branches ?? []))
+      .catch(() => setBranches([]))
+  }, [orgId, isAdmin])
 
   useEffect(() => {
     if (isLoading || !isAdmin || searchParams.get('tab')) return
@@ -358,7 +372,7 @@ export default function FinancePage() {
       setShowCreateInvoice(false)
       setInvoiceForm({ childId: '', amount: '', description: '', dueDate: '' })
       setCreateInvoiceError(null)
-      await loadInvoices(orgId)
+      await loadInvoices(orgId, branchFilter || undefined)
     } catch (err: unknown) {
       setCreateInvoiceError(err instanceof Error ? err.message : t('invoiceCreateFailed'))
     } finally {
@@ -389,7 +403,10 @@ export default function FinancePage() {
       })
       setShowSetupBillingModal(false)
       setBillingProfileForm({ childId: '', amount: '', dueDayOfMonth: '5', note: '' })
-      await Promise.all([loadBillingProfiles(orgId), loadInvoices(orgId)])
+      await Promise.all([
+        loadBillingProfiles(orgId),
+        loadInvoices(orgId, branchFilter || undefined),
+      ])
     } catch {
       // keep modal open
     } finally {
@@ -421,7 +438,7 @@ export default function FinancePage() {
     setGenerateInvoicesMessage(null)
     try {
       const res = await apiClient.generateMonthlyInvoices(orgId)
-      await loadInvoices(orgId)
+      await loadInvoices(orgId, branchFilter || undefined)
       const { created, skipped, failed } = res.result
       setGenerateInvoicesMessage({
         type: created > 0 ? 'success' : 'info',
@@ -445,7 +462,7 @@ export default function FinancePage() {
     setCancellingInvoice(invoiceId)
     try {
       await apiClient.cancelInvoice(orgId, invoiceId)
-      await loadInvoices(orgId)
+      await loadInvoices(orgId, branchFilter || undefined)
     } catch {
       // ignore
     } finally {
@@ -745,6 +762,25 @@ export default function FinancePage() {
             )}
 
             {/* ── UNIFIED PAYMENTS VIEW ──────────────────────────────────────── */}
+
+            {branches.length > 0 && (
+              <div className="mb-4 flex items-center gap-2">
+                <GitBranch className="w-4 h-4 text-gray-400" />
+                <span className="text-sm text-gray-500">Филиал:</span>
+                <select
+                  value={branchFilter}
+                  onChange={(e) => setBranchFilter(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+                >
+                  <option value="">Все филиалы</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Stats row */}
             {(billingProfiles.length > 0 || invoices.length > 0) && (

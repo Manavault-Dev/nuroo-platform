@@ -92,6 +92,11 @@ export interface ChildTask {
   submissionText: string | null
   fileUrl: string | null
   submittedAt: string | null
+  submissionStatus?: 'pending' | 'submitted' | 'graded'
+  grade?: 'approved' | 'needs_revision' | null
+  feedback?: string | null
+  feedbackAt?: string | null
+  groupAssignmentId?: string | null
 }
 
 export type ChildTaskResponse = ChildTask & {
@@ -114,7 +119,48 @@ export interface Branch {
   address?: string | null
   phone?: string | null
   contactPerson?: string | null
+  description?: string | null
+  photoUrl?: string | null
   createdAt?: string | null
+}
+
+export type LeadStatus = 'new' | 'contacted' | 'trial_booked' | 'active_client' | 'lost'
+
+/** Enterprise branch-level role label — informational, paired with a member's branchId. */
+export type BranchRole = 'branch_admin' | 'admissions_manager' | 'finance_manager' | 'teacher'
+
+export const BRANCH_ROLE_LABELS: Record<BranchRole, string> = {
+  branch_admin: 'Администратор филиала',
+  admissions_manager: 'Менеджер по заявкам',
+  finance_manager: 'Финансовый менеджер',
+  teacher: 'Преподаватель',
+}
+
+export interface Lead {
+  id: string
+  orgId: string
+  branchId: string | null
+  parentName: string
+  phone: string
+  email?: string | null
+  childName?: string | null
+  childAge?: string | null
+  programInterest?: string | null
+  message?: string | null
+  source: 'marketplace' | 'manual' | 'referral'
+  status: LeadStatus
+  assignedTo?: string | null
+  notes?: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface LeadBranchStat {
+  branchId: string | null
+  branchName: string
+  total: number
+  byStatus: Record<string, number>
+  conversionRate: number
 }
 
 export interface AttendanceRecord {
@@ -293,6 +339,7 @@ export interface Invoice {
   billingProfileId?: string
   periodStart?: string
   periodEnd?: string
+  branchId?: string | null
 }
 
 export interface CreateInvoiceInput {
@@ -706,10 +753,6 @@ export class ApiClient {
   }
 
   // Auth & Profile
-  async health() {
-    return this.request<{ status: string; timestamp: string }>('/health')
-  }
-
   async getMe() {
     return this.cachedRequest<SpecialistProfile>('/me', 'profile:me', 'profile')
   }
@@ -724,35 +767,6 @@ export class ApiClient {
 
   async getSession() {
     return this.request<{ ok: boolean; hasOrg: boolean; orgId?: string }>('/session')
-  }
-
-  async joinOrganization(inviteCode: string) {
-    cache.invalidate()
-    return this.request<{ ok: boolean; orgId: string }>('/join', {
-      method: 'POST',
-      body: JSON.stringify({ inviteCode }),
-    })
-  }
-
-  async getPlans() {
-    return this.cachedRequest<{
-      ok: boolean
-      plans: Array<{
-        id: string
-        name: string
-        price: number
-        currency: string
-        limits?: { children: number; specialists: number | null } | null
-      }>
-    }>('/plans', 'billing:plans', 'default')
-  }
-
-  async createPayment(orgId: string, planId: 'starter' | 'growth' | 'enterprise') {
-    cache.invalidate()
-    return this.request<{ paymentUrl?: string; error?: string }>(`/orgs/${orgId}/payments`, {
-      method: 'POST',
-      body: JSON.stringify({ orgId, planId }),
-    })
   }
 
   async getBillingStatus(orgId: string) {
@@ -788,11 +802,12 @@ export class ApiClient {
 
   async getInvoices(
     orgId: string,
-    params?: { parentId?: string; status?: string }
+    params?: { parentId?: string; status?: string; branchId?: string }
   ): Promise<{ ok: boolean; invoices: Invoice[] }> {
     const qs = new URLSearchParams()
     if (params?.parentId) qs.set('parentId', params.parentId)
     if (params?.status) qs.set('status', params.status)
+    if (params?.branchId) qs.set('branchId', params.branchId)
     const query = qs.toString() ? `?${qs}` : ''
     return this.cachedRequest<{ ok: boolean; invoices: Invoice[] }>(
       `/orgs/${orgId}/invoices${query}`,
@@ -1000,6 +1015,23 @@ export class ApiClient {
     })
   }
 
+  async reviewChildTask(
+    orgId: string,
+    childId: string,
+    taskId: string,
+    payload: { grade: 'approved' | 'needs_revision'; feedback?: string }
+  ) {
+    cache.invalidate(`childTasks:${orgId}:${childId}`)
+    cache.invalidate(`child:${orgId}:${childId}`)
+    return this.request<{ ok: boolean; task: ChildTask }>(
+      `/orgs/${orgId}/children/${childId}/tasks/${taskId}/review`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }
+    )
+  }
+
   // Team
   async getTeam(orgId: string) {
     return this.cachedRequest<
@@ -1009,6 +1041,8 @@ export class ApiClient {
         name: string
         role: 'admin' | 'specialist'
         joinedAt: string
+        branchId: string | null
+        branchRole: BranchRole | null
       }>
     >(`/orgs/${orgId}/team`, `team:${orgId}`, 'default')
   }
@@ -1024,6 +1058,21 @@ export class ApiClient {
       method: 'PATCH',
       body: JSON.stringify({ role }),
     })
+  }
+
+  async assignMemberBranch(
+    orgId: string,
+    uid: string,
+    data: { branchId: string | null; branchRole?: BranchRole | null }
+  ) {
+    cache.invalidate(`team:${orgId}`)
+    return this.request<{ ok: boolean; branchId: string | null; branchRole: BranchRole | null }>(
+      `/orgs/${orgId}/members/${uid}/branch`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }
+    )
   }
 
   // Invites
@@ -1802,9 +1851,37 @@ export class ApiClient {
     )
   }
 
+  async getBranchStats(orgId: string) {
+    return this.request<{
+      ok: boolean
+      month: string
+      stats: Array<{
+        branchId: string
+        name: string
+        revenueThisMonth: number
+        unpaidCount: number
+        unpaidAmount: number
+        teamCount: number
+      }>
+      totals: {
+        revenueThisMonth: number
+        unpaidCount: number
+        unpaidAmount: number
+        teamCount: number
+      }
+    }>(`/orgs/${orgId}/branches/stats`)
+  }
+
   async createBranch(
     orgId: string,
-    data: { name: string; address?: string; phone?: string; contactPerson?: string }
+    data: {
+      name: string
+      address?: string
+      phone?: string
+      contactPerson?: string
+      description?: string
+      photoUrl?: string
+    }
   ) {
     cache.invalidate(`branches:${orgId}`)
     return this.request<{ ok: boolean; branch: Branch }>(`/orgs/${orgId}/branches`, {
@@ -1816,7 +1893,14 @@ export class ApiClient {
   async updateBranch(
     orgId: string,
     branchId: string,
-    data: Partial<{ name: string; address: string; phone: string; contactPerson: string }>
+    data: Partial<{
+      name: string
+      address: string
+      phone: string
+      contactPerson: string
+      description: string
+      photoUrl: string
+    }>
   ) {
     cache.invalidate(`branches:${orgId}`)
     return this.request<{ ok: boolean }>(`/orgs/${orgId}/branches/${branchId}`, {
@@ -1830,6 +1914,68 @@ export class ApiClient {
     return this.request<{ ok: boolean }>(`/orgs/${orgId}/branches/${branchId}`, {
       method: 'DELETE',
     })
+  }
+
+  // Leads / Admissions CRM
+  async getLeads(orgId: string, params?: { branchId?: string; status?: LeadStatus }) {
+    const query = new URLSearchParams()
+    if (params?.branchId) query.set('branchId', params.branchId)
+    if (params?.status) query.set('status', params.status)
+    const qs = query.toString()
+    return this.request<{ ok: boolean; leads: Lead[]; count: number }>(
+      `/orgs/${orgId}/leads${qs ? `?${qs}` : ''}`,
+      { cache: 'no-store' }
+    )
+  }
+
+  async createLead(
+    orgId: string,
+    data: {
+      branchId?: string | null
+      parentName: string
+      phone: string
+      email?: string
+      childName?: string
+      programInterest?: string
+      notes?: string
+    }
+  ) {
+    return this.request<{ ok: boolean; lead: Lead }>(`/orgs/${orgId}/leads`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateLead(
+    orgId: string,
+    leadId: string,
+    data: Partial<{
+      status: LeadStatus
+      branchId: string | null
+      assignedTo: string | null
+      notes: string | null
+    }>
+  ) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/leads/${leadId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteLead(orgId: string, leadId: string) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/leads/${leadId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async getLeadsAnalytics(orgId: string) {
+    return this.request<{
+      ok: boolean
+      total: number
+      totalByStatus: Record<string, number>
+      conversionRate: number
+      byBranch: LeadBranchStat[]
+    }>(`/orgs/${orgId}/leads/analytics`, { cache: 'no-store' })
   }
 
   // Finance — Attendance
@@ -1856,9 +2002,11 @@ export class ApiClient {
   }
 
   // Finance — Monthly Fees
-  async getMonthlyFees(orgId: string, month: string) {
+  async getMonthlyFees(orgId: string, month: string, branchId?: string) {
+    const qs = new URLSearchParams({ month })
+    if (branchId) qs.set('branchId', branchId)
     return this.request<{ ok: boolean; month: string; records: FeeRecord[] }>(
-      `/orgs/${orgId}/finance?month=${month}`
+      `/orgs/${orgId}/finance?${qs}`
     )
   }
 
@@ -2175,10 +2323,11 @@ export class ApiClient {
 
   // ── Bookings ──────────────────────────────────────────────────────────────
 
-  async getOrgBookings(orgId: string, status?: string, specialistId?: string) {
+  async getOrgBookings(orgId: string, status?: string, specialistId?: string, branchId?: string) {
     const params = new URLSearchParams()
     if (status) params.set('status', status)
     if (specialistId) params.set('specialistId', specialistId)
+    if (branchId) params.set('branchId', branchId)
     const q = params.size > 0 ? `?${params}` : ''
     return this.request<{
       ok: boolean
@@ -2186,6 +2335,7 @@ export class ApiClient {
         id: string
         orgId: string
         specialistId: string
+        branchId?: string | null
         parentId: string
         childId: string | null
         serviceId: string | null
@@ -2333,8 +2483,9 @@ export class ApiClient {
 
   // ── Cohorts ───────────────────────────────────────────────────────────────
 
-  async getCohorts(orgId: string) {
-    return this.request<{ ok: boolean; cohorts: any[] }>(`/orgs/${orgId}/cohorts`)
+  async getCohorts(orgId: string, params?: { branchId?: string }) {
+    const qs = params?.branchId ? `?branchId=${encodeURIComponent(params.branchId)}` : ''
+    return this.request<{ ok: boolean; cohorts: any[] }>(`/orgs/${orgId}/cohorts${qs}`)
   }
 
   async getCohort(orgId: string, cohortId: string) {
@@ -2573,6 +2724,175 @@ export class ApiClient {
   async checkRequiredConsents() {
     return this.request<{ allRequiredAccepted: boolean; missing: string[] }>(
       '/legal/consents/check'
+    )
+  }
+
+  // ─── Pre-recorded Courses ───────────────────────────────────────────────────
+
+  async getOrgCourses(orgId: string) {
+    return this.request<{ courses: import('../b2b/types/course').Course[] }>(
+      `/orgs/${orgId}/courses`
+    )
+  }
+
+  async createOrgCourse(orgId: string, data: Record<string, unknown>) {
+    return this.request<{ id: string }>(`/orgs/${orgId}/courses`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getOrgCourse(orgId: string, courseId: string) {
+    return this.request<import('../b2b/types/course').Course>(`/orgs/${orgId}/courses/${courseId}`)
+  }
+
+  async updateOrgCourse(orgId: string, courseId: string, data: Record<string, unknown>) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/courses/${courseId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteOrgCourse(orgId: string, courseId: string) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/courses/${courseId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async publishOrgCourse(orgId: string, courseId: string, publish: boolean) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/courses/${courseId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: publish ? 'PUBLISHED' : 'DRAFT' }),
+    })
+  }
+
+  async getCourseFull(orgId: string, courseId: string) {
+    const [courseRes, modulesRes] = await Promise.all([
+      this.request<{ course: Record<string, unknown> }>(`/orgs/${orgId}/courses/${courseId}`),
+      this.request<{ modules: { id: string; [k: string]: unknown }[] }>(
+        `/orgs/${orgId}/courses/${courseId}/modules`
+      ),
+    ])
+    const modules = await Promise.all(
+      (modulesRes.modules ?? []).map(async (mod) => {
+        const lessonsRes = await this.request<{ lessons: unknown[] }>(
+          `/orgs/${orgId}/courses/${courseId}/modules/${mod.id}/lessons`
+        ).catch(() => ({ lessons: [] }))
+        return { ...mod, lessons: lessonsRes.lessons ?? [] }
+      })
+    )
+    return { ...(courseRes.course ?? courseRes), modules } as Record<string, unknown> & {
+      modules: { id: string; lessons: unknown[] }[]
+    }
+  }
+
+  async uploadCourseMedia(
+    orgId: string,
+    file: File,
+    kind: 'cover' | 'lesson-video' | 'lesson-image' | 'lesson-pdf'
+  ): Promise<{ url: string; path: string; filename?: string }> {
+    const formData = new FormData()
+    formData.append('media', file)
+    formData.append('kind', kind)
+
+    const headers = new Headers()
+    if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
+
+    const response = await fetch(`${this.baseUrl}/orgs/${orgId}/courses/media`, {
+      method: 'POST',
+      body: formData,
+      headers,
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
+      throw new Error(err.error || 'Upload failed')
+    }
+    return response.json()
+  }
+
+  async createCourseModule(
+    orgId: string,
+    courseId: string,
+    data: { title: string; description?: string; order: number }
+  ) {
+    return this.request<{ id: string }>(`/orgs/${orgId}/courses/${courseId}/modules`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateCourseModule(
+    orgId: string,
+    courseId: string,
+    moduleId: string,
+    data: Record<string, unknown>
+  ) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/courses/${courseId}/modules/${moduleId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteCourseModule(orgId: string, courseId: string, moduleId: string) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/courses/${courseId}/modules/${moduleId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async reorderCourseModules(orgId: string, courseId: string, order: string[]) {
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/courses/${courseId}/modules/reorder`, {
+      method: 'PATCH',
+      body: JSON.stringify({ order }),
+    })
+  }
+
+  async createCourseLesson(
+    orgId: string,
+    courseId: string,
+    moduleId: string,
+    data: Record<string, unknown>
+  ) {
+    return this.request<{ id: string }>(
+      `/orgs/${orgId}/courses/${courseId}/modules/${moduleId}/lessons`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    )
+  }
+
+  async updateCourseLesson(
+    orgId: string,
+    courseId: string,
+    moduleId: string,
+    lessonId: string,
+    data: Record<string, unknown>
+  ) {
+    return this.request<{ ok: boolean }>(
+      `/orgs/${orgId}/courses/${courseId}/modules/${moduleId}/lessons/${lessonId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }
+    )
+  }
+
+  async deleteCourseLesson(orgId: string, courseId: string, moduleId: string, lessonId: string) {
+    return this.request<{ ok: boolean }>(
+      `/orgs/${orgId}/courses/${courseId}/modules/${moduleId}/lessons/${lessonId}`,
+      {
+        method: 'DELETE',
+      }
+    )
+  }
+
+  async reorderCourseLessons(orgId: string, courseId: string, moduleId: string, order: string[]) {
+    return this.request<{ ok: boolean }>(
+      `/orgs/${orgId}/courses/${courseId}/modules/${moduleId}/lessons/reorder`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ order }),
+      }
     )
   }
 

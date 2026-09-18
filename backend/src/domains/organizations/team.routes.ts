@@ -3,7 +3,8 @@ import admin from 'firebase-admin'
 import { z } from 'zod'
 
 import { getFirestore } from '../../infrastructure/database/firebase.js'
-import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
+import { requireOrgMember, memberBranchScope } from '../../infrastructure/auth/rbac.js'
+import { checkOrgHasFeature } from '../payments/planLimits.js'
 
 const COLLECTIONS = {
   ORG_MEMBERS: (orgId: string) => `organizations/${orgId}/members`,
@@ -18,6 +19,13 @@ const updateMemberRoleSchema = z.object({
 
 const updateMemberDisplayNameSchema = z.object({
   orgDisplayName: z.string().max(100).nullable(),
+})
+
+const BRANCH_ROLES = ['branch_admin', 'admissions_manager', 'finance_manager', 'teacher'] as const
+
+const updateMemberBranchSchema = z.object({
+  branchId: z.string().max(200).nullable(),
+  branchRole: z.enum(BRANCH_ROLES).nullable().optional(),
 })
 
 function isActiveMember(memberData: admin.firestore.DocumentData): boolean {
@@ -55,6 +63,8 @@ function transformTeamMember(
     orgDisplayName: memberData.orgDisplayName || null,
     role: normalizeRole(memberData.role) as 'admin' | 'specialist',
     joinedAt: extractJoinedAt(memberData),
+    branchId: memberData.branchId ?? null,
+    branchRole: memberData.branchRole ?? null,
   }
 }
 
@@ -158,6 +168,62 @@ export const teamRoute: FastifyPluginAsync = async (fastify) => {
       console.error('[TEAM] Error updating member role:', error)
       return reply.code(500).send({
         error: 'Failed to update member role',
+        message: err.message || 'Unknown error',
+      })
+    }
+  })
+
+  // Enterprise: assign a member to a branch (Branch Admin, Admissions Manager, etc.).
+  // Only HQ admins (no branch scope of their own) can assign branches — a branch-scoped
+  // admin can't promote members to another branch or to HQ-wide access.
+  fastify.patch<{
+    Params: { orgId: string; uid: string }
+    Body: z.infer<typeof updateMemberBranchSchema>
+  }>('/orgs/:orgId/members/:uid/branch', async (request, reply) => {
+    try {
+      const { orgId, uid: targetUid } = request.params
+      const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
+
+      if (member.role !== 'org_admin' || memberBranchScope(member)) {
+        return reply.code(403).send({ error: 'Only HQ admins can assign members to a branch' })
+      }
+
+      const featureCheck = await checkOrgHasFeature(orgId, 'branches')
+      if (!featureCheck.ok) {
+        return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
+      }
+
+      const body = updateMemberBranchSchema.parse(request.body)
+      const db = getFirestore()
+
+      if (body.branchId) {
+        const branchSnap = await db.doc(`organizations/${orgId}/branches/${body.branchId}`).get()
+        if (!branchSnap.exists) return reply.code(404).send({ error: 'Branch not found' })
+      }
+
+      const memberRef = db.doc(`${COLLECTIONS.ORG_MEMBERS(orgId)}/${targetUid}`)
+      const memberSnap = await memberRef.get()
+      if (!memberSnap.exists) {
+        return reply.code(404).send({ error: 'Member not found' })
+      }
+
+      await memberRef.update({
+        branchId: body.branchId,
+        branchRole: body.branchId ? (body.branchRole ?? null) : null,
+        updatedAt: admin.firestore.Timestamp.fromDate(new Date()),
+      })
+
+      return {
+        ok: true,
+        branchId: body.branchId,
+        branchRole: body.branchId ? (body.branchRole ?? null) : null,
+      }
+    } catch (error: unknown) {
+      const err = error as { message?: string; stack?: string }
+      console.error('[TEAM] Error assigning member branch:', error)
+      return reply.code(500).send({
+        error: 'Failed to assign member branch',
         message: err.message || 'Unknown error',
       })
     }

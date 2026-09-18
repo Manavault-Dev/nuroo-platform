@@ -82,6 +82,17 @@ const T = {
     password_reset_expiry: 'Ссылка действительна в течение 1 часа.',
     password_reset_ignore:
       'Если вы не запрашивали сброс пароля — просто проигнорируйте это письмо. Ваш пароль останется прежним.',
+
+    app_update_subject: 'Теперь в Nuroo можно найти центр и сразу записаться 🎉',
+    app_update_h1: 'Nuroo стал ещё удобнее 🎉',
+    app_update_intro: (name: string) =>
+      `${name ? `${name}, ` : ''}теперь в Nuroo можно найти детский центр или специалиста рядом с вами и сразу записаться на занятие — прямо в приложении.`,
+    app_update_feature_1: '🔍 Каталог центров и специалистов рядом с вами',
+    app_update_feature_2: '📅 Запись на занятие в пару касаний',
+    app_update_feature_3: '📈 Задания и прогресс ребёнка — всегда под рукой',
+    app_update_cta: 'Обновите приложение, чтобы попробовать:',
+    app_update_ios: 'Скачать в App Store',
+    app_update_android: 'Скачать в Google Play',
   },
   en: {
     footer_unsub: 'Unsubscribe',
@@ -147,6 +158,17 @@ const T = {
     password_reset_expiry: 'This link is valid for 1 hour.',
     password_reset_ignore:
       'If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.',
+
+    app_update_subject: 'Now on Nuroo: find a center and book instantly 🎉',
+    app_update_h1: 'Nuroo just got better 🎉',
+    app_update_intro: (name: string) =>
+      `${name ? `${name}, ` : ''}you can now find a child development center or specialist near you and book a session right in the app.`,
+    app_update_feature_1: '🔍 A catalog of centers and specialists near you',
+    app_update_feature_2: '📅 Book a session in a couple of taps',
+    app_update_feature_3: "📈 Your child's tasks and progress, always at hand",
+    app_update_cta: 'Update the app to try it out:',
+    app_update_ios: 'Download on the App Store',
+    app_update_android: 'Get it on Google Play',
   },
   ky: {
     footer_unsub: 'Жазылуудан баш тарт',
@@ -212,6 +234,17 @@ const T = {
     password_reset_expiry: 'Шилтеме 1 саат ичинде жарактуу.',
     password_reset_ignore:
       'Эгер сиз сырсөз калыбына келтирүүнү суранбасаңыз, бул катты жөн эле этибарга албаңыз.',
+
+    app_update_subject: 'Эми Nurooдо борборду табып, дароо жазыла аласыз 🎉',
+    app_update_h1: 'Nuroo мурункудан да ыңгайлуу болду 🎉',
+    app_update_intro: (name: string) =>
+      `${name ? `${name}, ` : ''}эми Nurooдо жаныңыздагы балдар борборун же адисти таап, сабакка колдонмонун өзүндө эле дароо жазыла аласыз.`,
+    app_update_feature_1: '🔍 Жаныңыздагы борборлор менен адистердин каталогу',
+    app_update_feature_2: '📅 Сабакка бир нече басуу менен жазылуу',
+    app_update_feature_3: '📈 Баланын тапшырмалары жана прогресси — дайыма колдо',
+    app_update_cta: 'Байкап көрүү үчүн колдонмону жаңыртыңыз:',
+    app_update_ios: 'App Store’дон жүктөө',
+    app_update_android: 'Google Play’дан алуу',
   },
 }
 
@@ -584,6 +617,36 @@ export function paymentSucceededTemplate(data: PaymentSucceededTemplateData): {
   `
   const subject = t.payment_subject(data.planName)
   return { subject, html: layout(subject, body, data.lang) }
+}
+
+export interface AppUpdateTemplateData {
+  name?: string
+  iosUrl: string
+  androidUrl: string
+  lang?: EmailLang
+}
+
+export function appUpdateTemplate(data: AppUpdateTemplateData): {
+  subject: string
+  html: string
+} {
+  const t = T[data.lang ?? 'ru']
+  const features = [t.app_update_feature_1, t.app_update_feature_2, t.app_update_feature_3]
+    .map((f) => `<p style="margin:0 0 8px;font-size:14px;line-height:1.5;color:${TEXT};">${f}</p>`)
+    .join('')
+  const body = `
+    ${h1(t.app_update_h1)}
+    ${p(t.app_update_intro(data.name ?? ''))}
+    <div style="margin:0 0 20px;">${features}</div>
+    ${p(`<strong>${t.app_update_cta}</strong>`)}
+    ${button(t.app_update_ios, data.iosUrl)}
+    <div style="height:10px;"></div>
+    ${button(t.app_update_android, data.androidUrl)}
+  `
+  return {
+    subject: t.app_update_subject,
+    html: layout(t.app_update_subject, body, data.lang),
+  }
 }
 
 export interface PasswordResetTemplateData {

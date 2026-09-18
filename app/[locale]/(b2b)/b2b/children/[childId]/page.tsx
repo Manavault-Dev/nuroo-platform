@@ -57,6 +57,9 @@ import {
   X,
   MapPin,
   Sparkles,
+  ThumbsUp,
+  RotateCcw,
+  Loader2,
 } from 'lucide-react'
 
 // ── Tab types ─────────────────────────────────────────────────────────────────
@@ -802,6 +805,12 @@ function AssignmentsTab({
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
 
+  // Grading
+  const [gradeTarget, setGradeTarget] = useState<ChildTask | null>(null)
+  const [gradeValue, setGradeValue] = useState<'approved' | 'needs_revision'>('approved')
+  const [feedbackInput, setFeedbackInput] = useState('')
+  const [submittingGrade, setSubmittingGrade] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -852,6 +861,30 @@ function AssignmentsTab({
       setError(err instanceof Error ? err.message : t('failedToCreateTask'))
     } finally {
       setAssigning(null)
+    }
+  }
+
+  const openGrade = (task: ChildTask) => {
+    setGradeTarget(task)
+    setGradeValue(task.grade === 'needs_revision' ? 'needs_revision' : 'approved')
+    setFeedbackInput(task.feedback ?? '')
+  }
+
+  const handleSubmitGrade = async () => {
+    if (!gradeTarget) return
+    setSubmittingGrade(true)
+    try {
+      const res = await apiClient.reviewChildTask(orgId, childId, gradeTarget.id, {
+        grade: gradeValue,
+        feedback: feedbackInput.trim() || undefined,
+      })
+      setAssigned((prev) => prev.map((t) => (t.id === gradeTarget.id ? res.task : t)))
+      setGradeTarget(null)
+      setFeedbackInput('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('failedToCreateTask'))
+    } finally {
+      setSubmittingGrade(false)
     }
   }
 
@@ -1016,7 +1049,13 @@ function AssignmentsTab({
                 </div>
                 <div className="space-y-1.5">
                   {pending.map((task) => (
-                    <TaskRow key={task.id} task={task} formatShortDate={formatShortDate} t={t} />
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      formatShortDate={formatShortDate}
+                      t={t}
+                      onGrade={() => openGrade(task)}
+                    />
                   ))}
                 </div>
               </div>
@@ -1032,7 +1071,13 @@ function AssignmentsTab({
                 </div>
                 <div className="space-y-1.5">
                   {completed.map((task) => (
-                    <TaskRow key={task.id} task={task} formatShortDate={formatShortDate} t={t} />
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      formatShortDate={formatShortDate}
+                      t={t}
+                      onGrade={() => openGrade(task)}
+                    />
                   ))}
                 </div>
               </div>
@@ -1040,6 +1085,122 @@ function AssignmentsTab({
           </>
         )}
       </div>
+
+      {/* ── Grade modal ─────────────────────────────────────────────────── */}
+      {gradeTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+          onClick={() => setGradeTarget(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{t('gradeWork')}</h3>
+                <p className="text-sm text-gray-500 mt-0.5">{gradeTarget.title}</p>
+              </div>
+              <button
+                onClick={() => setGradeTarget(null)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {(gradeTarget.submissionText || gradeTarget.fileUrl) && (
+              <div className="mb-5 p-4 bg-blue-50 border border-blue-100 rounded-xl">
+                <p className="text-xs font-semibold text-blue-600 mb-1.5 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5" />
+                  {t('studentAnswer')}
+                </p>
+                {gradeTarget.submissionText && (
+                  <p className="text-sm text-blue-900 leading-relaxed">
+                    {gradeTarget.submissionText}
+                  </p>
+                )}
+                {gradeTarget.fileUrl && (
+                  <a
+                    href={gradeTarget.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block mt-2 text-xs text-blue-600 underline"
+                  >
+                    {gradeTarget.fileUrl}
+                  </a>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              <button
+                onClick={() => setGradeValue('approved')}
+                className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${gradeValue === 'approved' ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}
+              >
+                <ThumbsUp
+                  className={`w-5 h-5 ${gradeValue === 'approved' ? 'text-green-600' : 'text-gray-400'}`}
+                />
+                <span
+                  className={`text-sm font-semibold ${gradeValue === 'approved' ? 'text-green-700' : 'text-gray-600'}`}
+                >
+                  {t('approve')}
+                </span>
+              </button>
+              <button
+                onClick={() => setGradeValue('needs_revision')}
+                className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${gradeValue === 'needs_revision' ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-gray-300'}`}
+              >
+                <RotateCcw
+                  className={`w-5 h-5 ${gradeValue === 'needs_revision' ? 'text-amber-600' : 'text-gray-400'}`}
+                />
+                <span
+                  className={`text-sm font-semibold ${gradeValue === 'needs_revision' ? 'text-amber-700' : 'text-gray-600'}`}
+                >
+                  {t('needsRevision')}
+                </span>
+              </button>
+            </div>
+
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                {t('feedbackLabel')}{' '}
+                <span className="text-xs text-gray-400 font-normal">{t('feedbackOptional')}</span>
+              </label>
+              <textarea
+                value={feedbackInput}
+                onChange={(e) => setFeedbackInput(e.target.value)}
+                rows={3}
+                placeholder={t('feedbackPlaceholder')}
+                className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setGradeTarget(null)}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                onClick={handleSubmitGrade}
+                disabled={submittingGrade}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white rounded-xl transition-colors disabled:opacity-50 ${gradeValue === 'approved' ? 'bg-green-600 hover:bg-green-700' : 'bg-amber-600 hover:bg-amber-700'}`}
+              >
+                {submittingGrade ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : gradeValue === 'approved' ? (
+                  <ThumbsUp className="w-4 h-4" />
+                ) : (
+                  <RotateCcw className="w-4 h-4" />
+                )}
+                {gradeValue === 'approved' ? t('approve') : t('needsRevision')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1048,12 +1209,25 @@ function TaskRow({
   task,
   formatShortDate,
   t,
+  onGrade,
 }: {
   task: ChildTask
   formatShortDate: (d: string) => string
   t: ReturnType<typeof useTranslations>
+  onGrade: () => void
 }) {
   const done = task.status === 'completed'
+  const hasSubmission = task.submissionStatus === 'submitted' || task.submissionStatus === 'graded'
+  const badge =
+    task.grade === 'approved'
+      ? { text: t('approve'), cls: 'bg-green-100 text-green-700' }
+      : task.grade === 'needs_revision'
+        ? { text: t('needsRevision'), cls: 'bg-amber-100 text-amber-700' }
+        : {
+            text: done ? t('statusCompleted') : t('statusPending'),
+            cls: done ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500',
+          }
+
   return (
     <div
       className={`flex items-start gap-3 p-4 rounded-xl border transition-colors ${
@@ -1094,14 +1268,36 @@ function TaskRow({
               : t('completedOn', { date: formatShortDate(task.completedAt!) })}
           </p>
         )}
+        {task.feedback && (
+          <div
+            className={`mt-2 rounded-lg p-2.5 text-xs leading-relaxed border ${
+              task.grade === 'approved'
+                ? 'bg-green-50 border-green-100 text-green-800'
+                : 'bg-amber-50 border-amber-100 text-amber-800'
+            }`}
+          >
+            <span className="font-semibold">{t('feedbackTitle')} </span>
+            {task.feedback}
+          </div>
+        )}
       </div>
-      <span
-        className={`text-xs font-semibold px-2 py-1 rounded-full flex-shrink-0 ${
-          done ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-        }`}
-      >
-        {done ? t('statusCompleted') : t('statusPending')}
-      </span>
+      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+        <span className={`text-xs font-semibold px-2 py-1 rounded-full ${badge.cls}`}>
+          {badge.text}
+        </span>
+        {hasSubmission && (
+          <button
+            onClick={onGrade}
+            className={`text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors ${
+              task.grade
+                ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                : 'bg-primary-50 text-primary-700 hover:bg-primary-100'
+            }`}
+          >
+            {task.grade ? t('change') : t('check')}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

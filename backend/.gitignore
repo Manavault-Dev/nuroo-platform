@@ -44,3 +44,6 @@ next-env.d.ts
 
 # OS
 Thumbs.db
+
+# script output (broadcast logs contain real user emails — never commit)
+/scripts/output/
