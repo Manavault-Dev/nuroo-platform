@@ -231,15 +231,6 @@ export async function requireChildAccess(
   return reply.code(403).send({ error: 'Invalid role' }) as never
 }
 
-export async function requireChildAssigned(
-  request: FastifyRequest,
-  reply: FastifyReply,
-  orgId: string,
-  childId: string
-): Promise<string> {
-  return requireChildAccess(request, reply, orgId, childId)
-}
-
 export async function requireOrgAdmin(
   request: FastifyRequest,
   reply: FastifyReply,

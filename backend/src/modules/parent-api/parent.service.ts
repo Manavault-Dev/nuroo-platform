@@ -1,11 +1,8 @@
 import {
   getChildSpecialists,
   getChildNotesForParent,
-  getParentLinkedOrganizations,
   getParentChildren,
-  verifyParentChildAccess,
   type LinkedSpecialist,
-  type LinkedOrganization,
 } from './parent.repository.js'
 import type { SpecialistNote } from '../../shared/types/domain.js'
 
@@ -29,14 +26,6 @@ export async function listChildNotes(
   return getChildNotesForParent(childId, parentUid)
 }
 
-export async function listParentOrganizations(parentUid: string): Promise<LinkedOrganization[]> {
-  return getParentLinkedOrganizations(parentUid)
-}
-
 export async function listParentLinkedChildren(parentUid: string): Promise<string[]> {
   return getParentChildren(parentUid)
-}
-
-export async function verifyAccess(childId: string, parentUid: string): Promise<boolean> {
-  return verifyParentChildAccess(childId, parentUid)
 }
