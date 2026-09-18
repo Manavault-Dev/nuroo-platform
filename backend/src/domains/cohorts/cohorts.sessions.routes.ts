@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { getFirestore } from '../../infrastructure/database/firebase.js'
 import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
-import { canManageCohort, denyNotInstructor } from './cohorts.auth.js'
+import { canManageCohort, denyNotInstructor, isInMemberBranchScope } from './cohorts.auth.js'
 import { createUniqueLink } from '../../infrastructure/meetings/google-meet.js'
 import type { CohortDoc, SessionDoc } from './cohorts.types.js'
 import {
@@ -24,10 +24,16 @@ export const cohortsSessionsRoute: FastifyPluginAsync = async (fastify) => {
     { config: { rateLimit: RATE } },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
-      await requireOrgMember(request, reply, request.params.orgId)
+      const member = await requireOrgMember(request, reply, request.params.orgId)
       if (reply.sent) return
 
       const { orgId, cohortId } = request.params
+      const cohortSnap = await db.doc(COL.cohort(orgId, cohortId)).get()
+      if (!cohortSnap.exists) return reply.code(404).send({ error: 'Cohort not found' })
+      if (!isInMemberBranchScope(member, cohortSnap.data() as CohortDoc)) {
+        return reply.code(403).send({ error: 'Cohort belongs to a different branch' })
+      }
+
       const snap = await db.collection(COL.sessions(orgId, cohortId)).get()
       const sessions = sortSessionsBySchedule(
         snap.docs.map((d) => ({ id: d.id, ...d.data() })) as SessionDoc[]

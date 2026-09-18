@@ -154,12 +154,18 @@ jobs:
             NODE_ENV=production
             CORS_ORIGIN=${{ env.PRODUCTION_CORS_ORIGIN }}
             GIT_SHA=${{ github.sha }}
+            SENTRY_ENVIRONMENT=production
+            EMAIL_FROM=Nuroo <noreply@usenuroo.com>
           env_vars_update_strategy: merge
           secrets: |
             FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest
             FIREBASE_CLIENT_EMAIL=FIREBASE_CLIENT_EMAIL:latest
             FIREBASE_PRIVATE_KEY=FIREBASE_PRIVATE_KEY:latest
             FIREBASE_STORAGE_BUCKET=FIREBASE_STORAGE_BUCKET:latest
+            SENTRY_DSN=SENTRY_DSN:latest
+            RESEND_API_KEY=RESEND_API_KEY:latest
+            SLACK_WEBHOOK_URL=SLACK_WEBHOOK_URL:latest
+            SENTRY_WEBHOOK_SECRET=SENTRY_WEBHOOK_SECRET:latest
           secrets_update_strategy: merge
 
       - name: Health check (with retry)

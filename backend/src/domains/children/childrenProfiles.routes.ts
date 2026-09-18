@@ -1,7 +1,11 @@
 import { z } from 'zod'
 
 import { getFirestore } from '../../infrastructure/database/firebase.js'
-import { requireOrgMember, requireChildAccess } from '../../infrastructure/auth/rbac.js'
+import {
+  requireOrgMember,
+  requireChildAccess,
+  memberBranchScope,
+} from '../../infrastructure/auth/rbac.js'
 import { getChildProfile, updateChildProfile } from './children.service.js'
 
 const childProfileUpdateSchema = z.object({
@@ -53,7 +57,7 @@ export const childrenProfilesRoute: import('fastify').FastifyPluginAsync = async
   }>('/orgs/:orgId/children/:childId/profile', async (request, reply) => {
     try {
       const { orgId, childId } = request.params
-      await requireOrgMember(request, reply, orgId)
+      const member = await requireOrgMember(request, reply, orgId)
       const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
 
       const parse = childProfileUpdateSchema.safeParse(request.body)
@@ -62,6 +66,18 @@ export const childrenProfilesRoute: import('fastify').FastifyPluginAsync = async
       }
 
       const db = getFirestore()
+
+      const scope = memberBranchScope(member)
+      if (scope) {
+        const currentProfile = await getChildProfile(db, orgId, resolvedChildId)
+        if ((currentProfile?.branchId ?? null) !== scope) {
+          return reply.code(403).send({ error: 'Child belongs to a different branch' })
+        }
+        if (parse.data.branchId !== undefined && parse.data.branchId !== scope) {
+          return reply.code(403).send({ error: 'Cannot reassign child outside your branch' })
+        }
+      }
+
       const updatedData = await updateChildProfile(db, orgId, resolvedChildId, { ...parse.data })
       return { ok: true, profile: updatedData }
     } catch (error: unknown) {

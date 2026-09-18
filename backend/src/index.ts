@@ -37,6 +37,7 @@ import { bookingDomain } from './domains/booking/index.js'
 import { cohortsDomain } from './domains/cohorts/index.js'
 import { eventsDomain } from './domains/events/index.js'
 import { favoritesDomain } from './domains/favorites/index.js'
+import { leadsDomain } from './domains/leads/index.js'
 import { auditRoutes } from './infrastructure/audit/audit.routes.js'
 import { calendarRoutes } from './domains/calendar/calendar.routes.js'
 import { legalRoutes } from './domains/legal/legal.routes.js'
@@ -62,8 +63,12 @@ async function verifyIdTokenCached(token: string): Promise<DecodedIdToken> {
 async function buildServer() {
   const isProduction = config.NODE_ENV === 'production'
 
+  // 'warn' in production hid all request/operational logs — only errors were
+  // visible, so outages and slow endpoints went unnoticed until a user
+  // complained. LOG_LEVEL lets it be dialed back per-deploy if it's ever too
+  // noisy, without another code change.
   const fastify = Fastify({
-    logger: { level: isProduction ? 'warn' : 'info' },
+    logger: { level: process.env.LOG_LEVEL ?? 'info' },
   })
 
   Sentry.setupFastifyErrorHandler(fastify)
@@ -187,6 +192,11 @@ async function buildServer() {
       /^\/marketplace\/orgs\/[^/]+\/courses\/[^/]+\/lessons\/[^/]+(\?.*)?$/.test(urlPath)
     )
       return
+    // Public branch cards on an org's marketplace profile (read-only, no auth)
+    if (method === 'GET' && /^\/marketplace\/orgs\/[^/]+\/branches(\?.*)?$/.test(urlPath)) return
+    // Public admission-request ("leave a request") form submission — no auth,
+    // a prospective parent hasn't created a Nuroo account yet
+    if (method === 'POST' && /^\/marketplace\/orgs\/[^/]+\/leads(\?.*)?$/.test(urlPath)) return
 
     const authHeader = request.headers.authorization
     if (!authHeader?.startsWith('Bearer ')) {
@@ -240,6 +250,7 @@ async function buildServer() {
     cohortsDomain,
     eventsDomain,
     favoritesDomain,
+    leadsDomain,
     auditRoutes,
     calendarRoutes,
     legalRoutes,

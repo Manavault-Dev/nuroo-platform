@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Link } from '@/i18n/navigation'
 import { useTranslations } from 'next-intl'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
-import { apiClient } from '@/lib/b2b/api'
+import { apiClient, type Branch } from '@/lib/b2b/api'
 import {
   BookOpen,
   Loader2,
@@ -19,6 +19,7 @@ import {
   Ban,
   Rocket,
   Trash2,
+  GitBranch,
 } from 'lucide-react'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 
@@ -29,6 +30,7 @@ interface Cohort {
   title: string
   description: string
   category: string | null
+  branchId: string | null
   format: 'online' | 'offline'
   startDate: string
   endDate: string
@@ -57,6 +59,7 @@ function CohortCard({
   cohort,
   orgId,
   isAdmin,
+  branchName,
   onCancel,
   onPublish,
   onDelete,
@@ -64,6 +67,7 @@ function CohortCard({
   cohort: Cohort
   orgId: string
   isAdmin: boolean
+  branchName: string | null
   onCancel: (c: Cohort) => void
   onPublish: (c: Cohort) => void
   onDelete: (c: Cohort) => void
@@ -93,6 +97,12 @@ function CohortCard({
               {cohort.ageMin != null && (
                 <span className="text-xs text-gray-400">
                   {cohort.ageMin}–{cohort.ageMax ?? '∞'} лет
+                </span>
+              )}
+              {branchName && (
+                <span className="inline-flex items-center gap-1 text-xs text-purple-600 bg-purple-50 border border-purple-100 px-2 py-0.5 rounded-full">
+                  <GitBranch className="w-3 h-3" />
+                  {branchName}
                 </span>
               )}
             </div>
@@ -197,6 +207,8 @@ export default function CoursesPage() {
   const t = useTranslations('b2b.pages.courses')
   const { orgId, isAdmin, isSpecialist, isLoading: authLoading } = usePageAuth()
   const [cohorts, setCohorts] = useState<Cohort[]>([])
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [branchFilter, setBranchFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cancelModal, setCancelModal] = useState<Cohort | null>(null)
@@ -209,11 +221,25 @@ export default function CoursesPage() {
     if (authLoading || !orgId) return
     setLoading(true)
     apiClient
-      .getCohorts(orgId)
-      .then((res) => setCohorts(res.cohorts))
+      .getCohorts(orgId, branchFilter ? { branchId: branchFilter } : undefined)
+      .then((res) => {
+        setCohorts(res.cohorts)
+        setError(null)
+      })
       .catch((e: any) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [authLoading, orgId])
+  }, [authLoading, orgId, branchFilter])
+
+  useEffect(() => {
+    if (!orgId) return
+    apiClient
+      .getBranches(orgId)
+      .then((res) => setBranches(res.branches ?? []))
+      .catch(() => setBranches([]))
+  }, [orgId])
+
+  const branchName = (branchId: string | null) =>
+    branches.find((b) => b.id === branchId)?.name ?? null
 
   const handlePublish = async (cohort: Cohort) => {
     if (!orgId) return
@@ -293,6 +319,25 @@ export default function CoursesPage() {
         )}
       </div>
 
+      {branches.length > 0 && (
+        <div className="mb-4 flex items-center gap-2">
+          <GitBranch className="w-4 h-4 text-gray-400" />
+          <span className="text-sm text-gray-500">Филиал:</span>
+          <select
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+          >
+            <option value="">Все филиалы</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {error && (
         <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 mb-5">
           <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
@@ -326,6 +371,7 @@ export default function CoursesPage() {
                     cohort={c}
                     orgId={orgId ?? ''}
                     isAdmin={isAdmin}
+                    branchName={branchName(c.branchId)}
                     onCancel={setCancelModal}
                     onPublish={handlePublish}
                     onDelete={setDeleteModal}
@@ -347,6 +393,7 @@ export default function CoursesPage() {
                     cohort={c}
                     orgId={orgId ?? ''}
                     isAdmin={isAdmin}
+                    branchName={branchName(c.branchId)}
                     onCancel={setCancelModal}
                     onPublish={handlePublish}
                     onDelete={setDeleteModal}

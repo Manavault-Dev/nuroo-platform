@@ -23,8 +23,10 @@ import {
   Wallet,
   ChevronRight,
   BookOpen,
+  PlayCircle,
   Plug,
   Shield,
+  UserPlus,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { PoweredByNuroo } from '@/components/b2b/PoweredByNuroo'
@@ -202,6 +204,7 @@ export function Sidebar({
         businessFeature: 'reports' as BusinessFeature,
       },
       { href: withOrg('/b2b/courses'), labelKey: t('courses'), icon: BookOpen },
+      { href: withOrg('/b2b/video-courses'), labelKey: 'Видеокурсы', icon: PlayCircle },
       { href: withOrg('/b2b/bookings'), labelKey: t('bookings'), icon: CalendarDays },
       { href: withOrg('/b2b/events'), labelKey: t('events'), icon: PartyPopper },
       ...(!isOrgAdmin
@@ -230,6 +233,13 @@ export function Sidebar({
               icon: GitBranch,
               requiredPlan: 'enterprise' as PlanId,
               businessFeature: 'branches' as BusinessFeature,
+            },
+            {
+              href: withOrg('/b2b/leads'),
+              labelKey: 'Заявки',
+              icon: UserPlus,
+              requiredPlan: 'growth' as PlanId,
+              businessFeature: 'advanced_crm' as BusinessFeature,
             },
           ]
         : []),

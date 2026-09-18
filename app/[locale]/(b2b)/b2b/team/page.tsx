@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useRouter } from '@/i18n/navigation'
 import { useTranslations } from 'next-intl'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
-import { apiClient } from '@/lib/b2b/api'
+import { apiClient, BRANCH_ROLE_LABELS, type Branch, type BranchRole } from '@/lib/b2b/api'
 import {
   Users,
   UserCog,
@@ -17,6 +17,7 @@ import {
   Pencil,
   Check,
   X,
+  GitBranch,
 } from 'lucide-react'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { useAlert } from '@/components/ui/AlertDialog'
@@ -29,6 +30,8 @@ interface TeamMember {
   orgDisplayName: string | null
   role: 'admin' | 'specialist'
   joinedAt: Date | string
+  branchId: string | null
+  branchRole: BranchRole | null
 }
 
 function EditableName({
@@ -142,9 +145,11 @@ export default function TeamPage() {
   const t = useTranslations('b2b.pages.team')
 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [branches, setBranches] = useState<Branch[]>([])
   const [loadingTeam, setLoadingTeam] = useState(false)
   const [removingUid, setRemovingUid] = useState<string | null>(null)
   const [updatingUid, setUpdatingUid] = useState<string | null>(null)
+  const [assigningUid, setAssigningUid] = useState<string | null>(null)
   const { alert, confirm } = useAlert()
 
   const currentUid = profile?.uid
@@ -180,6 +185,14 @@ export default function TeamPage() {
     if (orgId) loadTeam(orgId)
   }, [isLoading, profile, isAdmin, orgId, loadTeam])
 
+  useEffect(() => {
+    if (!orgId) return
+    apiClient
+      .getBranches(orgId)
+      .then((res) => setBranches(res.branches ?? []))
+      .catch(() => setBranches([]))
+  }, [orgId])
+
   const handleRemove = async (uid: string) => {
     if (!orgId) return
     const confirmed = await confirm(t('removeConfirm'))
@@ -209,6 +222,25 @@ export default function TeamPage() {
       alert(err instanceof Error ? err.message : t('failedUpdateRole'), { type: 'error' })
     } finally {
       setUpdatingUid(null)
+    }
+  }
+
+  const handleAssignBranch = async (
+    uid: string,
+    branchId: string | null,
+    branchRole: BranchRole | null
+  ) => {
+    if (!orgId) return
+    setAssigningUid(uid)
+    try {
+      await apiClient.assignMemberBranch(orgId, uid, { branchId, branchRole })
+      setTeamMembers((prev) =>
+        prev.map((m) => (m.uid === uid ? { ...m, branchId, branchRole } : m))
+      )
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t('failedUpdateRole'), { type: 'error' })
+    } finally {
+      setAssigningUid(null)
     }
   }
 
@@ -356,6 +388,13 @@ export default function TeamPage() {
                                 {t('you')}
                               </span>
                             )}
+                            {member.branchId && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 rounded">
+                                <GitBranch className="w-3 h-3" />
+                                {branches.find((b) => b.id === member.branchId)?.name ?? 'Филиал'}
+                                {member.branchRole && ` · ${BRANCH_ROLE_LABELS[member.branchRole]}`}
+                              </span>
+                            )}
                           </div>
                           <div className="mt-1 flex items-start gap-2">
                             <Mail className="w-4 h-4 text-gray-400 shrink-0" />
@@ -368,6 +407,49 @@ export default function TeamPage() {
                       </div>
                       {!isCurrentUser && (
                         <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap md:w-auto md:justify-end">
+                          {branches.length > 0 && (
+                            <div className="flex gap-1.5 items-center">
+                              <select
+                                value={member.branchId ?? ''}
+                                disabled={assigningUid === member.uid}
+                                onChange={(e) =>
+                                  handleAssignBranch(
+                                    member.uid,
+                                    e.target.value || null,
+                                    e.target.value ? (member.branchRole ?? 'teacher') : null
+                                  )
+                                }
+                                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-400 bg-white"
+                              >
+                                <option value="">HQ (все филиалы)</option>
+                                {branches.map((b) => (
+                                  <option key={b.id} value={b.id}>
+                                    {b.name}
+                                  </option>
+                                ))}
+                              </select>
+                              {member.branchId && (
+                                <select
+                                  value={member.branchRole ?? 'teacher'}
+                                  disabled={assigningUid === member.uid}
+                                  onChange={(e) =>
+                                    handleAssignBranch(
+                                      member.uid,
+                                      member.branchId,
+                                      e.target.value as BranchRole
+                                    )
+                                  }
+                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-400 bg-white"
+                                >
+                                  {(Object.keys(BRANCH_ROLE_LABELS) as BranchRole[]).map((r) => (
+                                    <option key={r} value={r}>
+                                      {BRANCH_ROLE_LABELS[r]}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                          )}
                           {member.role === 'specialist' ? (
                             <button
                               onClick={() => handleChangeRole(member.uid, 'org_admin')}

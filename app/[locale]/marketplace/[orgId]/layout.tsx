@@ -25,9 +25,11 @@ const FALLBACK: Record<string, { title: string; description: string }> = {
   },
 }
 
-async function fetchOrgMeta(
-  orgId: string
-): Promise<{ name: string | null; description: string | null } | null> {
+async function fetchOrgMeta(orgId: string): Promise<{
+  name: string | null
+  description: string | null
+  imageUrl: string | null
+} | null> {
   try {
     const res = await fetch(`${API_URL}/api/organizations/public`, {
       next: { revalidate: 3600 },
@@ -36,7 +38,11 @@ async function fetchOrgMeta(
     const data = await res.json()
     const org = (data?.organizations ?? []).find((o: { id: string }) => o.id === orgId)
     if (!org) return null
-    return { name: org.name ?? null, description: org.description ?? null }
+    return {
+      name: org.name ?? null,
+      description: org.description ?? null,
+      imageUrl: org.coverImageUrl ?? org.logoUrl ?? null,
+    }
   } catch {
     return null
   }
@@ -72,9 +78,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       siteName: 'Nuroo',
       url: pageUrl,
       locale: ogLocale,
+      ...(org?.imageUrl ? { images: [{ url: org.imageUrl }] } : {}),
     },
     twitter: {
-      card: 'summary',
+      card: org?.imageUrl ? 'summary_large_image' : 'summary',
       title,
       description,
     },

@@ -7,11 +7,23 @@ export interface AuthenticatedUser {
   }
 }
 
+/**
+ * Enterprise branch-level role label. Purely informational/UI unless paired with `branchId`.
+ * `null`/undefined = HQ-level access (sees all branches) — the default for every existing org.
+ */
+export type BranchRole = 'branch_admin' | 'admissions_manager' | 'finance_manager' | 'teacher'
+
 export interface OrgMember {
   uid: string
   role: 'org_admin' | 'specialist'
   status: 'active' | 'inactive'
   addedAt: Date
+  /**
+   * Enterprise branch scoping — the single branch this member is restricted to.
+   * `null`/undefined means HQ-level: the member sees every branch (default, backward compatible).
+   */
+  branchId?: string | null
+  branchRole?: BranchRole | null
 }
 
 export interface ChildSummary {

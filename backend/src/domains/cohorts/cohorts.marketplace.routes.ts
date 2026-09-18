@@ -10,6 +10,7 @@ function toPublic(doc: CohortDoc): PublicCohort {
   return {
     id: doc.id,
     orgId: doc.orgId,
+    branchId: doc.branchId ?? null,
     orgName: doc.orgName,
     orgLogoUrl: doc.orgLogoUrl,
     title: doc.title,
@@ -92,6 +93,7 @@ export const cohortsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
     ageMin: z.coerce.number().int().optional(),
     ageMax: z.coerce.number().int().optional(),
     orgId: z.string().optional(),
+    branchId: z.string().optional(),
     limit: z.coerce.number().int().min(1).max(100).default(24),
   })
 
@@ -121,6 +123,7 @@ export const cohortsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
 
     if (query.category) cohorts = cohorts.filter((c) => c.category === query.category)
     if (query.format) cohorts = cohorts.filter((c) => c.format === query.format)
+    if (query.branchId) cohorts = cohorts.filter((c) => c.branchId === query.branchId)
     if (query.ageMin !== null && query.ageMin !== undefined) {
       cohorts = cohorts.filter((c) => (c.ageMax ?? 99) >= query.ageMin!)
     }
