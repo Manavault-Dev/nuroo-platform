@@ -753,10 +753,6 @@ export class ApiClient {
   }
 
   // Auth & Profile
-  async health() {
-    return this.request<{ status: string; timestamp: string }>('/health')
-  }
-
   async getMe() {
     return this.cachedRequest<SpecialistProfile>('/me', 'profile:me', 'profile')
   }
@@ -771,35 +767,6 @@ export class ApiClient {
 
   async getSession() {
     return this.request<{ ok: boolean; hasOrg: boolean; orgId?: string }>('/session')
-  }
-
-  async joinOrganization(inviteCode: string) {
-    cache.invalidate()
-    return this.request<{ ok: boolean; orgId: string }>('/join', {
-      method: 'POST',
-      body: JSON.stringify({ inviteCode }),
-    })
-  }
-
-  async getPlans() {
-    return this.cachedRequest<{
-      ok: boolean
-      plans: Array<{
-        id: string
-        name: string
-        price: number
-        currency: string
-        limits?: { children: number; specialists: number | null } | null
-      }>
-    }>('/plans', 'billing:plans', 'default')
-  }
-
-  async createPayment(orgId: string, planId: 'starter' | 'growth' | 'enterprise') {
-    cache.invalidate()
-    return this.request<{ paymentUrl?: string; error?: string }>(`/orgs/${orgId}/payments`, {
-      method: 'POST',
-      body: JSON.stringify({ orgId, planId }),
-    })
   }
 
   async getBillingStatus(orgId: string) {
