@@ -63,8 +63,12 @@ async function verifyIdTokenCached(token: string): Promise<DecodedIdToken> {
 async function buildServer() {
   const isProduction = config.NODE_ENV === 'production'
 
+  // 'warn' in production hid all request/operational logs — only errors were
+  // visible, so outages and slow endpoints went unnoticed until a user
+  // complained. LOG_LEVEL lets it be dialed back per-deploy if it's ever too
+  // noisy, without another code change.
   const fastify = Fastify({
-    logger: { level: isProduction ? 'warn' : 'info' },
+    logger: { level: process.env.LOG_LEVEL ?? 'info' },
   })
 
   Sentry.setupFastifyErrorHandler(fastify)
