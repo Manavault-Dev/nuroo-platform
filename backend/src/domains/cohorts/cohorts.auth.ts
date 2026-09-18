@@ -53,15 +53,26 @@ export function isAdmin(member: OrgMember): boolean {
   return member.role === 'org_admin'
 }
 
+/** True for HQ members (no branch scope) or when the cohort's branch matches the member's scope. */
+export function isInMemberBranchScope(
+  member: OrgMember,
+  cohort: Pick<CohortDoc, 'branchId'>
+): boolean {
+  const scope = member.branchId ?? null
+  if (!scope) return true
+  return (cohort.branchId ?? null) === scope
+}
+
 export function isInstructor(member: OrgMember, cohort: Pick<CohortDoc, 'instructorId'>): boolean {
   return !!cohort.instructorId && cohort.instructorId === member.uid
 }
 
 export function canManageCohort(
   member: OrgMember,
-  cohort: Pick<CohortDoc, 'instructorId'>
+  cohort: Pick<CohortDoc, 'instructorId' | 'branchId'>
 ): boolean {
-  return isAdmin(member) || isInstructor(member, cohort)
+  if (isInstructor(member, cohort)) return true
+  return isAdmin(member) && isInMemberBranchScope(member, cohort)
 }
 
 /** Can create a cohort in the org */
@@ -72,7 +83,7 @@ export function canCreateCohort(member: OrgMember): boolean {
 /** Can publish (open) a cohort directly */
 export function canPublishCohort(
   member: OrgMember,
-  cohort: Pick<CohortDoc, 'instructorId'>,
+  cohort: Pick<CohortDoc, 'instructorId' | 'branchId'>,
   requireGroupApproval: boolean
 ): boolean {
   if (!canManageCohort(member, cohort)) return false
@@ -84,7 +95,7 @@ export function canPublishCohort(
 /** Can submit cohort for admin approval */
 export function canSubmitForApproval(
   member: OrgMember,
-  cohort: Pick<CohortDoc, 'instructorId'>
+  cohort: Pick<CohortDoc, 'instructorId' | 'branchId'>
 ): boolean {
   return canManageCohort(member, cohort)
 }
@@ -97,7 +108,7 @@ export function canApproveCohort(member: OrgMember): boolean {
 /** Validate status transition with role context */
 export function validateStatusTransition(opts: {
   member: OrgMember
-  cohort: Pick<CohortDoc, 'instructorId' | 'status'>
+  cohort: Pick<CohortDoc, 'instructorId' | 'status' | 'branchId'>
   nextStatus: CohortStatus
   requireGroupApproval: boolean
   reply: FastifyReply

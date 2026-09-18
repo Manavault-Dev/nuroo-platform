@@ -52,6 +52,8 @@ export interface Slot {
 export interface BookingDoc {
   orgId: string
   specialistId: string
+  /** Denormalized from the specialist's member.branchId at creation time (enterprise scoping). */
+  branchId: string | null
   parentId: string
   childId: string | null
   serviceId: string | null

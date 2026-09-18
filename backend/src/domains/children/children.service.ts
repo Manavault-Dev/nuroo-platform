@@ -1,4 +1,5 @@
 import admin from 'firebase-admin'
+import { dispatch } from '../../modules/notifications/index.js'
 
 export const COLLECTIONS = {
   ORG_CHILDREN: (orgId: string) => `organizations/${orgId}/children`,
@@ -34,12 +35,16 @@ export async function fetchAssignedChildren(
   db: admin.firestore.Firestore,
   orgId: string,
   role: string,
-  uid: string
+  uid: string,
+  /** Enterprise branch scope — restricts results to one branch. `null` = see all (HQ). */
+  branchScope: string | null = null
 ): Promise<{ docs: admin.firestore.QueryDocumentSnapshot[] }> {
   const orgChildrenRef = db.collection(COLLECTIONS.ORG_CHILDREN(orgId))
 
   if (role === 'org_admin') {
-    return orgChildrenRef.where('assigned', '==', true).get()
+    let query = orgChildrenRef.where('assigned', '==', true) as admin.firestore.Query
+    if (branchScope) query = query.where('branchId', '==', branchScope)
+    return query.get()
   }
 
   const directSnap = await orgChildrenRef
@@ -48,7 +53,9 @@ export async function fetchAssignedChildren(
     .get()
 
   const seenIds = new Set(directSnap.docs.map((d) => d.id))
-  const allDocs: admin.firestore.QueryDocumentSnapshot[] = [...directSnap.docs]
+  const allDocs: admin.firestore.QueryDocumentSnapshot[] = branchScope
+    ? directSnap.docs.filter((d) => (d.data().branchId ?? null) === branchScope)
+    : [...directSnap.docs]
 
   const groupsSnap = await db
     .collection(`specialists/${uid}/groups`)
@@ -76,7 +83,10 @@ export async function fetchAssignedChildren(
       const batchSnap = await orgChildrenRef
         .where(admin.firestore.FieldPath.documentId(), 'in', batch)
         .get()
-      allDocs.push(...batchSnap.docs)
+      const docs = branchScope
+        ? batchSnap.docs.filter((d) => (d.data().branchId ?? null) === branchScope)
+        : batchSnap.docs
+      allDocs.push(...docs)
     }
   }
 
@@ -393,10 +403,12 @@ export async function createChildRecord(
     gender?: string
     diagnosis?: string
     primaryConcern?: string
+    branchId?: string | null
   }
 ) {
   const now = admin.firestore.Timestamp.fromDate(new Date())
   const fullName = [body.firstName.trim(), body.lastName?.trim()].filter(Boolean).join(' ')
+  const branchId = body.branchId || null
 
   const globalRef = db.collection('children').doc()
   const childData = {
@@ -408,6 +420,7 @@ export async function createChildRecord(
     diagnosis: body.diagnosis || null,
     primaryConcern: body.primaryConcern || null,
     orgId,
+    branchId,
     createdBy: createdByUid,
     createdAt: now,
     updatedAt: now,
@@ -418,6 +431,7 @@ export async function createChildRecord(
     assigned: true,
     childId: globalRef.id,
     name: fullName,
+    branchId,
     createdAt: now,
     updatedAt: now,
   })
@@ -758,6 +772,73 @@ export async function createChildTask(
   return { id: taskRef.id, taskData, now }
 }
 
+export async function reviewChildTask(
+  db: admin.firestore.Firestore,
+  orgId: string,
+  childId: string,
+  taskId: string,
+  reviewerUid: string,
+  grade: 'approved' | 'needs_revision',
+  feedback?: string
+) {
+  const taskRef = db.doc(`${COLLECTIONS.CHILD_TASKS(childId)}/${taskId}`)
+  const taskSnap = await taskRef.get()
+  if (!taskSnap.exists) {
+    throw Object.assign(new Error('Task not found'), { statusCode: 404 })
+  }
+
+  const now = admin.firestore.Timestamp.fromDate(new Date())
+  await taskRef.update({
+    grade,
+    feedback: feedback ?? null,
+    feedbackBy: reviewerUid,
+    feedbackAt: now,
+    submissionStatus: 'graded',
+    status: grade === 'approved' ? 'completed' : 'pending',
+    updatedAt: now,
+  })
+
+  try {
+    const orgChildSnap = await db.doc(`${COLLECTIONS.ORG_CHILDREN(orgId)}/${childId}`).get()
+    const parentUserId = orgChildSnap.data()?.parentUserId
+    if (parentUserId) {
+      const taskTitle = taskSnap.data()?.title || 'your assignment'
+      await dispatch({
+        userId: parentUserId,
+        orgId,
+        role: 'parent',
+        type: 'task_reviewed',
+        category: 'assignments',
+        title: grade === 'approved' ? 'Assignment approved' : 'Assignment needs revision',
+        body:
+          grade === 'approved'
+            ? `"${taskTitle}" was reviewed and approved.`
+            : `"${taskTitle}" needs another look — check the specialist's feedback.`,
+        metadata: { childId, taskId, orgId },
+        dedupKey: `task_reviewed:${childId}:${taskId}:${now.toMillis()}`,
+      })
+    }
+  } catch {
+    // best-effort — grading must not fail if the notification can't be sent
+  }
+
+  const updatedSnap = await taskRef.get()
+  const d = updatedSnap.data()!
+  return {
+    id: taskId,
+    title: d.title || 'Untitled Task',
+    description: d.description ?? null,
+    status: d.status || 'pending',
+    submissionStatus: d.submissionStatus ?? 'pending',
+    grade: d.grade ?? null,
+    feedback: d.feedback ?? null,
+    feedbackAt: d.feedbackAt?.toDate() ?? null,
+    submissionText: d.submissionText ?? null,
+    fileUrl: d.fileUrl ?? null,
+    submittedAt: d.submittedAt?.toDate() ?? null,
+  }
+}
+
 export async function listChildTasks(db: admin.firestore.Firestore, childId: string) {
   const tasksRef = db.collection(COLLECTIONS.CHILD_TASKS(childId))
   const snapshot = await tasksRef.orderBy('updatedAt', 'desc').get()
@@ -775,6 +856,11 @@ export async function listChildTasks(db: admin.firestore.Firestore, childId: str
       submissionText: d.submissionText ?? null,
       fileUrl: d.fileUrl ?? null,
       submittedAt: d.submittedAt?.toDate() ?? null,
+      submissionStatus: d.submissionStatus ?? 'pending',
+      grade: d.grade ?? null,
+      feedback: d.feedback ?? null,
+      feedbackAt: d.feedbackAt?.toDate() ?? null,
+      groupAssignmentId: d.groupAssignmentId ?? null,
     }
   })
 }

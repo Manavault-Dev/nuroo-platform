@@ -6,6 +6,7 @@ import {
   useRouter as useNextRouter,
   useParams,
 } from 'next/navigation'
+import { useMemo } from 'react'
 import type { ComponentProps } from 'react'
 
 const LOCALES = ['en', 'ru', 'ky'] as const
@@ -40,33 +41,36 @@ export function useRouter() {
   const pathname = useNextPathname() ?? ''
   const locale = getLocaleFromPathname(pathname)
 
-  return {
-    push: (href: string, options?: { locale?: string }) => {
-      const loc = options?.locale ?? locale
-      const url = href.startsWith('#')
-        ? `${pathname}${href}`
-        : href.startsWith('http')
-          ? href
-          : `/${loc}${href === '/' ? '' : href}`
-      return nextRouter.push(url)
-    },
-    replace: (href: string, options?: { locale?: string }) => {
-      const loc = options?.locale ?? locale
-      const url = href.startsWith('#')
-        ? `${pathname}${href}`
-        : href.startsWith('http')
-          ? href
-          : `/${loc}${href === '/' ? '' : href}`
-      return nextRouter.replace(url)
-    },
-    back: () => nextRouter.back(),
-    forward: () => nextRouter.forward(),
-    refresh: () => nextRouter.refresh(),
-    prefetch: (href: string) => {
-      const url = href.startsWith('http') ? href : `/${locale}${href === '/' ? '' : href}`
-      return nextRouter.prefetch(url)
-    },
-  }
+  return useMemo(
+    () => ({
+      push: (href: string, options?: { locale?: string }) => {
+        const loc = options?.locale ?? locale
+        const url = href.startsWith('#')
+          ? `${pathname}${href}`
+          : href.startsWith('http')
+            ? href
+            : `/${loc}${href === '/' ? '' : href}`
+        return nextRouter.push(url)
+      },
+      replace: (href: string, options?: { locale?: string }) => {
+        const loc = options?.locale ?? locale
+        const url = href.startsWith('#')
+          ? `${pathname}${href}`
+          : href.startsWith('http')
+            ? href
+            : `/${loc}${href === '/' ? '' : href}`
+        return nextRouter.replace(url)
+      },
+      back: () => nextRouter.back(),
+      forward: () => nextRouter.forward(),
+      refresh: () => nextRouter.refresh(),
+      prefetch: (href: string) => {
+        const url = href.startsWith('http') ? href : `/${locale}${href === '/' ? '' : href}`
+        return nextRouter.prefetch(url)
+      },
+    }),
+    [nextRouter, pathname, locale]
+  )
 }
 
 function LocaleLink({ href, ...rest }: ComponentProps<typeof Link>) {

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
-import { apiClient } from '@/lib/b2b/api'
+import { apiClient, type Branch } from '@/lib/b2b/api'
 import {
   Calendar,
   Clock,
@@ -24,6 +24,7 @@ import {
   ClipboardList,
   Ban,
   ChevronRight,
+  GitBranch,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
@@ -293,12 +294,22 @@ function ClientBriefModal({
 
 // ── Bookings tab ──────────────────────────────────────────────────────────────
 
-function BookingsTab({ orgId, specialistId }: { orgId: string; specialistId?: string }) {
+function BookingsTab({
+  orgId,
+  specialistId,
+  isAdmin,
+}: {
+  orgId: string
+  specialistId?: string
+  isAdmin?: boolean
+}) {
   const t = useTranslations('b2b.pages.bookings')
   const locale = useLocale()
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [branchFilter, setBranchFilter] = useState('')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [briefBookingId, setBriefBookingId] = useState<string | null>(null)
   const [briefSubmission, setBriefSubmission] = useState<IntakeSubmission | null>(null)
@@ -315,10 +326,18 @@ function BookingsTab({ orgId, specialistId }: { orgId: string; specialistId?: st
   useEffect(() => {
     setLoading(true)
     apiClient
-      .getOrgBookings(orgId, filter || undefined, specialistId)
+      .getOrgBookings(orgId, filter || undefined, specialistId, branchFilter || undefined)
       .then((res) => setBookings(res.bookings as Booking[]))
       .finally(() => setLoading(false))
-  }, [orgId, filter, specialistId])
+  }, [orgId, filter, specialistId, branchFilter])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    apiClient
+      .getBranches(orgId)
+      .then((res) => setBranches(res.branches ?? []))
+      .catch(() => setBranches([]))
+  }, [orgId, isAdmin])
 
   const handleStatus = async (b: Booking, next: BookingStatus) => {
     setActionLoading(b.id)
@@ -378,6 +397,25 @@ function BookingsTab({ orgId, specialistId }: { orgId: string; specialistId?: st
           </button>
         ))}
       </div>
+
+      {isAdmin && branches.length > 0 && (
+        <div className="flex items-center gap-2">
+          <GitBranch className="w-4 h-4 text-gray-400" />
+          <span className="text-sm text-gray-500">Филиал:</span>
+          <select
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+          >
+            <option value="">Все филиалы</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-16">
@@ -1917,7 +1955,9 @@ export default function BookingsPage() {
         ))}
       </div>
 
-      {tab === 'bookings' && <BookingsTab orgId={orgId} specialistId={specialistId} />}
+      {tab === 'bookings' && (
+        <BookingsTab orgId={orgId} specialistId={specialistId} isAdmin={isAdmin} />
+      )}
       {tab === 'services' && (
         <ServicesTab orgId={orgId} isAdmin={isAdmin} specialistId={specialistId} />
       )}

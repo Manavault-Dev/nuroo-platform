@@ -1,0 +1,63 @@
+name: Uptime Monitor
+
+# Nobody was actually watching whether usenuroo.com or the backend were up —
+# there was no external uptime service and no alert for it. This polls both
+# every 5 minutes and pings the same Slack webhook the deploy workflow uses
+# on failure, so an outage gets noticed within minutes instead of whenever a
+# user complains.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: uptime-monitor
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check production endpoints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check backend /health
+        id: backend
+        run: |
+          STATUS=$(curl -s -o /tmp/backend_body.txt -w "%{http_code}" --max-time 15 \
+            "https://nuroo-backend-872609122621.us-central1.run.app/health" || echo "000")
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "Backend /health → HTTP $STATUS"
+          cat /tmp/backend_body.txt || true
+
+      - name: Check web homepage
+        id: web
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
+            "https://usenuroo.com/ru" || echo "000")
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "Web homepage → HTTP $STATUS"
+
+      - name: Notify Slack if either endpoint is down
+        if: steps.backend.outputs.status != '200' || steps.web.outputs.status != '200'
+        uses: slackapi/slack-github-action@70cd7be8e40a46e8b0eced40b0de447bdb42f68e
+        with:
+          payload: |
+            {
+              "text": "Nuroo production endpoint is down",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*🚨 Production endpoint down*\n\nBackend `/health`: HTTP ${{ steps.backend.outputs.status }}\nWeb `usenuroo.com`: HTTP ${{ steps.web.outputs.status }}\n\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View this check>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+      - name: Fail the job if down (so the Actions tab shows red too)
+        if: steps.backend.outputs.status != '200' || steps.web.outputs.status != '200'
+        run: exit 1

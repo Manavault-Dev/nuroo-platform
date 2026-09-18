@@ -143,14 +143,14 @@ The platform consists of three main components:
    NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 
    # API URL
-   NEXT_PUBLIC_API_URL=http://127.0.0.1:3001
+   NEXT_PUBLIC_API_URL=http://127.0.0.1:3101
    ```
 
    Create `.env` in `backend/`:
 
    ```env
    # Server
-   PORT=3001
+   PORT=3101
    NODE_ENV=development
 
    # Firebase Admin
@@ -337,7 +337,7 @@ npm run typecheck # Type checking only
 
 | Variable                | Required | Description                          |
 | ----------------------- | -------- | ------------------------------------ |
-| `PORT`                  | No       | Server port (default: 3001)          |
+| `PORT`                  | No       | Server port (default: 3101)          |
 | `NODE_ENV`              | No       | Environment (development/production) |
 | `FIREBASE_PROJECT_ID`   | Yes      | Firebase project ID                  |
 | `FIREBASE_CLIENT_EMAIL` | Yes      | Service account email                |

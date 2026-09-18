@@ -5,6 +5,7 @@ import { routing } from '@/i18n/routing'
 import { ConditionalHeader } from '@/components/layout/ConditionalHeader'
 import { LandingOnlyEffects } from '@/components/effects/LandingOnlyEffects'
 import { AmplitudeProvider } from '@/components/providers/AmplitudeProvider'
+import { SentryClientProvider } from '@/components/providers/SentryClientProvider'
 
 type Props = { children: React.ReactNode; params: { locale: string } }
 
@@ -23,6 +24,7 @@ export default async function LocaleLayout({ children, params }: Props) {
   return (
     <>
       <AmplitudeProvider />
+      <SentryClientProvider />
       <NextIntlClientProvider messages={messages} locale={locale}>
         <LandingOnlyEffects />
         <ConditionalHeader />

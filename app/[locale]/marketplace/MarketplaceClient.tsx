@@ -50,7 +50,7 @@ interface PublicOrg {
   languages?: string[]
 }
 
-interface PublicCohort {
+export interface PublicCohort {
   id: string
   orgId: string
   orgName: string
@@ -1271,7 +1271,7 @@ function ProgramCard({ cohort }: { cohort: PublicCohort }) {
 
 // ─── Enroll Modal ─────────────────────────────────────────────────────────────
 
-function EnrollModal({ cohort, onClose }: { cohort: PublicCohort; onClose: () => void }) {
+export function EnrollModal({ cohort, onClose }: { cohort: PublicCohort; onClose: () => void }) {
   const [childName, setChildName] = useState('')
   const [phone, setPhone] = useState('')
   const [saving, setSaving] = useState(false)

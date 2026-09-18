@@ -46,7 +46,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Server will start on `http://localhost:3001`
+Server will start on `http://localhost:3101`
 
 ## API Endpoints
 

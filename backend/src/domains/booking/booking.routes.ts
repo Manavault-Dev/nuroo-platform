@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { getFirestore } from '../../infrastructure/database/firebase.js'
-import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
+import { requireOrgMember, memberBranchScope } from '../../infrastructure/auth/rbac.js'
 import { canTransition, buildStatusUpdate, validateBookingInput } from './booking.service.js'
 import type { BookingDoc, Slot } from './types.js'
 import { eventDispatcher } from '../../modules/notifications/event.dispatcher.js'
@@ -89,6 +89,12 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
       }
       const intakeStatus = intakeFormId ? 'pending' : 'not_required'
 
+      // Denormalize the specialist's branch onto the booking for enterprise scoping.
+      const specialistMemberSnap = await db
+        .doc(`organizations/${orgId}/members/${specialistId}`)
+        .get()
+      const branchId = (specialistMemberSnap.data()?.branchId as string | null | undefined) ?? null
+
       const now = new Date().toISOString()
       const bookingRef = db.collection(`organizations/${orgId}/bookings`).doc()
       const slotRef = db.doc(`organizations/${orgId}/slots/${slotId}`)
@@ -123,6 +129,7 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
           const bookingDoc: BookingDoc = {
             orgId,
             specialistId,
+            branchId,
             parentId,
             childId: childId ?? null,
             serviceId: serviceId ?? null,
@@ -347,7 +354,7 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   // GET /orgs/:orgId/bookings — org admin views all bookings
   fastify.get<{
     Params: { orgId: string }
-    Querystring: { status?: string; specialistId?: string; date?: string }
+    Querystring: { status?: string; specialistId?: string; date?: string; branchId?: string }
   }>('/orgs/:orgId/bookings', { config: { rateLimit: RATE_READ } }, async (request, reply) => {
     if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
     const { orgId } = request.params
@@ -355,8 +362,13 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
     if (reply.sent) return
     if (member.role !== 'org_admin') return reply.code(403).send({ error: 'Forbidden' })
 
-    const snap = await db.collection(`organizations/${orgId}/bookings`).limit(250).get()
-    const { status, specialistId, date } = request.query as Record<string, string>
+    const { status, specialistId, date, branchId } = request.query as Record<string, string>
+    const scope = memberBranchScope(member)
+    const effectiveBranchId = scope ?? branchId
+
+    let bookingsQuery = db.collection(`organizations/${orgId}/bookings`) as FirebaseFirestore.Query
+    if (effectiveBranchId) bookingsQuery = bookingsQuery.where('branchId', '==', effectiveBranchId)
+    const snap = await bookingsQuery.limit(250).get()
 
     let bookings = snap.docs.map((d) => ({ id: d.id, ...(d.data() as BookingDoc) }))
     if (specialistId) bookings = bookings.filter((b) => b.specialistId === specialistId)
@@ -386,6 +398,10 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
       if (!snap.exists) return reply.code(404).send({ error: 'Booking not found' })
 
       const booking = snap.data() as BookingDoc
+      const scope = memberBranchScope(member)
+      if (scope && (booking.branchId ?? null) !== scope) {
+        return reply.code(403).send({ error: 'Booking belongs to a different branch' })
+      }
       if (!canTransition(booking.status, parse.data.status)) {
         return reply.code(409).send({
           error: `Cannot transition from '${booking.status}' to '${parse.data.status}'`,
