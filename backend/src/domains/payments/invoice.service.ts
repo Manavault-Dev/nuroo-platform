@@ -19,6 +19,8 @@ export interface InvoiceDoc {
   description: string
   dueDate: string
   status: InvoiceStatus
+  /** Denormalized from the child's org-link branchId at creation time (enterprise scoping). */
+  branchId?: string | null
   providerPaymentId?: string
   paymentUrl?: string
   billingProfileId?: string
@@ -46,6 +48,7 @@ function docToInvoice(
     description: d.description,
     dueDate: d.dueDate,
     status: d.status,
+    branchId: d.branchId ?? null,
     providerPaymentId: d.providerPaymentId ?? undefined,
     paymentUrl: d.paymentUrl ?? undefined,
     billingProfileId: d.billingProfileId ?? undefined,
@@ -76,6 +79,9 @@ export async function createInvoice(
   const invoiceRef = db.collection(`organizations/${orgId}/invoices`).doc()
   const invoiceId = invoiceRef.id
 
+  const childLinkSnap = await db.doc(`organizations/${orgId}/children/${input.childId}`).get()
+  const branchId = (childLinkSnap.data()?.branchId as string | null | undefined) ?? null
+
   const backendUrl = config.BACKEND_PUBLIC_URL?.replace(/\/$/, '') ?? 'http://localhost:3101'
 
   const callbackUrl = `${backendUrl}/webhooks/finik`
@@ -105,6 +111,7 @@ export async function createInvoice(
     description: input.description,
     dueDate: input.dueDate,
     status: result.status,
+    branchId,
     providerPaymentId: result.providerPaymentId,
     paymentUrl: result.paymentUrl,
     createdBy,
@@ -146,22 +153,28 @@ export async function createInvoice(
 export async function listInvoices(
   db: Firestore,
   orgId: string,
-  filters?: { parentId?: string; status?: InvoiceStatus; limit?: number; month?: string }
+  filters?: {
+    parentId?: string
+    status?: InvoiceStatus
+    limit?: number
+    month?: string
+    branchId?: string
+  }
 ): Promise<InvoiceDoc[]> {
   const limit = Math.min(filters?.limit ?? 50, 200)
 
-  // Avoid compound query (where + orderBy on different fields) which requires a
-  // composite Firestore index. Instead, apply only the single-field orderBy and
-  // filter parentId/month in-memory. At startup scale the subcollection is small enough
-  // that fetching a bounded extra page is negligible.
+  // status/branchId use composite indexes (see firestore.indexes.json); parentId/month
+  // stay in-memory since they're rarely combined and don't justify more indexes.
   let q = db
     .collection(`organizations/${orgId}/invoices`)
     .orderBy('createdAt', 'desc') as admin.firestore.Query
 
   if (filters?.status) {
-    // status equality + orderBy('createdAt') requires only the default single-field
-    // index on createdAt — no composite index needed when status is the sole filter.
     q = q.where('status', '==', filters.status)
+  }
+
+  if (filters?.branchId) {
+    q = q.where('branchId', '==', filters.branchId)
   }
 
   // Fetch a larger page so in-memory filtering still returns `limit` docs

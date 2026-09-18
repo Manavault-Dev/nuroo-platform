@@ -4,6 +4,12 @@ const withNextIntl = require('next-intl/plugin')('./i18n/request.ts')
 const nextConfig = {
   compress: true,
   poweredByHeader: false,
+  env: {
+    // Vercel injects VERCEL_GIT_COMMIT_SHA automatically at build time — no
+    // secret to configure. This makes Sentry release tracking on the web
+    // actually work (it was previously reading an env var nothing ever set).
+    NEXT_PUBLIC_APP_VERSION: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.npm_package_version,
+  },
   transpilePackages: ['next-intl'],
   experimental: {
     // Tree-shake barrel imports — each added package can save 50-200 KB

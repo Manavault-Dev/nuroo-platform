@@ -9,7 +9,12 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') })
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
   environment: process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV ?? 'development',
-  release: process.env.npm_package_version ?? 'unknown',
+  // GIT_SHA is set by the Cloud Run deploy workflow — uniquely identifies the
+  // exact deployed commit. process.env.npm_package_version only exists when
+  // started via `npm run <script>`; the container runs `node dist/index.js`
+  // directly, so it's always undefined in production — GIT_SHA is the real
+  // release identifier that makes Sentry's release tracking actually work.
+  release: process.env.GIT_SHA ?? process.env.npm_package_version ?? 'unknown',
   tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
   sendDefaultPii: false,
   beforeSend(event) {
