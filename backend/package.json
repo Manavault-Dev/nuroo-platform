@@ -22,6 +22,7 @@
     "set-super-admin-direct": "tsx scripts/setSuperAdminDirect.ts",
     "deploy-indexes": "tsx scripts/deployIndexes.ts",
     "deploy-indexes:check": "tsx scripts/deployIndexes.ts --check",
+    "broadcast-app-update": "tsx scripts/broadcastAppUpdateEmail.ts",
     "predev": "node scripts/freeDevPort.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
