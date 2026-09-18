@@ -160,12 +160,6 @@ export async function createUniqueLink(opts: CreateLinkOptions): Promise<MeetRes
   return { meetingUrl: meetUrl, eventId: event.data.id ?? '' }
 }
 
-/** Delete a Google Calendar event (e.g. on cohort/session cancel) */
-export async function deleteEvent(eventId: string, refreshToken?: string | null): Promise<void> {
-  const calendar = getCalendar(refreshToken)
-  await calendar.events.delete({ calendarId: 'primary', eventId }).catch(() => {})
-}
-
 // ─── OAuth flow helpers ───────────────────────────────────────────────────────
 
 /** Generate the Google OAuth consent URL for specialist Calendar access */
