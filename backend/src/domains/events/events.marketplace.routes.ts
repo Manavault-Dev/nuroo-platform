@@ -75,6 +75,27 @@ export const eventsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
     return { ok: true, events }
   })
 
+  // ── GET /marketplace/events/:eventId ──────────────────────────────────────
+  // Public detail page — no auth required
+
+  fastify.get<{ Params: { eventId: string } }>(
+    '/marketplace/events/:eventId',
+    { config: { rateLimit: RATE } },
+    async (request, reply) => {
+      const { eventId } = request.params
+      const snap = await db.doc(`events/${eventId}`).get()
+      if (!snap.exists) return reply.code(404).send({ error: 'Event not found' })
+
+      const doc = { id: snap.id, ...snap.data() } as EventDoc
+      if (doc.status !== 'published') {
+        return reply.code(404).send({ error: 'Event not available' })
+      }
+
+      reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
+      return { ok: true, event: toPublic(doc) }
+    }
+  )
+
   fastify.post<{ Params: { eventId: string } }>(
     '/marketplace/events/:eventId/register',
     { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
