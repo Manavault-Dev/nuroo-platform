@@ -7,30 +7,27 @@ import { useTranslations } from 'next-intl'
 import { Check, Shield, RotateCcw, TrendingUp, ArrowRight } from 'lucide-react'
 import { Analytics } from '@/lib/analytics'
 
-const NUROO_FEATURE_KEYS = [
-  'nF1',
-  'nF2',
-  'nF3',
-  'nF4',
-  'nF5',
-  'nF6',
-  'nF7',
-  'nF8',
-  'nF9',
-  'nF10',
-  'nF11',
+// The landing page leads with what's free (registration, profile, marketplace
+// listing), then what's paid. nF1/nF2/nF7 are dropped here because they now
+// duplicate the free bullets below — the billing page still uses the full
+// original list, so those translation keys stay untouched.
+const NUROO_FREE_FEATURE_KEYS = [
+  'nurooFreeF1',
+  'nurooFreeF2',
+  'nurooFreeF3',
+  'nurooFreeF4',
 ] as const
 
+const NUROO_FEATURE_KEYS = ['nF3', 'nF4', 'nF5', 'nF6', 'nF8', 'nF9', 'nF10', 'nF11'] as const
+
+const BUSINESS_FREE_FEATURE_KEYS = ['businessFreeF1', 'businessFreeF2'] as const
+
 const BUSINESS_FEATURE_KEYS = [
-  'bF1',
-  'bF2',
-  'bF4',
-  'bF5',
-  'bF7',
-  'bF8',
-  'bF9',
-  'bF10',
-  'bF11',
+  'businessMgmtF1',
+  'businessMgmtF2',
+  'businessMgmtF3',
+  'businessMgmtF4',
+  'businessMgmtF5',
 ] as const
 
 export function Pricing() {
@@ -123,39 +120,56 @@ export function Pricing() {
             </div>
 
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-6">
-              {t('nurooValueProp')}
+              {t('nurooLandingValueProp')}
             </p>
 
-            {/* Цена */}
-            <div className="mb-7">
-              <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-xs font-semibold mb-3">
-                {t('trialBadge')}
+            <div className="flex-1">
+              {/* Бесплатно */}
+              <div className="mb-6">
+                <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-xs font-semibold mb-3">
+                  {t('freeBadge')}
+                </div>
+                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2.5">
+                  {t('nurooFreeIntro')}
+                </p>
+                <ul className="space-y-2.5">
+                  {NUROO_FREE_FEATURE_KEYS.map((key) => (
+                    <li key={key} className="flex items-start gap-2.5">
+                      <div className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center">
+                        <Check className="w-2.5 h-2.5 text-teal-600 dark:text-teal-400" />
+                      </div>
+                      <span className="text-sm text-gray-600 dark:text-gray-300">{t(key)}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <div className="flex items-end gap-1">
-                <span className="text-sm text-gray-400 dark:text-gray-500 pb-1.5">$</span>
-                <span className="text-5xl font-bold text-gray-900 dark:text-white tracking-tight leading-none">
-                  15
-                </span>
-                <span className="text-sm text-gray-400 dark:text-gray-500 pb-1.5 ml-1">
-                  / {t('perMonth')}
-                </span>
-              </div>
-              <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
-                {t('afterTrialCaption')}
-              </p>
-            </div>
 
-            {/* Фичи */}
-            <ul className="space-y-2.5 mb-8 flex-1">
-              {NUROO_FEATURE_KEYS.map((key) => (
-                <li key={key} className="flex items-start gap-2.5">
-                  <div className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center">
-                    <Check className="w-2.5 h-2.5 text-teal-600 dark:text-teal-400" />
-                  </div>
-                  <span className="text-sm text-gray-600 dark:text-gray-300">{t(key)}</span>
-                </li>
-              ))}
-            </ul>
+              {/* Платно */}
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-6 mb-8">
+                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">
+                  {t('nurooPaidIntro')}
+                </p>
+                <div className="flex items-end gap-1 mb-4">
+                  <span className="text-sm text-gray-400 dark:text-gray-500 pb-1">$</span>
+                  <span className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight leading-none">
+                    15
+                  </span>
+                  <span className="text-sm text-gray-400 dark:text-gray-500 pb-1 ml-1">
+                    / {t('perMonth')}
+                  </span>
+                </div>
+                <ul className="space-y-2.5">
+                  {NUROO_FEATURE_KEYS.map((key) => (
+                    <li key={key} className="flex items-start gap-2.5">
+                      <div className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center">
+                        <Check className="w-2.5 h-2.5 text-teal-600 dark:text-teal-400" />
+                      </div>
+                      <span className="text-sm text-gray-600 dark:text-gray-300">{t(key)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
 
             <Link
               href="/b2b/register"
@@ -166,7 +180,7 @@ export function Pricing() {
               <ArrowRight className="w-4 h-4 flex-shrink-0" />
             </Link>
             <p className="mt-2.5 text-center text-xs text-gray-400 dark:text-gray-500">
-              {t('microCopy')}
+              {t('landingMicroCopy')}
             </p>
           </div>
 
@@ -180,42 +194,56 @@ export function Pricing() {
             </div>
 
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-6">
-              {t('businessValueProp')}
+              {t('businessLandingValueProp')}
             </p>
 
-            {/* Цена */}
-            <div className="mb-7">
-              <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-xs font-semibold mb-3">
-                {t('trialBadge')}
+            <div className="flex-1">
+              {/* Бесплатно */}
+              <div className="mb-6">
+                <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-xs font-semibold mb-3">
+                  {t('freeBadge')}
+                </div>
+                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2.5">
+                  {t('businessFreeIntro')}
+                </p>
+                <ul className="space-y-2.5">
+                  {BUSINESS_FREE_FEATURE_KEYS.map((key) => (
+                    <li key={key} className="flex items-start gap-2.5">
+                      <div className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center">
+                        <Check className="w-2.5 h-2.5 text-teal-600 dark:text-teal-400" />
+                      </div>
+                      <span className="text-sm text-gray-600 dark:text-gray-300">{t(key)}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <div className="flex items-end gap-1">
-                <span className="text-sm text-gray-400 dark:text-gray-500 pb-1.5">$</span>
-                <span className="text-5xl font-bold text-gray-900 dark:text-white tracking-tight leading-none">
-                  50
-                </span>
-                <span className="text-sm text-gray-400 dark:text-gray-500 pb-1.5 ml-1">
-                  / {t('perMonth')}
-                </span>
-              </div>
-              <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
-                {t('afterTrialCaption')}
-              </p>
-            </div>
 
-            {/* Фичи с вводной строкой */}
-            <ul className="space-y-2.5 mb-8 flex-1">
-              <li className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide pb-1">
-                {t('businessIntro')}
-              </li>
-              {BUSINESS_FEATURE_KEYS.map((key) => (
-                <li key={key} className="flex items-start gap-2.5">
-                  <div className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center">
-                    <Check className="w-2.5 h-2.5 text-teal-600 dark:text-teal-400" />
-                  </div>
-                  <span className="text-sm text-gray-600 dark:text-gray-300">{t(key)}</span>
-                </li>
-              ))}
-            </ul>
+              {/* Платно */}
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-6 mb-8">
+                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">
+                  {t('businessPaidIntro')}
+                </p>
+                <div className="flex items-end gap-1 mb-4">
+                  <span className="text-sm text-gray-400 dark:text-gray-500 pb-1">$</span>
+                  <span className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight leading-none">
+                    50
+                  </span>
+                  <span className="text-sm text-gray-400 dark:text-gray-500 pb-1 ml-1">
+                    / {t('perMonth')}
+                  </span>
+                </div>
+                <ul className="space-y-2.5">
+                  {BUSINESS_FEATURE_KEYS.map((key) => (
+                    <li key={key} className="flex items-start gap-2.5">
+                      <div className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center">
+                        <Check className="w-2.5 h-2.5 text-teal-600 dark:text-teal-400" />
+                      </div>
+                      <span className="text-sm text-gray-600 dark:text-gray-300">{t(key)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
 
             <Link
               href="/b2b/register"
@@ -226,7 +254,7 @@ export function Pricing() {
               <ArrowRight className="w-4 h-4 flex-shrink-0" />
             </Link>
             <p className="mt-2.5 text-center text-xs text-gray-400 dark:text-gray-500">
-              {t('microCopy')}
+              {t('landingMicroCopy')}
             </p>
           </div>
         </div>
@@ -247,7 +275,7 @@ export function Pricing() {
               </p>
             </div>
             <a
-              href="mailto:tilek.dzenisev@gmail.com"
+              href="mailto:contact@usenuroo.com"
               onClick={() => Analytics.pricingEnterpriseCta()}
               className="flex-shrink-0 inline-flex items-center gap-1.5 text-sm font-semibold text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 transition-colors whitespace-nowrap"
             >

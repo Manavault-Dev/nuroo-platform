@@ -2,6 +2,12 @@ import admin from 'firebase-admin'
 import { getFirestore } from '../../infrastructure/database/firebase.js'
 import { getBillingPlan, type BillingPlan } from './payments.repository.js'
 
+// Internal ids stay as-is (starter/growth/enterprise) — they're wired
+// directly to real Stripe price IDs (STRIPE_PRICE_STARTER etc.) and to
+// existing org billing records, so renaming the values themselves would
+// mean migrating live Stripe products and every org's stored plan. The
+// public-facing "Nuroo Solo / Business / Enterprise" naming lives in
+// PLAN_DISPLAY_NAMES below instead — same plan, new label only.
 export const PLAN_IDS = ['starter', 'growth', 'enterprise'] as const
 export type PlanId = (typeof PLAN_IDS)[number]
 export type SubscriptionAccessSource = 'subscription' | 'free_trial'
@@ -13,6 +19,12 @@ export type BillingStatus =
   | 'expired'
   | 'cancelled'
   | 'canceled'
+
+export const PLAN_DISPLAY_NAMES: Record<PlanId, string> = {
+  starter: 'Nuroo Solo',
+  growth: 'Nuroo Business',
+  enterprise: 'Nuroo Enterprise',
+}
 
 export const FREE_TRIAL_DAYS = 30
 // Trial gives Enterprise level access (30 days)
@@ -29,6 +41,14 @@ export interface PlanFeatures {
   dedicatedOnboarding: boolean
   customIntegrations: boolean
   crm: boolean
+  // Added when consolidating the old binary nurooPlan ('nuroo' /
+  // 'nuroo_business') gate into this tiered model — these five didn't
+  // exist here before.
+  orgChildren: boolean
+  teamSchedule: boolean
+  attendance: boolean
+  assignmentsProgress: boolean
+  reports: boolean
 }
 
 export interface PlanConfig {
@@ -54,6 +74,14 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
       dedicatedOnboarding: false,
       customIntegrations: false,
       crm: false,
+      orgChildren: false,
+      teamSchedule: false,
+      attendance: false,
+      assignmentsProgress: false,
+      // "Documents and reports" is explicitly a Solo-tier paid feature per
+      // the business-model spec, unlike the other 4 (org/team concepts a
+      // solo practitioner has no use for).
+      reports: true,
     },
   },
   growth: {
@@ -71,6 +99,11 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
       dedicatedOnboarding: false,
       customIntegrations: false,
       crm: true,
+      orgChildren: true,
+      teamSchedule: true,
+      attendance: true,
+      assignmentsProgress: true,
+      reports: true,
     },
   },
   enterprise: {
@@ -82,6 +115,11 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
       advancedAnalytics: true,
       csvExport: true,
       advancedRoles: true,
+      orgChildren: true,
+      teamSchedule: true,
+      attendance: true,
+      assignmentsProgress: true,
+      reports: true,
       teamManagement: true,
       branches: true,
       finance: true,
@@ -408,17 +446,25 @@ export async function checkOrgHasFeature(
 ): Promise<{ ok: boolean; error?: string }> {
   const ok = await hasFeature(orgId, feature)
   if (!ok) {
+    const business = PLAN_DISPLAY_NAMES.growth
+    const enterprise = PLAN_DISPLAY_NAMES.enterprise
+    const solo = PLAN_DISPLAY_NAMES.starter
     const featureLabels: Record<keyof PlanFeatures, string> = {
-      branding: 'White-label branding (Growth plan)',
-      advancedAnalytics: 'Advanced analytics (Growth plan)',
-      csvExport: 'CSV/PDF export (Growth plan)',
-      advancedRoles: 'Advanced roles (Growth plan)',
-      teamManagement: 'Team management (Growth plan)',
-      branches: 'Multiple branches (Enterprise plan)',
-      finance: 'Finance module (Enterprise plan)',
-      dedicatedOnboarding: 'Dedicated onboarding (Enterprise plan)',
-      customIntegrations: 'Custom integrations (Enterprise plan)',
-      crm: 'Leads & admissions CRM (Growth plan)',
+      branding: `White-label branding (${business} plan)`,
+      advancedAnalytics: `Advanced analytics (${business} plan)`,
+      csvExport: `CSV/PDF export (${business} plan)`,
+      advancedRoles: `Advanced roles (${business} plan)`,
+      teamManagement: `Team management (${business} plan)`,
+      branches: `Multiple branches (${enterprise} plan)`,
+      finance: `Finance module (${enterprise} plan)`,
+      dedicatedOnboarding: `Dedicated onboarding (${enterprise} plan)`,
+      customIntegrations: `Custom integrations (${enterprise} plan)`,
+      crm: `Leads & admissions CRM (${business} plan)`,
+      orgChildren: `Organization-wide client roster (${business} plan)`,
+      teamSchedule: `Group & team scheduling (${business} plan)`,
+      attendance: `Attendance tracking (${business} plan)`,
+      assignmentsProgress: `Homework & progress tracking (${business} plan)`,
+      reports: `Documents & reports (${solo} plan)`,
     }
     return {
       ok: false,
