@@ -73,6 +73,7 @@ export const teamRoute: FastifyPluginAsync = async (fastify) => {
     try {
       const { orgId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
 
       if (member.role !== 'org_admin') {
         return reply.code(403).send({
@@ -112,6 +113,7 @@ export const teamRoute: FastifyPluginAsync = async (fastify) => {
     try {
       const { orgId, uid: targetUid } = request.params
       const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
 
       if (member.role !== 'org_admin') {
         return reply.code(403).send({ error: 'Only organization admins can update member roles' })
@@ -236,6 +238,7 @@ export const teamRoute: FastifyPluginAsync = async (fastify) => {
     try {
       const { orgId, uid: targetUid } = request.params
       const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
 
       if (member.role !== 'org_admin') {
         return reply
@@ -275,6 +278,7 @@ export const teamRoute: FastifyPluginAsync = async (fastify) => {
       try {
         const { orgId, uid: targetUid } = request.params
         const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
 
         if (member.role !== 'org_admin') {
           return reply.code(403).send({ error: 'Only organization admins can remove members' })
