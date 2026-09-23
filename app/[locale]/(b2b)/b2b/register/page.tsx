@@ -3,7 +3,7 @@
 import { useState, FormEvent, Suspense } from 'react'
 import { useRouter } from '@/i18n/navigation'
 import { useSearchParams } from 'next/navigation'
-import { register, signInWithGoogle } from '@/lib/b2b/authClient'
+import { register, signInWithGoogle, beginAuthAttempt, getAuthEpoch } from '@/lib/b2b/authClient'
 import { apiClient } from '@/lib/b2b/api'
 import { Link } from '@/i18n/navigation'
 import { useTranslations } from 'next-intl'
@@ -64,12 +64,24 @@ function RegisterForm() {
   }
 
   /** Shared post-auth flow: accept invite if present, then redirect */
-  const handlePostAuth = async (userCredential: Awaited<ReturnType<typeof register>>) => {
+  const handlePostAuth = async (
+    userCredential: Awaited<ReturnType<typeof register>>,
+    myEpoch: number
+  ) => {
+    // Check BEFORE mutating any shared state or writing consent records — a
+    // newer sign-in/register or an explicit sign-out may have already
+    // happened while register()/signInWithGoogle() was resolving.
+    if (myEpoch !== getAuthEpoch()) return
+
     const idToken = await userCredential.user.getIdToken()
     apiClient.setToken(idToken)
 
     // Record legal consent — MUST happen before any workspace access
     await recordLegalConsent()
+
+    // Check again — a newer sign-in/register or an explicit sign-out may have
+    // happened while the above awaits were in flight.
+    if (myEpoch !== getAuthEpoch()) return
 
     if (inviteCode.trim()) {
       try {
@@ -78,6 +90,8 @@ function RegisterForm() {
         const refreshedToken = await userCredential.user.getIdToken(true)
         apiClient.setToken(refreshedToken)
         await refreshProfile({ force: true })
+
+        if (myEpoch !== getAuthEpoch()) return
 
         const membership: B2bOrgMembership = {
           orgId: result.orgId,
@@ -103,10 +117,11 @@ function RegisterForm() {
     }
     setError('')
     setGoogleLoading(true)
+    const myEpoch = beginAuthAttempt()
 
     try {
       const userCredential = await signInWithGoogle()
-      await handlePostAuth(userCredential)
+      await handlePostAuth(userCredential, myEpoch)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : ''
       if (!msg.includes('popup-closed') && !msg.includes('cancelled')) {
@@ -142,10 +157,11 @@ function RegisterForm() {
     }
 
     setLoading(true)
+    const myEpoch = beginAuthAttempt()
 
     try {
       const userCredential = await register(email, password, name)
-      await handlePostAuth(userCredential)
+      await handlePostAuth(userCredential, myEpoch)
     } catch (err: unknown) {
       const firebaseError = err as { code?: string; message?: string }
       let errorMessage = t('errorCreateAccount')
