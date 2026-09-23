@@ -29,7 +29,7 @@ const VALUE_POINTS = [
   { icon: Database, key: 'valueDataSafe' },
 ] as const
 
-const SUPPORT_EMAIL = 'tilek.dzenisev@gmail.com'
+const SUPPORT_EMAIL = 'support@usenuroo.com'
 
 export function SubscriptionPaywall({ blockType, message, ctaLabel, orgId }: Props) {
   const router = useRouter()
