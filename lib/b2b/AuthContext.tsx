@@ -165,9 +165,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let isMounted = true
+    let lastUid: string | null = null
 
     const unsubscribe = onAuthChange(async (currentUser) => {
       if (!isMounted) return
+
+      // If the signed-in account changed to a DIFFERENT user (switching accounts
+      // without an intervening full page reload), clear the previous user's
+      // profile/org synchronously, before any awaits below. Otherwise the UI
+      // keeps rendering the old account's profile/org for as long as the new
+      // user's profile fetch takes, which looks like "it logged back into the
+      // old account" during account switches.
+      if (currentUser && lastUid && lastUid !== currentUser.uid) {
+        profileRequestVersion.current += 1
+        setProfile(null)
+        setActiveOrgId(null)
+      }
+      lastUid = currentUser?.uid ?? null
 
       setIsLoading(true)
       setUser(currentUser)

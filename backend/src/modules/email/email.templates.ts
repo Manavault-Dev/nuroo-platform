@@ -74,6 +74,17 @@ const T = {
     payment_body: (name: string) => `${name}, оплата тарифа принята.`,
     payment_link: 'Перейти в биллинг',
 
+    trial_ending_subject: (days: number) => `Бесплатный доступ заканчивается через ${days} дн.`,
+    trial_ending_h1: 'Бесплатный доступ скоро закончится ⏳',
+    trial_ending_body: (name: string, orgName: string, days: number) =>
+      `${name}, у организации <strong>${orgName}</strong> через <strong>${days} дн.</strong> закончится бесплатный доступ к расширенным инструментам Nuroo — управлению командой, отчётам, посещаемости и другим функциям. Регистрация и профиль в маркетплейсе остаются бесплатными всегда. Выберите тариф, чтобы продолжить работу без перерыва.`,
+    trial_cta: 'Выбрать тариф',
+
+    trial_ended_subject: 'Бесплатный доступ закончился',
+    trial_ended_h1: 'Бесплатный доступ закончился',
+    trial_ended_body: (name: string, orgName: string) =>
+      `${name}, у организации <strong>${orgName}</strong> закончился бесплатный доступ к расширенным инструментам Nuroo. Профиль и размещение в маркетплейсе остаются доступны бесплатно. Чтобы вернуть управление командой, отчёты, посещаемость и другие функции — выберите тариф. Все ваши данные сохранены.`,
+
     password_reset_subject: 'Сброс пароля — Nuroo',
     password_reset_h1: 'Сброс пароля 🔑',
     password_reset_body:
@@ -150,6 +161,18 @@ const T = {
     payment_body: (name: string) => `${name}, your plan payment has been accepted.`,
     payment_link: 'Go to billing',
 
+    trial_ending_subject: (days: number) =>
+      `Your free access ends in ${days} day${days === 1 ? '' : 's'}`,
+    trial_ending_h1: 'Your free access is ending soon ⏳',
+    trial_ending_body: (name: string, orgName: string, days: number) =>
+      `${name}, free access to Nuroo's advanced tools for <strong>${orgName}</strong> — team management, reports, attendance, and more — ends in <strong>${days} day${days === 1 ? '' : 's'}</strong>. Registration and your marketplace listing stay free forever. Choose a plan to keep working without interruption.`,
+    trial_cta: 'Choose a plan',
+
+    trial_ended_subject: 'Your free access has ended',
+    trial_ended_h1: 'Your free access has ended',
+    trial_ended_body: (name: string, orgName: string) =>
+      `${name}, free access to Nuroo's advanced tools for <strong>${orgName}</strong> has ended. Your profile and marketplace listing stay free. To bring back team management, reports, attendance, and more, choose a plan. All your data is safe.`,
+
     password_reset_subject: 'Reset your password — Nuroo',
     password_reset_h1: 'Reset your password 🔑',
     password_reset_body:
@@ -225,6 +248,17 @@ const T = {
     payment_h1: 'Төлөм ийгиликтүү өттү ✅',
     payment_body: (name: string) => `${name}, тариф төлөмүңүз кабыл алынды.`,
     payment_link: 'Биллингге өтүү',
+
+    trial_ending_subject: (days: number) => `Акысыз мүмкүнчүлүк ${days} күндөн кийин бүтөт`,
+    trial_ending_h1: 'Акысыз мүмкүнчүлүк жакында бүтөт ⏳',
+    trial_ending_body: (name: string, orgName: string, days: number) =>
+      `${name}, <strong>${orgName}</strong> уюмунун Nuroo өркүндөтүлгөн куралдарына (команданы башкаруу, отчёттор, катышуу эсеби жана башкалар) акысыз мүмкүнчүлүгү <strong>${days} күндөн</strong> кийин бүтөт. Каттоо жана маркетплейсте жарыялоо ар дайым акысыз бойдон калат. Үзгүлтүксүз иштөө үчүн тарифти тандаңыз.`,
+    trial_cta: 'Тарифти тандоо',
+
+    trial_ended_subject: 'Акысыз мүмкүнчүлүк бүттү',
+    trial_ended_h1: 'Акысыз мүмкүнчүлүк бүттү',
+    trial_ended_body: (name: string, orgName: string) =>
+      `${name}, <strong>${orgName}</strong> уюмунун Nuroo өркүндөтүлгөн куралдарына акысыз мүмкүнчүлүгү бүттү. Профиль жана маркетплейсте жарыялоо акысыз бойдон калат. Команданы башкаруу, отчёттор, катышуу эсебин кайра алуу үчүн тарифти тандаңыз. Бардык маалыматтарыңыз сакталды.`,
 
     password_reset_subject: 'Сырсөздү калыбына келтирүү — Nuroo',
     password_reset_h1: 'Сырсөздү калыбына келтирүү 🔑',
@@ -617,6 +651,51 @@ export function paymentSucceededTemplate(data: PaymentSucceededTemplateData): {
   `
   const subject = t.payment_subject(data.planName)
   return { subject, html: layout(subject, body, data.lang) }
+}
+
+export interface TrialEndingTemplateData {
+  orgAdminName: string
+  orgName: string
+  daysRemaining: number
+  orgId: string
+  lang?: EmailLang
+}
+
+export function trialEndingTemplate(data: TrialEndingTemplateData): {
+  subject: string
+  html: string
+} {
+  const t = T[data.lang ?? 'ru']
+  const body = `
+    ${h1(t.trial_ending_h1)}
+    ${p(t.trial_ending_body(data.orgAdminName, data.orgName, data.daysRemaining))}
+    ${button(t.trial_cta, `${APP_URL}/b2b/billing`)}
+  `
+  const subject = t.trial_ending_subject(data.daysRemaining)
+  return { subject, html: layout(subject, body, data.lang) }
+}
+
+export interface TrialEndedTemplateData {
+  orgAdminName: string
+  orgName: string
+  orgId: string
+  lang?: EmailLang
+}
+
+export function trialEndedTemplate(data: TrialEndedTemplateData): {
+  subject: string
+  html: string
+} {
+  const t = T[data.lang ?? 'ru']
+  const body = `
+    ${h1(t.trial_ended_h1)}
+    ${p(t.trial_ended_body(data.orgAdminName, data.orgName))}
+    ${button(t.trial_cta, `${APP_URL}/b2b/billing`)}
+  `
+  return {
+    subject: t.trial_ended_subject,
+    html: layout(t.trial_ended_subject, body, data.lang),
+  }
 }
 
 export interface AppUpdateTemplateData {

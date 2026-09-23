@@ -28,6 +28,11 @@ export type GatedFeature =
   | 'dedicatedOnboarding'
   | 'customIntegrations'
   | 'crm'
+  | 'orgChildren'
+  | 'teamSchedule'
+  | 'attendance'
+  | 'assignmentsProgress'
+  | 'reports'
 
 /** Which is the minimum plan that unlocks each feature. */
 export const FEATURE_MIN_PLAN: Record<GatedFeature, PlanId> = {
@@ -41,6 +46,13 @@ export const FEATURE_MIN_PLAN: Record<GatedFeature, PlanId> = {
   dedicatedOnboarding: 'enterprise',
   customIntegrations: 'enterprise',
   crm: 'growth',
+  orgChildren: 'growth',
+  teamSchedule: 'growth',
+  attendance: 'growth',
+  assignmentsProgress: 'growth',
+  // Available from starter (Solo) up — matches PLAN_CONFIG.starter.features.reports
+  // on the backend, unlike the other four which are growth+ only.
+  reports: 'starter',
 }
 
 /**

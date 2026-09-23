@@ -3,6 +3,7 @@ import admin from 'firebase-admin'
 
 import { getFirestore } from '../../infrastructure/database/firebase.js'
 import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
+import { checkOrgHasFeature } from '../payments/planLimits.js'
 import {
   DEFAULT_GROUP_COLOR,
   COLLECTIONS,
@@ -96,6 +97,13 @@ export const groupCrudRoute: import('fastify').FastifyPluginAsync = async (fasti
     try {
       const { orgId } = request.params
       await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
+
+      const featureCheck = await checkOrgHasFeature(orgId, 'teamSchedule')
+      if (!featureCheck.ok) {
+        return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
+      }
+
       const { uid } = request.user!
       const body = createGroupSchema.parse(request.body)
       const now = new Date()
