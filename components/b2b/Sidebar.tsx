@@ -146,7 +146,7 @@ export function Sidebar({
 
   const { branding } = useBranding()
   const { meetsPlan } = usePlan()
-  const { isBusiness } = usePlanGate()
+  const { isBusiness, can } = usePlanGate()
   const { user } = useAuth()
 
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
@@ -388,7 +388,7 @@ export function Sidebar({
                   <div className="b2b-sidebar-divider my-2.5 mx-3.5 border-t border-gray-100" />
                 )}
                 {group.items
-                  .filter((item) => !item.businessFeature || isBusiness)
+                  .filter((item) => !item.businessFeature || can(item.businessFeature))
                   .filter((item) => !item.businessOnly || isBusiness)
                   .map((item) => (
                     <NavLink
