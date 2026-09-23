@@ -96,10 +96,10 @@ export default async function HelpPage({ params }: Props) {
               <h3 className="font-semibold text-gray-900 mb-2">{t('emailSupport')}</h3>
               <p className="text-gray-600 text-sm mb-3">{t('emailSupportDesc')}</p>
               <a
-                href="mailto:tilek.dzenisev@gmail.com"
+                href="mailto:support@usenuroo.com"
                 className="text-primary-600 hover:text-primary-700 font-medium"
               >
-                tilek.dzenisev@gmail.com
+                support@usenuroo.com
               </a>
             </div>
             <div className="text-center p-6 bg-secondary-50 rounded-xl">
@@ -163,7 +163,7 @@ export default async function HelpPage({ params }: Props) {
           <p className="text-gray-600 mb-6">{t('stillNeedHelpDesc')}</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="mailto:tilek.dzenisev@gmail.com"
+              href="mailto:support@usenuroo.com"
               className="inline-flex items-center px-6 py-3 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors"
             >
               <Mail className="h-5 w-5 mr-2" />

@@ -774,7 +774,7 @@ export default function BillingPage() {
                     </div>
                   </div>
                   <a
-                    href="mailto:tilek.dzenisev@gmail.com?subject=Nuroo%20Subscription%20Request"
+                    href="mailto:contact@usenuroo.com?subject=Nuroo%20Subscription%20Request"
                     className="inline-flex shrink-0 items-center justify-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors"
                   >
                     <Mail className="w-4 h-4" />
@@ -840,7 +840,7 @@ export default function BillingPage() {
                     ))}
                   </ul>
                   <a
-                    href="mailto:tilek.dzenisev@gmail.com?subject=Nuroo%20Subscription%20Request"
+                    href="mailto:contact@usenuroo.com?subject=Nuroo%20Subscription%20Request"
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold transition-colors"
                   >
                     {t('contactUs')}
@@ -893,7 +893,7 @@ export default function BillingPage() {
                     ))}
                   </ul>
                   <a
-                    href="mailto:tilek.dzenisev@gmail.com?subject=Nuroo%20Subscription%20Request"
+                    href="mailto:contact@usenuroo.com?subject=Nuroo%20Subscription%20Request"
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold transition-colors"
                   >
                     {t('contactUs')}
