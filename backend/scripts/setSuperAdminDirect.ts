@@ -3,10 +3,10 @@
  * Run this directly with Node.js (not through npm script)
  *
  * Usage:
- *   node scripts/setSuperAdminDirect.js nuroo@gmail.com
+ *   node scripts/setSuperAdminDirect.js contact@usenuroo.com
  *
  * Or with tsx:
- *   npx tsx scripts/setSuperAdminDirect.ts nuroo@gmail.com
+ *   npx tsx scripts/setSuperAdminDirect.ts contact@usenuroo.com
  */
 
 import admin from 'firebase-admin'
@@ -24,7 +24,7 @@ const email = process.argv[2]
 
 if (!email) {
   console.error('❌ Usage: node setSuperAdminDirect.js <email>')
-  console.error('   Example: node setSuperAdminDirect.js nuroo@gmail.com')
+  console.error('   Example: node setSuperAdminDirect.js contact@usenuroo.com')
   process.exit(1)
 }
 

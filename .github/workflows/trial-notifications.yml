@@ -1,0 +1,57 @@
+name: Trial Expiration Notifications
+
+# Orgs on a free trial (billing.status === 'trialing') get no warning before
+# access to paid features disappears — this was previously all-or-nothing
+# with zero heads-up. Runs the backend's trial-notification scan daily: it
+# emails an org's admin once when their trial has 7 days left, and once again
+# the day it actually expires. The endpoint is idempotent (marks each org so
+# it never double-sends), so re-running this manually via workflow_dispatch
+# is always safe.
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # 06:00 UTC daily
+  workflow_dispatch: {}
+
+concurrency:
+  group: trial-notifications
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    name: Scan and send trial notifications
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call trial-notifications cron endpoint
+        id: call
+        run: |
+          RESPONSE=$(curl -s -o /tmp/response.json -w "%{http_code}" --max-time 60 \
+            -X POST "https://nuroo-backend-872609122621.us-central1.run.app/internal/cron/trial-notifications?secret=${{ secrets.CRON_SECRET }}")
+          echo "status=$RESPONSE" >> "$GITHUB_OUTPUT"
+          echo "HTTP $RESPONSE"
+          cat /tmp/response.json || true
+
+      - name: Notify Slack on failure
+        if: steps.call.outputs.status != '200'
+        uses: slackapi/slack-github-action@70cd7be8e40a46e8b0eced40b0de447bdb42f68e
+        with:
+          payload: |
+            {
+              "text": "Nuroo trial-notifications cron failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*🚨 Trial-notifications cron failed*\n\nHTTP ${{ steps.call.outputs.status }}\n\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View this run>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+      - name: Fail the job if the call failed (so the Actions tab shows red too)
+        if: steps.call.outputs.status != '200'
+        run: exit 1

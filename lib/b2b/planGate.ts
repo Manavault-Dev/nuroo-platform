@@ -6,13 +6,21 @@
  *   if (!can('team_management')) return <UpgradeScreen feature="team_management" />
  *
  * Architecture:
- *   - plan ('nuroo' | 'nuroo_business') is stored in Firestore org.nurooPlan
- *   - The backend returns it on GET /me inside organizations[].nurooPlan
- *   - Legacy orgs without nurooPlan default to 'nuroo_business' (full access)
- *   - Trial status does NOT change nurooPlan — it only affects billing limits
+ *   - Thin adapter over the real plan model in planContext.tsx (usePlan()),
+ *     which is fed by the org's actual billing/subscription status
+ *     (starter/growth/enterprise — see backend/src/domains/payments/planLimits.ts).
+ *   - 'nuroo' / 'nuroo_business' below are just this module's own display
+ *     labels for "starter" vs "growth or above" — they are NOT read from
+ *     Firestore org.nurooPlan anymore. That field is the old, unenforced
+ *     binary model and is no longer the source of truth for any org.
+ *   - can(feature) maps each product-facing BusinessFeature to the real
+ *     GatedFeature key and asks usePlan().hasFeature() — so a 'growth' org
+ *     correctly unlocks reports/attendance/team management etc. while still
+ *     being locked out of 'enterprise'-only features like branches/finance.
  */
 
-import { useAuth } from './AuthContext'
+import { usePlan } from './planContext'
+import type { GatedFeature } from '@/lib/pricing/planFeatureConfig'
 
 export type NurooPlan = 'nuroo' | 'nuroo_business'
 export type MemberRole = 'independent_specialist' | 'org_admin' | 'org_specialist'
@@ -77,25 +85,18 @@ export const FEATURE_LABELS: Record<BusinessFeature, { title: string; descriptio
   },
 }
 
-/**
- * Resolve nurooPlan from the current org entry inside SpecialistProfile.
- * Falls back to 'nuroo_business' for legacy orgs (created before the field existed).
- */
-function resolveNurooPlan(
-  profile: ReturnType<typeof useAuth>['profile'],
-  currentOrgId: string | null
-): NurooPlan {
-  if (!profile) return 'nuroo_business' // optimistic while loading
-
-  const org = currentOrgId
-    ? profile.organizations.find((o) => o.orgId === currentOrgId)
-    : profile.organizations[0]
-
-  const raw = org?.nurooPlan
-  if (raw === 'nuroo' || raw === 'nuroo_business') return raw
-
-  // Legacy org: no nurooPlan stored → grant full business access
-  return 'nuroo_business'
+/** Maps each product-facing feature key to the real backend GatedFeature key. */
+const FEATURE_MAP: Record<BusinessFeature, GatedFeature> = {
+  team_management: 'teamManagement',
+  org_children: 'orgChildren',
+  team_schedule: 'teamSchedule',
+  attendance: 'attendance',
+  assignments_progress: 'assignmentsProgress',
+  org_finance: 'finance',
+  reports: 'reports',
+  analytics: 'advancedAnalytics',
+  branches: 'branches',
+  advanced_crm: 'crm',
 }
 
 export function usePlanGate(): {
@@ -104,14 +105,16 @@ export function usePlanGate(): {
   isNuroo: boolean
   can: (feature: BusinessFeature) => boolean
 } {
-  const { profile, currentOrgId } = useAuth()
-  const plan = resolveNurooPlan(profile, currentOrgId ?? null)
-  const isBusiness = plan === 'nuroo_business'
+  const { planId, planIsLoading, hasFeature } = usePlan()
+  // Optimistic while loading, matching usePlan()'s own default — avoids a
+  // flash where business nav items disappear then reappear once billing
+  // status has loaded.
+  const isBusiness = planIsLoading ? true : planId !== 'starter'
 
   return {
-    plan,
+    plan: isBusiness ? 'nuroo_business' : 'nuroo',
     isBusiness,
     isNuroo: !isBusiness,
-    can: (_feature: BusinessFeature) => isBusiness,
+    can: (feature: BusinessFeature) => hasFeature(FEATURE_MAP[feature]),
   }
 }

@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import multipart from '@fastify/multipart'
 import { getFirestore, getStorageBucket } from '../../infrastructure/database/firebase.js'
 import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
+import { checkOrgHasFeature } from '../payments/planLimits.js'
 import { canManageCohort, denyNotInstructor, isInMemberBranchScope } from './cohorts.auth.js'
 import type { CohortDoc, AttendanceDoc } from './cohorts.types.js'
 import { RATE, COL, attendanceSchema, nowIso } from './cohorts.helpers.js'
@@ -23,6 +24,11 @@ export const cohortsAttendanceRoute: FastifyPluginAsync = async (fastify) => {
       const cohortSnap = await db.doc(COL.cohort(orgId, cohortId)).get()
       if (!cohortSnap.exists) return reply.code(404).send({ error: 'Cohort not found' })
       if (!canManageCohort(member, cohortSnap.data() as CohortDoc)) return denyNotInstructor(reply)
+
+      const featureCheck = await checkOrgHasFeature(orgId, 'attendance')
+      if (!featureCheck.ok) {
+        return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
+      }
 
       const body = attendanceSchema.parse(request.body)
       const now = nowIso()
@@ -63,6 +69,11 @@ export const cohortsAttendanceRoute: FastifyPluginAsync = async (fastify) => {
       if (!cohortSnap.exists) return reply.code(404).send({ error: 'Cohort not found' })
       if (!isInMemberBranchScope(member, cohortSnap.data() as CohortDoc)) {
         return reply.code(403).send({ error: 'Cohort belongs to a different branch' })
+      }
+
+      const featureCheck = await checkOrgHasFeature(orgId, 'attendance')
+      if (!featureCheck.ok) {
+        return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
       }
 
       const snap = await db.collection(COL.attendance(orgId, cohortId, sessionId)).get()
