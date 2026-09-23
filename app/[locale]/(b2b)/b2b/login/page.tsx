@@ -3,7 +3,13 @@
 import { useState, FormEvent } from 'react'
 import { useRouter } from '@/i18n/navigation'
 import { useSearchParams } from 'next/navigation'
-import { signIn, signInWithGoogle, signOut as signOutB2B } from '@/lib/b2b/authClient'
+import {
+  signIn,
+  signInWithGoogle,
+  signOut as signOutB2B,
+  beginAuthAttempt,
+  getAuthEpoch,
+} from '@/lib/b2b/authClient'
 import { ApiError, apiClient } from '@/lib/b2b/api'
 import { Link } from '@/i18n/navigation'
 import { useTranslations } from 'next-intl'
@@ -48,8 +54,18 @@ export default function LoginPage() {
 
   const finishLogin = async (
     idToken: string,
-    user: { uid: string; email: string | null }
+    user: { uid: string; email: string | null },
+    myEpoch: number
   ): Promise<boolean> => {
+    // Check BEFORE mutating any shared state — a newer sign-in or an explicit
+    // sign-out may have already happened while signIn()/getIdToken() was
+    // resolving. Setting the token first and only checking afterwards would
+    // let a stale attempt overwrite the active session's token even though
+    // its own cache-write/redirect below gets correctly skipped.
+    if (myEpoch !== getAuthEpoch()) {
+      return false
+    }
+
     apiClient.setToken(idToken)
 
     const profile = await apiClient.getMe().catch(async (err: unknown) => {
@@ -66,6 +82,12 @@ export default function LoginPage() {
       return false
     }
 
+    // Check again — a newer sign-in or an explicit sign-out may have happened
+    // while getMe() was in flight.
+    if (myEpoch !== getAuthEpoch()) {
+      return false
+    }
+
     writeCachedProfile(user, profile, getDefaultOrgId(profile))
     router.replace(resolvePostLoginPath(profile, searchParams.get('redirect')))
     return true
@@ -77,14 +99,19 @@ export default function LoginPage() {
 
     setError('')
     setLoading(true)
+    const myEpoch = beginAuthAttempt()
 
     try {
       const userCredential = await signIn(email, password)
       const idToken = await userCredential.user.getIdToken()
-      const completed = await finishLogin(idToken, {
-        uid: userCredential.user.uid,
-        email: userCredential.user.email,
-      })
+      const completed = await finishLogin(
+        idToken,
+        {
+          uid: userCredential.user.uid,
+          email: userCredential.user.email,
+        },
+        myEpoch
+      )
       if (!completed) setLoading(false)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('signInError'))
@@ -96,14 +123,19 @@ export default function LoginPage() {
     if (googleLoading) return
     setError('')
     setGoogleLoading(true)
+    const myEpoch = beginAuthAttempt()
 
     try {
       const userCredential = await signInWithGoogle()
       const idToken = await userCredential.user.getIdToken()
-      const completed = await finishLogin(idToken, {
-        uid: userCredential.user.uid,
-        email: userCredential.user.email,
-      })
+      const completed = await finishLogin(
+        idToken,
+        {
+          uid: userCredential.user.uid,
+          email: userCredential.user.email,
+        },
+        myEpoch
+      )
       if (!completed) setGoogleLoading(false)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : ''
