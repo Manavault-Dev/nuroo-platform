@@ -166,6 +166,7 @@ jobs:
             RESEND_API_KEY=RESEND_API_KEY:latest
             SLACK_WEBHOOK_URL=SLACK_WEBHOOK_URL:latest
             SENTRY_WEBHOOK_SECRET=SENTRY_WEBHOOK_SECRET:latest
+            CRON_SECRET=CRON_SECRET:latest
           secrets_update_strategy: merge
 
       - name: Health check (with retry)

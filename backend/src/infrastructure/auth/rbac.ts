@@ -99,11 +99,13 @@ export async function requireOrgMember(
     return reply.code(403).send({ error: 'Member account is not active' }) as never
   }
 
+  // A valid, active member record already exists — trust it as-is. Do NOT
+  // re-run recoverIndexedMembership here: it force-writes 'org_admin' back to
+  // Firestore for the org's creator/primary specialist, which silently
+  // reverted any explicit demotion to 'specialist' made via the team UI on
+  // that member's very next request. Recovery is only for genuinely missing
+  // or inactive membership records (handled above).
   const role = normalizeOrgRole(data.role)
-  if (role !== 'org_admin') {
-    const recoveredMember = await recoverIndexedMembership(db, orgId, uid)
-    if (recoveredMember?.role === 'org_admin') return recoveredMember
-  }
 
   return {
     uid: request.user.uid,
