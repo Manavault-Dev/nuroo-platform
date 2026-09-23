@@ -177,6 +177,7 @@ export const subscriptionRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { orgId } = request.params
       await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
 
       const db = getFirestore()
       const orgSnap = await db.collection('organizations').doc(orgId).get()
