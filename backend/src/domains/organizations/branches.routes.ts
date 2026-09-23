@@ -37,6 +37,7 @@ export const branchesRoute: FastifyPluginAsync = async (fastify) => {
     try {
       const { orgId } = request.params
       await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
 
       const db = getFirestore()
       let snapshot: admin.firestore.QuerySnapshot
@@ -168,6 +169,7 @@ export const branchesRoute: FastifyPluginAsync = async (fastify) => {
       try {
         const { orgId } = request.params
         const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
 
         if (member.role !== 'org_admin') {
           return reply.code(403).send({ error: 'Only org admins can create branches' })
@@ -219,6 +221,7 @@ export const branchesRoute: FastifyPluginAsync = async (fastify) => {
     try {
       const { orgId, branchId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
 
       if (member.role !== 'org_admin') {
         return reply.code(403).send({ error: 'Only org admins can update branches' })
@@ -260,6 +263,7 @@ export const branchesRoute: FastifyPluginAsync = async (fastify) => {
       try {
         const { orgId, branchId } = request.params
         const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
 
         if (member.role !== 'org_admin') {
           return reply.code(403).send({ error: 'Only org admins can delete branches' })
