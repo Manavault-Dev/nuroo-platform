@@ -165,10 +165,10 @@ function B2BLayoutContent({ children }: { children: React.ReactNode }) {
   const isPaywallBypassed = PAYWALL_BYPASS_PATHS.some(
     (p) => pathForPaywall === p || pathForPaywall.startsWith(p + '/')
   )
-  const isBillingPage =
-    pathForPaywall === '/b2b/billing' || pathForPaywall.startsWith('/b2b/billing/')
-  const showSubscriptionBanner =
-    subscriptionState.bannerType !== 'none' && isBillingPage && canManageBilling
+  // Shown on every page (not just /b2b/billing) so admins on a trial that's
+  // about to expire see the countdown wherever they're working, instead of
+  // only finding out if they happen to visit the billing page first.
+  const showSubscriptionBanner = subscriptionState.bannerType !== 'none' && canManageBilling
   const localizedSubscriptionMessage = (() => {
     const days = subscriptionState.daysRemaining ?? 0
 
