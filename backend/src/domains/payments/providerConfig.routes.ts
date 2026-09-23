@@ -65,6 +65,7 @@ export const providerConfigRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { orgId } = request.params
       await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
 
       const db = getFirestore()
       const snap = await db.doc(`organizations/${orgId}/paymentProviders/finik`).get()
