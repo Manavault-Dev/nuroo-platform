@@ -3,6 +3,7 @@ import admin from 'firebase-admin'
 
 import { getFirestore } from '../../infrastructure/database/firebase.js'
 import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
+import { checkOrgHasFeature } from '../payments/planLimits.js'
 import {
   COLLECTIONS,
   verifyGroupOwnership,
@@ -92,6 +93,13 @@ export const groupAssignmentsRoute: import('fastify').FastifyPluginAsync = async
     try {
       const { orgId, groupId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
+
+      const featureCheck = await checkOrgHasFeature(orgId, 'assignmentsProgress')
+      if (!featureCheck.ok) {
+        return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
+      }
+
       const { uid } = request.user!
       const ownerId =
         member.role === 'org_admin' && (request.query as any)?.ownerId

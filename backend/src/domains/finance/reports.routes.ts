@@ -3,6 +3,7 @@ import admin from 'firebase-admin'
 
 import { getFirestore } from '../../infrastructure/database/firebase.js'
 import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
+import { checkOrgHasFeature } from '../payments/planLimits.js'
 
 const COLLECTIONS = {
   ORG_CHILDREN: (orgId: string) => `organizations/${orgId}/children`,
@@ -177,6 +178,13 @@ export const reportsRoute: FastifyPluginAsync = async (fastify) => {
     try {
       const { orgId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
+
+      const featureCheck = await checkOrgHasFeature(orgId, 'reports')
+      if (!featureCheck.ok) {
+        return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
+      }
+
       const uid = request.user!.uid
       const daysParam = request.query.days
       const days = Math.min(Math.max(parseInt(daysParam || '30', 10) || 30, 7), 90)
