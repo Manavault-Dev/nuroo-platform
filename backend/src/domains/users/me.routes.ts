@@ -134,18 +134,13 @@ async function findOrganizationsForUser(
     role: 'admin' | 'specialist' | 'independent_specialist'
   ) => {
     const now = admin.firestore.Timestamp.now()
-    const denormRole = denormalizeRole(role)
-
-    // Never downgrade an existing org_admin to specialist
-    let finalRole = denormRole
-    if (denormRole !== 'org_admin') {
-      const existingMember = await db.doc(`${COLLECTIONS.ORG_MEMBERS(orgId)}/${uid}`).get()
-      if (existingMember.exists && existingMember.data()?.role === 'org_admin') {
-        finalRole = 'org_admin'
-      } else if (orgData.createdBy === uid) {
-        finalRole = 'org_admin'
-      }
-    }
+    // Trust the role the caller already computed (from the live member/index
+    // record, with the org-creator fallback already applied where needed).
+    // Do NOT re-check the existing members doc and force 'org_admin' back
+    // onto it here — that was the same self-heal anti-pattern already found
+    // and removed from rbac.ts: it silently reverted any explicit demotion
+    // to 'specialist' made via the team UI on this member's next /me call.
+    const finalRole = denormalizeRole(role)
 
     await Promise.allSettled([
       db.doc(`${COLLECTIONS.ORG_MEMBERS(orgId)}/${uid}`).set(
@@ -162,7 +157,7 @@ async function findOrganizationsForUser(
           orgId,
           orgName: orgData.name || orgId,
           country: orgData.country ?? null,
-          role: denormalizeRole(role),
+          role: finalRole,
           status: 'active',
           updatedAt: now,
         },
