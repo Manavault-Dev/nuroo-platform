@@ -20,6 +20,7 @@ export const billingProfileRoutes: FastifyPluginAsync = async (fastify) => {
     '/orgs/:orgId/billing/profiles',
     async (request, reply) => {
       await requireOrgAdmin(request, reply, request.params.orgId)
+      if (reply.sent) return
       const db = getFirestore()
       const { childId, status } = request.query
       const profiles = await listBillingProfiles(db, request.params.orgId, {
@@ -53,6 +54,7 @@ export const billingProfileRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       await requireOrgAdmin(request, reply, request.params.orgId)
+      if (reply.sent) return
       const db = getFirestore()
       const body = request.body as {
         childId: string
@@ -127,6 +129,7 @@ export const billingProfileRoutes: FastifyPluginAsync = async (fastify) => {
     '/orgs/:orgId/billing/profiles/:profileId',
     async (request, reply) => {
       await requireOrgAdmin(request, reply, request.params.orgId)
+      if (reply.sent) return
       const db = getFirestore()
       const profile = await getBillingProfile(db, request.params.orgId, request.params.profileId)
       if (!profile) {
@@ -157,6 +160,7 @@ export const billingProfileRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       await requireOrgAdmin(request, reply, request.params.orgId)
+      if (reply.sent) return
       const db = getFirestore()
       const body = request.body as {
         amount?: number
@@ -192,6 +196,7 @@ export const billingProfileRoutes: FastifyPluginAsync = async (fastify) => {
     '/orgs/:orgId/billing/generate-monthly-invoices',
     async (request, reply) => {
       await requireOrgAdmin(request, reply, request.params.orgId)
+      if (reply.sent) return
       const featureCheck = await checkOrgHasFeature(request.params.orgId, 'finance')
       if (!featureCheck.ok) {
         return reply.status(403).send({ error: featureCheck.error, code: 'PLAN_UPGRADE_REQUIRED' })
@@ -212,6 +217,7 @@ export const billingProfileRoutes: FastifyPluginAsync = async (fastify) => {
     '/orgs/:orgId/billing/mark-overdue',
     async (request, reply) => {
       await requireOrgAdmin(request, reply, request.params.orgId)
+      if (reply.sent) return
       const featureCheck = await checkOrgHasFeature(request.params.orgId, 'finance')
       if (!featureCheck.ok) {
         return reply.status(403).send({ error: featureCheck.error, code: 'PLAN_UPGRADE_REQUIRED' })

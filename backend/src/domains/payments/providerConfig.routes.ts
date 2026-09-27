@@ -25,6 +25,7 @@ export const providerConfigRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { orgId } = request.params
       await requireOrgAdmin(request, reply, orgId)
+      if (reply.sent) return
 
       const { merchantId } = request.body
 
