@@ -239,6 +239,7 @@ export async function requireOrgAdmin(
   orgId: string
 ): Promise<OrgMember> {
   const member = await requireOrgMember(request, reply, orgId)
+  if (reply.sent) return member
   if (member.role !== 'org_admin') {
     return reply
       .code(403)

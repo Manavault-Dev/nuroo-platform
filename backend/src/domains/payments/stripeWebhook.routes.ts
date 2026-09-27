@@ -4,7 +4,7 @@ import * as Sentry from '@sentry/node'
 import admin from 'firebase-admin'
 
 import { getFirestore } from '../../infrastructure/database/firebase.js'
-import { constructWebhookEvent } from './stripe.service.js'
+import { constructWebhookEvent, getPlanIdFromPriceId } from './stripe.service.js'
 import type { PlanId } from '../payments/planLimits.js'
 
 type StripeBillingStatus = 'trialing' | 'active' | 'past_due' | 'canceled'
@@ -17,6 +17,7 @@ interface OrgBillingUpdate {
   status: StripeBillingStatus
   trialEndsAt?: admin.firestore.Timestamp | null
   currentPeriodEnd?: admin.firestore.Timestamp | null
+  cancelAtPeriodEnd?: boolean
   updatedAt: admin.firestore.Timestamp
 }
 
@@ -146,13 +147,32 @@ export const stripeWebhookRoutes: FastifyPluginAsync = async (fastify) => {
             if (!orgId) break
 
             const status = mapStripeStatus(subscription.status)
+            // Derive the plan from the subscription's CURRENT price, not from
+            // metadata — metadata.planId is only set once at checkout and
+            // never updated when the price changes via the Stripe Customer
+            // Portal or dashboard, which was silently leaving org.billing.plan
+            // stale after any portal-driven upgrade/downgrade.
+            const currentPriceId = subscription.items.data[0]?.price?.id
+            const resolvedPlan = getPlanIdFromPriceId(currentPriceId)
+
             const billingUpdate: OrgBillingUpdate = {
               provider: 'stripe',
               stripeSubscriptionId: subscription.id,
               status,
               trialEndsAt: toTimestamp(subscription.trial_end),
               currentPeriodEnd: toTimestamp(subscription.current_period_end),
+              cancelAtPeriodEnd: subscription.cancel_at_period_end === true,
               updatedAt: admin.firestore.Timestamp.now(),
+              ...(resolvedPlan ? { plan: resolvedPlan } : {}),
+            }
+
+            if (!resolvedPlan) {
+              child.log.warn({
+                event: 'stripe_webhook_unresolved_plan',
+                orgId,
+                subscriptionId: subscription.id,
+                priceId: currentPriceId,
+              })
             }
 
             await updateOrgBilling(orgId, billingUpdate, db)
@@ -170,6 +190,7 @@ export const stripeWebhookRoutes: FastifyPluginAsync = async (fastify) => {
               stripeSubscriptionId: subscription.id,
               status: 'canceled',
               currentPeriodEnd: toTimestamp(subscription.current_period_end),
+              cancelAtPeriodEnd: false,
               updatedAt: admin.firestore.Timestamp.now(),
             }
 
