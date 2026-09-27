@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import * as Sentry from '@sentry/node'
 import admin from 'firebase-admin'
 
@@ -10,6 +10,7 @@ import {
   createCheckoutSession,
   createCustomer,
   createCustomerPortalSession,
+  updateSubscriptionCancelAtPeriodEnd,
 } from './stripe.service.js'
 
 const TRIAL_DAYS = 30
@@ -49,12 +50,41 @@ function normalizeBillingStatus(status: unknown): string | null {
   return value
 }
 
+/**
+ * Shared by /billing/cancel and /billing/resume: loads the org's Stripe
+ * subscription id, or sends the appropriate error reply itself and returns
+ * undefined. Callers must check `if (!subscriptionId) return` immediately.
+ */
+async function resolveOrgSubscriptionId(
+  db: FirebaseFirestore.Firestore,
+  orgId: string,
+  reply: FastifyReply
+): Promise<string | undefined> {
+  const orgSnap = await db.collection('organizations').doc(orgId).get()
+  if (!orgSnap.exists) {
+    reply.code(404).send({ error: 'Organization not found', code: 'ORG_NOT_FOUND' })
+    return undefined
+  }
+
+  const subscriptionId: string | undefined = orgSnap.data()?.billing?.stripeSubscriptionId
+  if (!subscriptionId) {
+    reply.code(400).send({
+      error: 'No active Stripe subscription found for this organization.',
+      code: 'NO_SUBSCRIPTION',
+    })
+    return undefined
+  }
+
+  return subscriptionId
+}
+
 export const subscriptionRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/billing/start-trial',
     async (request, reply) => {
       const { orgId } = request.params
       await requireOrgAdmin(request, reply, orgId)
+      if (reply.sent) return
 
       const db = getFirestore()
       const orgSnap = await db.collection('organizations').doc(orgId).get()
@@ -129,6 +159,7 @@ export const subscriptionRoutes: FastifyPluginAsync = async (fastify) => {
       const { planId, successUrl, cancelUrl } = request.body
 
       await requireOrgAdmin(request, reply, orgId)
+      if (reply.sent) return
 
       if (config.BILLING_MODE === 'manual') {
         return reply.code(403).send({
@@ -145,6 +176,29 @@ export const subscriptionRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const orgData = orgSnap.data() ?? {}
+
+      // A second Checkout Session for an org that already has a live Stripe
+      // subscription would create a SECOND concurrent subscription (double
+      // billing) rather than changing the existing one — Checkout always
+      // creates a new subscription, it never modifies one in place. Route
+      // existing subscribers to the Customer Portal instead, which operates
+      // on the subscription that already exists.
+      const existingSubscriptionId: string | undefined = orgData.billing?.stripeSubscriptionId
+      const existingBillingStatus: string | undefined = orgData.billing?.status
+      const hasLiveSubscription =
+        !!existingSubscriptionId &&
+        (existingBillingStatus === 'active' ||
+          existingBillingStatus === 'trialing' ||
+          existingBillingStatus === 'past_due')
+
+      if (hasLiveSubscription) {
+        return reply.code(409).send({
+          error:
+            'This organization already has an active subscription. Use "Manage subscription" to change or cancel your plan.',
+          code: 'SUBSCRIPTION_ALREADY_EXISTS',
+        })
+      }
+
       let stripeCustomerId: string = orgData.billing?.stripeCustomerId ?? ''
       if (!stripeCustomerId) {
         const customer = await createCustomer(request.user!.email ?? '', orgId)
@@ -221,9 +275,107 @@ export const subscriptionRoutes: FastifyPluginAsync = async (fastify) => {
           subscriptionError: subscriptionStatus.error ?? null,
           stripeCustomerId: billingField.stripeCustomerId ?? null,
           stripeSubscriptionId: billingField.stripeSubscriptionId ?? null,
+          cancelAtPeriodEnd: billingField.cancelAtPeriodEnd === true,
         },
         billingMode: config.BILLING_MODE,
       })
+    }
+  )
+
+  fastify.post<{ Params: { orgId: string } }>(
+    '/orgs/:orgId/billing/cancel',
+    async (request, reply) => {
+      const { orgId } = request.params
+      await requireOrgAdmin(request, reply, orgId)
+      if (reply.sent) return
+
+      if (config.BILLING_MODE === 'manual') {
+        return reply.code(403).send({
+          error: 'Subscription cancellation is not available. Contact the Nuroo team.',
+          code: 'BILLING_MODE_MANUAL',
+        })
+      }
+
+      const db = getFirestore()
+      const subscriptionId = await resolveOrgSubscriptionId(db, orgId, reply)
+      if (!subscriptionId) return
+
+      try {
+        await updateSubscriptionCancelAtPeriodEnd(subscriptionId, true)
+      } catch (err) {
+        fastify.log.error({ err, event: 'stripe_subscription_cancel_failed', orgId })
+        Sentry.captureException(err, { extra: { orgId, event: 'stripe_subscription_cancel' } })
+        return reply.code(502).send({
+          error:
+            'Could not update the subscription in Stripe. Please refresh the page and try again.',
+          code: 'STRIPE_UPDATE_FAILED',
+        })
+      }
+
+      // Optimistic write — the webhook (customer.subscription.updated) will
+      // also set this from Stripe's own event shortly after, this just
+      // avoids a UI that still looks "active, no cancellation" for the few
+      // seconds until that webhook round-trips.
+      await db
+        .collection('organizations')
+        .doc(orgId)
+        .set(
+          { billing: { cancelAtPeriodEnd: true, updatedAt: admin.firestore.Timestamp.now() } },
+          { merge: true }
+        )
+
+      fastify.log.info({ event: 'stripe_subscription_cancel_scheduled', orgId })
+      Sentry.addBreadcrumb({
+        category: 'stripe',
+        message: 'stripe_subscription_cancel_scheduled',
+        level: 'info',
+        data: { orgId },
+      })
+
+      return reply.code(200).send({ ok: true })
+    }
+  )
+
+  fastify.post<{ Params: { orgId: string } }>(
+    '/orgs/:orgId/billing/resume',
+    async (request, reply) => {
+      const { orgId } = request.params
+      await requireOrgAdmin(request, reply, orgId)
+      if (reply.sent) return
+
+      const db = getFirestore()
+      const subscriptionId = await resolveOrgSubscriptionId(db, orgId, reply)
+      if (!subscriptionId) return
+
+      try {
+        await updateSubscriptionCancelAtPeriodEnd(subscriptionId, false)
+      } catch (err) {
+        fastify.log.error({ err, event: 'stripe_subscription_resume_failed', orgId })
+        Sentry.captureException(err, { extra: { orgId, event: 'stripe_subscription_resume' } })
+        return reply.code(502).send({
+          error:
+            'Could not update the subscription in Stripe. Please refresh the page and try again.',
+          code: 'STRIPE_UPDATE_FAILED',
+        })
+      }
+
+      await db
+        .collection('organizations')
+        .doc(orgId)
+        .set(
+          { billing: { cancelAtPeriodEnd: false, updatedAt: admin.firestore.Timestamp.now() } },
+          { merge: true }
+        )
+
+      fastify.log.info({ event: 'stripe_subscription_cancel_undone', orgId })
+      Sentry.addBreadcrumb({
+        category: 'stripe',
+        message: 'stripe_subscription_cancel_undone',
+        level: 'info',
+        data: { orgId },
+      })
+
+      return reply.code(200).send({ ok: true })
     }
   )
 
@@ -245,6 +397,7 @@ export const subscriptionRoutes: FastifyPluginAsync = async (fastify) => {
       const { orgId } = request.params
       const { returnUrl } = request.body
       await requireOrgAdmin(request, reply, orgId)
+      if (reply.sent) return
 
       if (config.BILLING_MODE === 'manual') {
         return reply.code(403).send({
