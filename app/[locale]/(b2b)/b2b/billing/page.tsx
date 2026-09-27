@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { BillingBadge, type BillingBadgeKey } from '@/components/ui/BillingBadge'
 import type { BillingMode } from '@/lib/b2b/api'
+import { useAlert } from '@/components/ui/AlertDialog'
 
 interface BillingStatus {
   active: boolean
@@ -69,6 +70,7 @@ interface BillingStatus {
     provider?: string | null
     trialEndsAt?: string | null
     currentPeriodEnd?: string | null
+    cancelAtPeriodEnd?: boolean
   }
 }
 
@@ -117,7 +119,10 @@ export default function BillingPage() {
   const [startingTrial, setStartingTrial] = useState(false)
   const [trialStarted, setTrialStarted] = useState(false)
   const [openingPortal, setOpeningPortal] = useState(false)
+  const [cancellingSubscription, setCancellingSubscription] = useState(false)
+  const [resumingSubscription, setResumingSubscription] = useState(false)
   const [error, setError] = useState('')
+  const { confirm } = useAlert()
   const currentOrg =
     profile?.organizations.find((org) => org.orgId === currentOrgId) ?? profile?.organizations[0]
 
@@ -238,6 +243,45 @@ export default function BillingPage() {
       setError(err instanceof Error ? err.message : t('loadError'))
     } finally {
       setOpeningPortal(false)
+    }
+  }
+
+  const handleCancelSubscription = async () => {
+    if (!currentOrgId) return
+    const confirmed = await confirm(t('cancelConfirmMessage'), {
+      title: t('cancelConfirmTitle'),
+      confirmLabel: t('cancelConfirmButton'),
+      cancelLabel: t('cancelConfirmDismiss'),
+    })
+    if (!confirmed) return
+
+    setCancellingSubscription(true)
+    setError('')
+    try {
+      await apiClient.cancelSubscription(currentOrgId)
+      setBillingStatus((prev) =>
+        prev ? { ...prev, billing: { ...prev.billing, cancelAtPeriodEnd: true } } : prev
+      )
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : t('loadError'))
+    } finally {
+      setCancellingSubscription(false)
+    }
+  }
+
+  const handleResumeSubscription = async () => {
+    if (!currentOrgId) return
+    setResumingSubscription(true)
+    setError('')
+    try {
+      await apiClient.resumeSubscription(currentOrgId)
+      setBillingStatus((prev) =>
+        prev ? { ...prev, billing: { ...prev.billing, cancelAtPeriodEnd: false } } : prev
+      )
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : t('loadError'))
+    } finally {
+      setResumingSubscription(false)
     }
   }
 
@@ -410,6 +454,11 @@ export default function BillingPage() {
 
   const hasStripeCustomer = Boolean(billingStatus?.stripeCustomerId)
   const trialEndDate = formatDate(billingStatus?.trialEndsAt)
+  const cancelAtPeriodEndDate = formatDate(
+    billingStatus?.currentPeriodEnd ??
+      billingStatus?.billing?.currentPeriodEnd ??
+      billingStatus?.trialEndsAt
+  )
   const manualStatus = billingStatus?.billingStatus
   const manualPlanEndDate =
     billingStatus?.currentPeriodEnd ?? billingStatus?.billing?.currentPeriodEnd
@@ -547,6 +596,30 @@ export default function BillingPage() {
                       <span className="font-semibold"> {t('upgradeToUnlock')}</span>
                     </div>
                   )}
+
+                {/* Cancellation scheduled — access continues until the paid period ends */}
+                {billingStatus?.billing?.cancelAtPeriodEnd && !billingStatusLoading && (
+                  <div className="mt-3 flex flex-wrap items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                    <Clock className="w-4 h-4 shrink-0" />
+                    <span className="flex-1 min-w-[200px]">
+                      {cancelAtPeriodEndDate
+                        ? t('cancelScheduledMessage', { date: cancelAtPeriodEndDate })
+                        : t('cancelScheduledMessageNoDate')}
+                    </span>
+                    <button
+                      onClick={handleResumeSubscription}
+                      disabled={resumingSubscription}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-300 text-amber-800 rounded-lg text-sm font-medium hover:bg-amber-100 transition-colors disabled:opacity-60"
+                    >
+                      {resumingSubscription ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" />
+                      )}
+                      {t('keepSubscription')}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -568,6 +641,24 @@ export default function BillingPage() {
                     <CreditCard className="w-4 h-4" />
                   )}
                   {t('stripePortal')}
+                </button>
+              )}
+
+            {/* Cancel subscription — schedules cancel_at_period_end, access continues
+                until the paid period ends. Hidden once already scheduled (the banner
+                above offers "keep my plan" / resume instead). */}
+            {hasStripeCustomer &&
+              !billingStatus?.billing?.cancelAtPeriodEnd &&
+              (effectiveStripeStatus === 'active' ||
+                effectiveStripeStatus === 'trialing' ||
+                effectiveStripeStatus === 'past_due') && (
+                <button
+                  onClick={handleCancelSubscription}
+                  disabled={cancellingSubscription}
+                  className="shrink-0 flex items-center gap-2 px-4 py-2.5 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors disabled:opacity-60"
+                >
+                  {cancellingSubscription ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {t('cancelSubscription')}
                 </button>
               )}
           </div>
