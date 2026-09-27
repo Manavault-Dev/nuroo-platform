@@ -320,6 +320,7 @@ export interface BillingStatusResponse {
     provider?: string | null
     trialEndsAt?: string | null
     currentPeriodEnd?: string | null
+    cancelAtPeriodEnd?: boolean
   }
 }
 
@@ -794,7 +795,26 @@ export class ApiClient {
   }
 
   async createBillingPortalSession(orgId: string): Promise<{ ok: boolean; url: string }> {
+    // returnUrl is required by the backend schema (400 without it) — it was
+    // previously sent as an empty body, so this call always failed validation.
+    const returnUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/b2b/billing`
     return this.request<{ ok: boolean; url: string }>(`/orgs/${orgId}/billing/portal`, {
+      method: 'POST',
+      body: JSON.stringify({ returnUrl }),
+    })
+  }
+
+  async cancelSubscription(orgId: string): Promise<{ ok: boolean }> {
+    cache.invalidate()
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/billing/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+  }
+
+  async resumeSubscription(orgId: string): Promise<{ ok: boolean }> {
+    cache.invalidate()
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}/billing/resume`, {
       method: 'POST',
       body: JSON.stringify({}),
     })
