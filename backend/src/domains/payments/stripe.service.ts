@@ -14,17 +14,39 @@ function getStripe(): Stripe {
   return _stripe
 }
 
-function getPriceId(planId: PlanId): string {
-  const priceMap: Record<PlanId, string | undefined> = {
+function getPriceIdMap(): Record<PlanId, string | undefined> {
+  return {
     starter: config.STRIPE_PRICE_STARTER,
     growth: config.STRIPE_PRICE_GROWTH,
     enterprise: config.STRIPE_PRICE_ENTERPRISE,
   }
-  const priceId = priceMap[planId]
+}
+
+function getPriceId(planId: PlanId): string {
+  const priceId = getPriceIdMap()[planId]
   if (!priceId) {
     throw new Error(`Stripe price ID not configured for plan: ${planId}`)
   }
   return priceId
+}
+
+/**
+ * Reverse lookup: which PlanId does this Stripe price ID correspond to?
+ * Used to derive the CURRENT plan from a subscription's actual price on
+ * customer.subscription.updated, instead of trusting subscription metadata
+ * (which is only set once at checkout and never updated when the price
+ * changes via the Stripe Customer Portal or dashboard).
+ */
+export function getPlanIdFromPriceId(priceId: string | undefined | null): PlanId | null {
+  if (!priceId) return null
+  const priceMap = getPriceIdMap()
+  for (const [planId, mappedPriceId] of Object.entries(priceMap) as [
+    PlanId,
+    string | undefined,
+  ][]) {
+    if (mappedPriceId === priceId) return planId
+  }
+  return null
 }
 
 export async function createCustomer(email: string, orgId: string): Promise<Stripe.Customer> {
@@ -89,4 +111,19 @@ export function constructWebhookEvent(payload: Buffer, sig: string): Stripe.Even
 export async function getSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
   const stripe = getStripe()
   return stripe.subscriptions.retrieve(subscriptionId)
+}
+
+/**
+ * Schedules (or un-schedules) cancellation at the end of the current paid
+ * period — this is deliberately NOT stripe.subscriptions.cancel()/del(),
+ * which would end access immediately. Setting cancel_at_period_end keeps the
+ * subscription (and access) active until Stripe's own
+ * customer.subscription.deleted event fires at the real period end.
+ */
+export async function updateSubscriptionCancelAtPeriodEnd(
+  subscriptionId: string,
+  cancelAtPeriodEnd: boolean
+): Promise<Stripe.Subscription> {
+  const stripe = getStripe()
+  return stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: cancelAtPeriodEnd })
 }
