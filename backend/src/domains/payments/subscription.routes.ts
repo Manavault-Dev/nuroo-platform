@@ -15,6 +15,27 @@ import {
 
 const TRIAL_DAYS = 30
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: {
+    error: { type: 'string' },
+    code: { type: 'string' },
+  },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
 function timestampToIso(value: unknown): string | null {
   if (!value) return null
   if (value instanceof Date) return value.toISOString()
@@ -81,6 +102,27 @@ async function resolveOrgSubscriptionId(
 export const subscriptionRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/billing/start-trial',
+    {
+      schema: {
+        tags: ['Payments'],
+        summary: 'Start the organization free trial',
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok'],
+            properties: {
+              ok: { type: 'boolean' },
+              alreadyTrialing: { type: 'boolean' },
+              trialEndsAt: { type: ['string', 'null'], format: 'date-time' },
+            },
+          },
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId } = request.params
       await requireOrgAdmin(request, reply, orgId)
@@ -143,6 +185,9 @@ export const subscriptionRoutes: FastifyPluginAsync = async (fastify) => {
     '/orgs/:orgId/billing/checkout',
     {
       schema: {
+        tags: ['Payments'],
+        summary: 'Create a Stripe Checkout session',
+        params: orgIdParamsSchema,
         body: {
           type: 'object',
           required: ['planId', 'successUrl', 'cancelUrl'],
@@ -151,6 +196,16 @@ export const subscriptionRoutes: FastifyPluginAsync = async (fastify) => {
             successUrl: { type: 'string', format: 'uri' },
             cancelUrl: { type: 'string', format: 'uri' },
           },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'url'],
+            properties: { ok: { type: 'boolean' }, url: { type: 'string', format: 'uri' } },
+          },
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
         },
       },
     },
@@ -228,6 +283,32 @@ export const subscriptionRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string } }>(
     '/orgs/:orgId/billing/status',
+    {
+      schema: {
+        tags: ['Payments'],
+        summary: 'Get organization billing status',
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'active', 'billing', 'billingMode'],
+            additionalProperties: true,
+            properties: {
+              ok: { type: 'boolean' },
+              active: { type: 'boolean' },
+              planId: { type: ['string', 'null'] },
+              source: { type: ['string', 'null'] },
+              billingStatus: { type: ['string', 'null'] },
+              expiresAt: { type: ['string', 'null'], format: 'date-time' },
+              billing: { type: 'object', additionalProperties: true },
+              billingMode: { type: 'string', enum: ['manual', 'stripe_test', 'stripe_live'] },
+            },
+          },
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId } = request.params
       await requireOrgMember(request, reply, orgId)
@@ -284,6 +365,20 @@ export const subscriptionRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/billing/cancel',
+    {
+      schema: {
+        tags: ['Payments'],
+        summary: 'Schedule subscription cancellation at period end',
+        params: orgIdParamsSchema,
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          502: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId } = request.params
       await requireOrgAdmin(request, reply, orgId)
@@ -338,6 +433,20 @@ export const subscriptionRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/billing/resume',
+    {
+      schema: {
+        tags: ['Payments'],
+        summary: 'Undo a scheduled subscription cancellation',
+        params: orgIdParamsSchema,
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          502: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId } = request.params
       await requireOrgAdmin(request, reply, orgId)
@@ -386,10 +495,23 @@ export const subscriptionRoutes: FastifyPluginAsync = async (fastify) => {
     '/orgs/:orgId/billing/portal',
     {
       schema: {
+        tags: ['Payments'],
+        summary: 'Create a Stripe Customer Portal session',
+        params: orgIdParamsSchema,
         body: {
           type: 'object',
           required: ['returnUrl'],
           properties: { returnUrl: { type: 'string', format: 'uri' } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'url'],
+            properties: { ok: { type: 'boolean' }, url: { type: 'string', format: 'uri' } },
+          },
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
         },
       },
     },
