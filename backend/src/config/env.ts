@@ -55,6 +55,7 @@ export const envSchema = z.object({
 
   BILLING_MODE: z.enum(['manual', 'stripe_test', 'stripe_live']).default('manual'),
   PLATFORM_ADMIN_SECRET: z.string().optional(),
+  CRON_SECRET: z.string().optional(),
 
   // Email (Resend)
   RESEND_API_KEY: z.string().optional(),
