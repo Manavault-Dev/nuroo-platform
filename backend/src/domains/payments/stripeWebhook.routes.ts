@@ -81,198 +81,232 @@ export const stripeWebhookRoutes: FastifyPluginAsync = async (fastify) => {
       }
     )
 
-    child.post('/webhooks/stripe', async (request, reply) => {
-      const sig = request.headers['stripe-signature']
+    child.post(
+      '/webhooks/stripe',
+      {
+        schema: {
+          tags: ['Payments'],
+          summary: 'Process Stripe webhook events',
+          description:
+            'Public callback authenticated by Stripe signature verification. Firebase bearer auth is not used.',
+          security: [],
+          headers: {
+            type: 'object',
+            required: ['stripe-signature'],
+            properties: {
+              'stripe-signature': {
+                type: 'string',
+                description: 'Stripe webhook signature generated with STRIPE_WEBHOOK_SECRET',
+              },
+            },
+          },
+          response: {
+            200: {
+              type: 'object',
+              required: ['received'],
+              properties: { received: { type: 'boolean' } },
+            },
+            400: {
+              type: 'object',
+              required: ['error'],
+              properties: { error: { type: 'string' } },
+            },
+          },
+        },
+      },
+      async (request, reply) => {
+        const sig = request.headers['stripe-signature']
 
-      if (!sig || typeof sig !== 'string') {
-        fastify.log.warn({ event: 'stripe_webhook_missing_signature' })
-        return reply.code(400).send({ error: 'Missing stripe-signature header' })
-      }
-
-      let event: Stripe.Event
-      try {
-        event = constructWebhookEvent(request.body as Buffer, sig)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown error'
-        fastify.log.warn({ event: 'stripe_webhook_invalid_signature', message })
-        Sentry.captureMessage('stripe_webhook_invalid_signature', {
-          level: 'warning',
-          extra: { message },
-        })
-        return reply.code(400).send({ error: 'Webhook signature verification failed' })
-      }
-
-      fastify.log.info({ event: 'stripe_webhook_received', eventType: event.type })
-
-      const db = getFirestore()
-
-      const alreadyProcessed = await isEventAlreadyProcessed(event.id, db)
-      if (alreadyProcessed) {
-        return reply.code(200).send({ received: true })
-      }
-
-      try {
-        switch (event.type) {
-          case 'checkout.session.completed': {
-            const session = event.data.object as Stripe.Checkout.Session
-            const orgId = session.metadata?.orgId
-            const planId = session.metadata?.planId as PlanId | undefined
-
-            if (!orgId || !planId) break
-
-            const customerId =
-              typeof session.customer === 'string' ? session.customer : session.customer?.id
-            const subscriptionId =
-              typeof session.subscription === 'string'
-                ? session.subscription
-                : session.subscription?.id
-
-            const billingUpdate: OrgBillingUpdate = {
-              provider: 'stripe',
-              stripeCustomerId: customerId ?? undefined,
-              stripeSubscriptionId: subscriptionId ?? undefined,
-              plan: planId,
-              status: 'trialing',
-              updatedAt: admin.firestore.Timestamp.now(),
-            }
-
-            await updateOrgBilling(orgId, billingUpdate, db)
-            break
-          }
-
-          case 'customer.subscription.updated': {
-            const subscription = event.data.object as Stripe.Subscription
-            const orgId = subscription.metadata?.orgId
-
-            if (!orgId) break
-
-            const status = mapStripeStatus(subscription.status)
-            // Derive the plan from the subscription's CURRENT price, not from
-            // metadata — metadata.planId is only set once at checkout and
-            // never updated when the price changes via the Stripe Customer
-            // Portal or dashboard, which was silently leaving org.billing.plan
-            // stale after any portal-driven upgrade/downgrade.
-            const currentPriceId = subscription.items.data[0]?.price?.id
-            const resolvedPlan = getPlanIdFromPriceId(currentPriceId)
-
-            const billingUpdate: OrgBillingUpdate = {
-              provider: 'stripe',
-              stripeSubscriptionId: subscription.id,
-              status,
-              trialEndsAt: toTimestamp(subscription.trial_end),
-              currentPeriodEnd: toTimestamp(subscription.current_period_end),
-              cancelAtPeriodEnd: subscription.cancel_at_period_end === true,
-              updatedAt: admin.firestore.Timestamp.now(),
-              ...(resolvedPlan ? { plan: resolvedPlan } : {}),
-            }
-
-            if (!resolvedPlan) {
-              child.log.warn({
-                event: 'stripe_webhook_unresolved_plan',
-                orgId,
-                subscriptionId: subscription.id,
-                priceId: currentPriceId,
-              })
-            }
-
-            await updateOrgBilling(orgId, billingUpdate, db)
-            break
-          }
-
-          case 'customer.subscription.deleted': {
-            const subscription = event.data.object as Stripe.Subscription
-            const orgId = subscription.metadata?.orgId
-
-            if (!orgId) break
-
-            const billingUpdate: OrgBillingUpdate = {
-              provider: 'stripe',
-              stripeSubscriptionId: subscription.id,
-              status: 'canceled',
-              currentPeriodEnd: toTimestamp(subscription.current_period_end),
-              cancelAtPeriodEnd: false,
-              updatedAt: admin.firestore.Timestamp.now(),
-            }
-
-            await updateOrgBilling(orgId, billingUpdate, db)
-            break
-          }
-
-          case 'invoice.payment_failed': {
-            const invoice = event.data.object as Stripe.Invoice
-            const customerId =
-              typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id
-
-            if (!customerId) break
-
-            const orgQuery = await db
-              .collection('organizations')
-              .where('billing.stripeCustomerId', '==', customerId)
-              .limit(1)
-              .get()
-
-            if (orgQuery.empty) break
-
-            const orgDoc = orgQuery.docs[0]
-            const orgId = orgDoc.id
-
-            const billingUpdate: OrgBillingUpdate = {
-              provider: 'stripe',
-              status: 'past_due',
-              updatedAt: admin.firestore.Timestamp.now(),
-            }
-
-            await updateOrgBilling(orgId, billingUpdate, db)
-
-            child.log.warn({ event: 'stripe_webhook_payment_failed', orgId })
-            Sentry.captureMessage('stripe_webhook_payment_failed', {
-              level: 'warning',
-              extra: { orgId },
-            })
-            break
-          }
-
-          case 'invoice.payment_succeeded': {
-            const invoice = event.data.object as Stripe.Invoice
-            const customerId =
-              typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id
-
-            if (!customerId) break
-
-            const orgQuery = await db
-              .collection('organizations')
-              .where('billing.stripeCustomerId', '==', customerId)
-              .limit(1)
-              .get()
-
-            if (orgQuery.empty) break
-
-            const orgDoc = orgQuery.docs[0]
-            const orgId = orgDoc.id
-            const currentStatus = orgDoc.data()?.billing?.status
-
-            if (currentStatus === 'past_due') {
-              const billingUpdate: OrgBillingUpdate = {
-                provider: 'stripe',
-                status: 'active',
-                updatedAt: admin.firestore.Timestamp.now(),
-              }
-              await updateOrgBilling(orgId, billingUpdate, db)
-            }
-            break
-          }
-
-          default:
-            break
+        if (!sig || typeof sig !== 'string') {
+          fastify.log.warn({ event: 'stripe_webhook_missing_signature' })
+          return reply.code(400).send({ error: 'Missing stripe-signature header' })
         }
 
-        await markEventProcessed(event.id, event.type, db)
-      } catch (err) {
-        Sentry.captureException(err, { extra: { eventType: event.type, eventId: event.id } })
-        child.log.error({ event: 'stripe_webhook_processing_error', eventType: event.type })
-      }
+        let event: Stripe.Event
+        try {
+          event = constructWebhookEvent(request.body as Buffer, sig)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Unknown error'
+          fastify.log.warn({ event: 'stripe_webhook_invalid_signature', message })
+          Sentry.captureMessage('stripe_webhook_invalid_signature', {
+            level: 'warning',
+            extra: { message },
+          })
+          return reply.code(400).send({ error: 'Webhook signature verification failed' })
+        }
 
-      return reply.code(200).send({ received: true })
-    })
+        fastify.log.info({ event: 'stripe_webhook_received', eventType: event.type })
+
+        const db = getFirestore()
+
+        const alreadyProcessed = await isEventAlreadyProcessed(event.id, db)
+        if (alreadyProcessed) {
+          return reply.code(200).send({ received: true })
+        }
+
+        try {
+          switch (event.type) {
+            case 'checkout.session.completed': {
+              const session = event.data.object as Stripe.Checkout.Session
+              const orgId = session.metadata?.orgId
+              const planId = session.metadata?.planId as PlanId | undefined
+
+              if (!orgId || !planId) break
+
+              const customerId =
+                typeof session.customer === 'string' ? session.customer : session.customer?.id
+              const subscriptionId =
+                typeof session.subscription === 'string'
+                  ? session.subscription
+                  : session.subscription?.id
+
+              const billingUpdate: OrgBillingUpdate = {
+                provider: 'stripe',
+                stripeCustomerId: customerId ?? undefined,
+                stripeSubscriptionId: subscriptionId ?? undefined,
+                plan: planId,
+                status: 'trialing',
+                updatedAt: admin.firestore.Timestamp.now(),
+              }
+
+              await updateOrgBilling(orgId, billingUpdate, db)
+              break
+            }
+
+            case 'customer.subscription.updated': {
+              const subscription = event.data.object as Stripe.Subscription
+              const orgId = subscription.metadata?.orgId
+
+              if (!orgId) break
+
+              const status = mapStripeStatus(subscription.status)
+              // Derive the plan from the subscription's CURRENT price, not from
+              // metadata — metadata.planId is only set once at checkout and
+              // never updated when the price changes via the Stripe Customer
+              // Portal or dashboard, which was silently leaving org.billing.plan
+              // stale after any portal-driven upgrade/downgrade.
+              const currentPriceId = subscription.items.data[0]?.price?.id
+              const resolvedPlan = getPlanIdFromPriceId(currentPriceId)
+
+              const billingUpdate: OrgBillingUpdate = {
+                provider: 'stripe',
+                stripeSubscriptionId: subscription.id,
+                status,
+                trialEndsAt: toTimestamp(subscription.trial_end),
+                currentPeriodEnd: toTimestamp(subscription.current_period_end),
+                cancelAtPeriodEnd: subscription.cancel_at_period_end === true,
+                updatedAt: admin.firestore.Timestamp.now(),
+                ...(resolvedPlan ? { plan: resolvedPlan } : {}),
+              }
+
+              if (!resolvedPlan) {
+                child.log.warn({
+                  event: 'stripe_webhook_unresolved_plan',
+                  orgId,
+                  subscriptionId: subscription.id,
+                  priceId: currentPriceId,
+                })
+              }
+
+              await updateOrgBilling(orgId, billingUpdate, db)
+              break
+            }
+
+            case 'customer.subscription.deleted': {
+              const subscription = event.data.object as Stripe.Subscription
+              const orgId = subscription.metadata?.orgId
+
+              if (!orgId) break
+
+              const billingUpdate: OrgBillingUpdate = {
+                provider: 'stripe',
+                stripeSubscriptionId: subscription.id,
+                status: 'canceled',
+                currentPeriodEnd: toTimestamp(subscription.current_period_end),
+                cancelAtPeriodEnd: false,
+                updatedAt: admin.firestore.Timestamp.now(),
+              }
+
+              await updateOrgBilling(orgId, billingUpdate, db)
+              break
+            }
+
+            case 'invoice.payment_failed': {
+              const invoice = event.data.object as Stripe.Invoice
+              const customerId =
+                typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id
+
+              if (!customerId) break
+
+              const orgQuery = await db
+                .collection('organizations')
+                .where('billing.stripeCustomerId', '==', customerId)
+                .limit(1)
+                .get()
+
+              if (orgQuery.empty) break
+
+              const orgDoc = orgQuery.docs[0]
+              const orgId = orgDoc.id
+
+              const billingUpdate: OrgBillingUpdate = {
+                provider: 'stripe',
+                status: 'past_due',
+                updatedAt: admin.firestore.Timestamp.now(),
+              }
+
+              await updateOrgBilling(orgId, billingUpdate, db)
+
+              child.log.warn({ event: 'stripe_webhook_payment_failed', orgId })
+              Sentry.captureMessage('stripe_webhook_payment_failed', {
+                level: 'warning',
+                extra: { orgId },
+              })
+              break
+            }
+
+            case 'invoice.payment_succeeded': {
+              const invoice = event.data.object as Stripe.Invoice
+              const customerId =
+                typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id
+
+              if (!customerId) break
+
+              const orgQuery = await db
+                .collection('organizations')
+                .where('billing.stripeCustomerId', '==', customerId)
+                .limit(1)
+                .get()
+
+              if (orgQuery.empty) break
+
+              const orgDoc = orgQuery.docs[0]
+              const orgId = orgDoc.id
+              const currentStatus = orgDoc.data()?.billing?.status
+
+              if (currentStatus === 'past_due') {
+                const billingUpdate: OrgBillingUpdate = {
+                  provider: 'stripe',
+                  status: 'active',
+                  updatedAt: admin.firestore.Timestamp.now(),
+                }
+                await updateOrgBilling(orgId, billingUpdate, db)
+              }
+              break
+            }
+
+            default:
+              break
+          }
+
+          await markEventProcessed(event.id, event.type, db)
+        } catch (err) {
+          Sentry.captureException(err, { extra: { eventType: event.type, eventId: event.id } })
+          child.log.error({ event: 'stripe_webhook_processing_error', eventType: event.type })
+        }
+
+        return reply.code(200).send({ received: true })
+      }
+    )
   })
 }
