@@ -1,135 +1,112 @@
 # Nuroo Backend API
 
-Fastify backend API for the B2B Specialist Platform.
+Fastify 5 API for the Nuroo B2B platform, marketplace, and parent mobile application.
 
-## Architecture
+## Runtime and architecture
 
-- **Framework**: Fastify (TypeScript)
-- **Auth**: Firebase ID Token verification
-- **Database**: Firebase Firestore (via Admin SDK)
-- **Validation**: Zod
+- Node.js 20 or newer; Node.js 24 is used by the repository and CI.
+- TypeScript with ESM modules.
+- Firebase ID tokens for user authentication.
+- Firestore through Firebase Admin.
+- Domain routes under `src/domains`.
+- Shared infrastructure under `src/infrastructure`.
+- OpenAPI through `@fastify/swagger` and `@fastify/swagger-ui`.
 
 ## Setup
 
-### 1. Install Dependencies
+From the repository root:
 
 ```bash
-cd backend
-npm install
+npm --prefix backend ci
+cp backend/.env.example backend/.env
+npm --prefix backend run dev
 ```
 
-### 2. Environment Variables
+The server listens on <http://localhost:3101>. Configuration is parsed by `src/config/env.ts`; the
+example file is the canonical inventory of local variables.
 
-Copy `.env.example` to `.env` and fill in your Firebase Admin credentials:
+## API documentation
+
+- Swagger UI: <http://localhost:3101/docs>
+- OpenAPI JSON: <http://localhost:3101/docs/json>
+- Billing operations: [../docs/BILLING_RUNBOOK.md](../docs/BILLING_RUNBOOK.md)
+
+Most `/v1` routes require `Authorization: Bearer <firebase_id_token>`. Exceptions are:
+
+- `GET /health`: public health probe.
+- `POST /v1/webhooks/stripe`: authenticated by Stripe signature.
+- `POST /v1/internal/cron/trial-notifications`: authenticated by `CRON_SECRET`.
+
+Routes must enforce authorization after authentication. Organization IDs supplied by clients are
+always checked through membership or administrator guards.
+
+## Commands
 
 ```bash
-cp .env.example .env
+npm run dev               # hot-reload development server
+npm run build             # compile TypeScript
+npm run start             # start compiled production server
+npm run validate          # typecheck, lint, and formatting check
+npm test -- --run         # run backend unit and route tests once
+npm run test:watch        # watch tests
+npm run test:coverage     # collect coverage
 ```
 
-**Get Firebase Admin Credentials:**
-
-1. Go to [Firebase Console](https://console.firebase.google.com)
-2. Select your project (`nuroo-2`)
-3. Go to Project Settings > Service Accounts
-4. Click "Generate New Private Key"
-5. Download the JSON file
-6. Extract values:
-   - `project_id` → `FIREBASE_PROJECT_ID`
-   - `client_email` → `FIREBASE_CLIENT_EMAIL`
-   - `private_key` → `FIREBASE_PRIVATE_KEY` (keep the newlines, wrap in quotes)
-
-**Important**: The private key should include `\n` characters for newlines. Wrap the entire key in quotes in your `.env` file.
-
-### 3. Run Development Server
+Maintenance commands:
 
 ```bash
-npm run dev
+npm run deploy-indexes:check
+npm run deploy-indexes
+npm run broadcast-app-update
+npm run trial:migrate-legacy
+npm run trial:adjust-grace
 ```
 
-Server will start on `http://localhost:3101`
+Migration commands without `:apply` are dry runs. Apply variants mutate Firestore and require the
+approval and rollback procedure in the billing runbook.
 
-## API Endpoints
+## Directory structure
 
-All endpoints require authentication via Firebase ID token in `Authorization: Bearer <token>` header (except `/health`).
-
-### Health Check
-
-- `GET /health` - Health check (no auth required)
-
-### Authentication
-
-- `GET /me` - Get current specialist profile and organizations
-
-### Children
-
-- `GET /orgs/:orgId/children` - List children in organization
-- `GET /orgs/:orgId/children/:childId` - Get child detail
-- `GET /orgs/:orgId/children/:childId/notes` - List notes for a child
-- `POST /orgs/:orgId/children/:childId/notes` - Create a note
-
-## Development
-
-### Local Development
-
-Run backend and frontend separately:
-
-```bash
-# Terminal 1: Backend
-cd backend
-npm run dev
-
-# Terminal 2: Frontend (from root)
-npm run dev
-```
-
-### Project Structure
-
-```
+```text
 backend/
-├── src/
-│   ├── index.ts           # Server entry point
-│   ├── config/            # Environment config (index.ts, env.ts)
-│   ├── firebaseAdmin.ts   # Firebase Admin (scripts)
-│   ├── types.ts           # TypeScript types
-│   ├── plugins/
-│   │   ├── auth.ts        # Auth plugin (token verification)
-│   │   └── rbac.ts        # RBAC helpers
-│   └── routes/
-│       ├── health.ts      # Health check
-│       ├── me.ts          # Profile endpoint
-│       ├── children.ts    # Children endpoints
-│       └── notes.ts       # Notes endpoints
-├── package.json
-├── tsconfig.json
-└── README.md
+  scripts/                    maintenance and migration commands
+  src/config/                 environment and Swagger configuration
+  src/domains/                domain routes, services, and colocated tests
+  src/infrastructure/auth/    Firebase authentication and RBAC
+  src/infrastructure/database Firestore initialization
+  src/modules/email/          Resend provider and templates
+  src/modules/notifications/  shared notification services
+  src/index.ts                application composition and startup
 ```
 
-## Firestore Structure
+## Firestore billing data
 
-The backend reads/writes to these Firestore collections:
+Subscription state is stored in `organizations/{orgId}.billing`. Important fields include:
 
-```
-organizations/{orgId}
-  └── members/{uid}          # { role: 'admin'|'specialist', status: 'active'|'inactive' }
-  └── children/{childId}     # { assigned: true }
+- `provider`, `status`, and `plan`;
+- `stripeCustomerId` and `stripeSubscriptionId`;
+- `trialEndsAt` and `currentPeriodEnd`;
+- `cancelAtPeriodEnd`;
+- trial notification idempotency markers.
 
-specialists/{uid}            # Specialist profile
+Processed Stripe events are stored in `stripeWebhookEvents/{eventId}`. Never remove these records to
+force a replay without first confirming the target billing state.
 
-children/{childId}
-  └── progress/speech        # Speech progress
-  └── tasks/{taskId}         # Tasks
-  └── specialistNotes/{noteId}  # Specialist notes
-```
+## Production operations
 
-## Security
+The backend is deployed to Google Cloud Run by `.github/workflows/deploy-production.yml`. Secrets
+are mapped from Google Secret Manager. Keep the GitHub `CRON_SECRET` synchronized with the Cloud Run
+secret used by the trial notification workflow.
 
-- All endpoints (except `/health`) require Firebase ID token authentication
-- RBAC: Specialists can only access children assigned to their organizations
-- Child assignment is verified before access
-- Never trust client-provided `orgId` or `childId` without server-side verification
+For Stripe setup, incident response, secret rotation, trial notifications, migrations, and rollback,
+follow [Billing Operations](../docs/BILLING_RUNBOOK.md).
 
-## Notes
+## Change requirements
 
-- The backend uses Firebase Admin SDK (server-side) to access Firestore
-- Client-side (Next.js B2B UI) uses Firebase Client SDK only for authentication
-- All data operations go through the backend API
+When adding or changing an endpoint:
+
+1. Add route-level OpenAPI tags, summary, inputs, responses, and the correct security declaration.
+2. Add route or service tests for success and important error paths.
+3. Update `.env.example` for any new configuration.
+4. Update the relevant runbook when operational behavior changes.
+5. Run `npm run validate` and `npm test -- --run` before merging.
