@@ -4,6 +4,7 @@ import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from '../../infrastructure/database/firebase.js'
 import { getEmailProvider } from '../../modules/email/resend.provider.js'
 import { trialEndedTemplate, trialEndingTemplate } from '../../modules/email/email.templates.js'
+import { config } from '../../config/index.js'
 
 /**
  * Scheduled trial-expiration notifications.
@@ -128,9 +129,54 @@ export async function runTrialNotificationScan(log: FastifyBaseLogger) {
 export const trialNotificationsRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Querystring: { secret?: string } }>(
     '/internal/cron/trial-notifications',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    {
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['System'],
+        summary: 'Send trial expiration notifications',
+        description:
+          'Internal idempotent daily job. Authenticated with CRON_SECRET instead of Firebase.',
+        security: [],
+        querystring: {
+          type: 'object',
+          required: ['secret'],
+          properties: { secret: { type: 'string', description: 'Internal cron secret' } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: [
+              'ok',
+              'scanned',
+              'endingSoonSent',
+              'endedSent',
+              'skippedNoContact',
+              'errors',
+            ],
+            properties: {
+              ok: { type: 'boolean' },
+              scanned: { type: 'integer' },
+              endingSoonSent: { type: 'integer' },
+              endedSent: { type: 'integer' },
+              skippedNoContact: { type: 'integer' },
+              errors: { type: 'integer' },
+            },
+          },
+          401: {
+            type: 'object',
+            required: ['error'],
+            properties: { error: { type: 'string' } },
+          },
+          503: {
+            type: 'object',
+            required: ['error'],
+            properties: { error: { type: 'string' } },
+          },
+        },
+      },
+    },
     async (request, reply) => {
-      const expected = process.env.CRON_SECRET
+      const expected = config.CRON_SECRET
       if (!expected) {
         fastify.log.error('CRON_SECRET is not set — rejecting trial-notifications cron call')
         return reply.code(503).send({ error: 'Cron endpoint not configured' })
