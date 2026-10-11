@@ -44,7 +44,7 @@ export async function mockBillingStatus(page: Page) {
       body: JSON.stringify({
         ok: true,
         active: true,
-        planId: 'starter',
+        planId: 'growth',
         source: 'subscription',
         billingStatus: 'active',
         badge: 'Active',
