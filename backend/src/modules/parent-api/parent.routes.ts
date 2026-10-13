@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify'
 import admin from 'firebase-admin'
+import { z } from 'zod'
 import { listChildSpecialists, listChildNotes, listParentLinkedChildren } from './parent.service.js'
 import { getFirestore } from '../../infrastructure/database/firebase.js'
 import {
@@ -10,6 +11,11 @@ import {
 import { getOrgPaymentProvider } from '../../domains/payments/providers/registry.js'
 import { dispatch as sendNotification } from '../../modules/notifications/notification.service.js'
 import { config } from '../../config/index.js'
+import {
+  parseDataImageUrl,
+  uploadOrgMarketplaceImage,
+  imageSourceSchema,
+} from '../../domains/organizations/orgs.routes.js'
 
 /** Deep link scheme used by the Nuroo mobile app */
 const MOBILE_DEEP_LINK_SCHEME = 'nuroo'
@@ -118,6 +124,24 @@ async function lazyUpgradeInvoices(
     })
   )
 }
+
+const phoneSchema = z
+  .string()
+  .trim()
+  .max(50)
+  .regex(/^[+\d\s\-().]*$/, 'Invalid phone format')
+
+const createBasicOrgSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200),
+    country: z.string().trim().max(100).optional(),
+    contactPhone: phoneSchema.optional(),
+    whatsappNumber: phoneSchema.optional(),
+    logoUrl: imageSourceSchema.optional(),
+  })
+  .refine((body) => !!(body.contactPhone || body.whatsappNumber), {
+    message: 'At least one contact method (contactPhone or whatsappNumber) is required',
+  })
 
 export const parentApiRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get<{ Params: { childId: string } }>(
@@ -361,4 +385,117 @@ export const parentApiRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
   )
+
+  // POST /api/parent/organizations — self-serve "basic" organization (contact
+  // card only, no booking, no specialists). Intentionally never writes
+  // organizations/{orgId}/members/{uid} or specialists/{uid} — doing so would
+  // flip the creator's role to 'specialist'/'organizer' on their next /me
+  // call and lock them out of the parent-facing mobile UI.
+  fastify.post('/api/parent/organizations', async (request, reply) => {
+    if (!request.user) {
+      return reply.code(401).send({ error: 'Unauthorized' })
+    }
+    const { uid } = request.user
+
+    const parsed = createBasicOrgSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request' })
+    }
+    const { name, country, contactPhone, whatsappNumber, logoUrl } = parsed.data
+
+    try {
+      const db = getFirestore()
+
+      const dupSnap = await db
+        .collection('organizations')
+        .where('createdBy', '==', uid)
+        .where('name', '==', name)
+        .limit(1)
+        .get()
+      if (!dupSnap.empty) {
+        return reply.code(409).send({ error: 'You already have an organization with this name' })
+      }
+
+      const orgRef = db.collection('organizations').doc()
+
+      let uploadedLogoUrl: string | null = null
+      if (logoUrl) {
+        const parsedImage = parseDataImageUrl(logoUrl)
+        if (parsedImage) {
+          uploadedLogoUrl = await uploadOrgMarketplaceImage(
+            orgRef.id,
+            'logo',
+            parsedImage.buffer,
+            parsedImage.mimeType,
+            'logo'
+          )
+        } else {
+          // Already a plain URL (not a data: upload) — store as-is.
+          uploadedLogoUrl = logoUrl
+        }
+      }
+
+      await orgRef.set({
+        name,
+        country: country ?? null,
+        contactPhone: contactPhone ?? null,
+        whatsappNumber: whatsappNumber ?? null,
+        logoUrl: uploadedLogoUrl,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdBy: uid,
+        isActive: true,
+        isPublicMarketplaceEnabled: true,
+        tier: 'basic',
+        createdVia: 'mobile_basic',
+      })
+
+      return {
+        ok: true,
+        orgId: orgRef.id,
+        name,
+        logoUrl: uploadedLogoUrl,
+        contactPhone: contactPhone ?? null,
+        whatsappNumber: whatsappNumber ?? null,
+        isPublicMarketplaceEnabled: true,
+      }
+    } catch (error: unknown) {
+      console.error('Error creating basic organization:', error)
+      return reply
+        .code(500)
+        .send({ error: error instanceof Error ? error.message : 'Failed to create organization' })
+    }
+  })
+
+  // GET /api/parent/organizations/basic — basic-tier orgs this parent created
+  fastify.get('/api/parent/organizations/basic', async (request, reply) => {
+    if (!request.user) {
+      return reply.code(401).send({ error: 'Unauthorized' })
+    }
+    const { uid } = request.user
+
+    try {
+      const db = getFirestore()
+      const snap = await db.collection('organizations').where('createdBy', '==', uid).get()
+
+      const organizations = snap.docs
+        .map((doc) => ({ id: doc.id, data: doc.data() }))
+        .filter(({ data }) => data.tier === 'basic')
+        .map(({ id, data }) => ({
+          orgId: id,
+          name: data.name as string,
+          logoUrl: (data.logoUrl as string | null) ?? null,
+          contactPhone: (data.contactPhone as string | null) ?? null,
+          whatsappNumber: (data.whatsappNumber as string | null) ?? null,
+          isPublicMarketplaceEnabled: !!data.isPublicMarketplaceEnabled,
+          createdAt: data.createdAt ?? null,
+        }))
+
+      return { ok: true, organizations }
+    } catch (error: unknown) {
+      console.error('Error listing basic organizations:', error)
+      return reply
+        .code(500)
+        .send({ error: error instanceof Error ? error.message : 'Failed to list organizations' })
+    }
+  })
 }
