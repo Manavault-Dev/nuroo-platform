@@ -17,7 +17,7 @@ const createOrgSchema = z.object({
   specializations: z.array(z.string().trim().max(100)).max(20).optional(),
 })
 
-const imageSourceSchema = z
+export const imageSourceSchema = z
   .string()
   .trim()
   .max(900_000)
@@ -29,7 +29,7 @@ const uploadKindSchema = z.enum(['logo', 'cover', 'photo'])
 const imagePositionSchema = z.number().min(0).max(100).optional().nullable()
 const imageScaleSchema = z.number().min(1).max(2).optional().nullable()
 
-function parseDataImageUrl(value: string): { mimeType: string; buffer: Buffer } | null {
+export function parseDataImageUrl(value: string): { mimeType: string; buffer: Buffer } | null {
   const match = value.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/)
   if (!match) return null
 
@@ -43,7 +43,7 @@ function parseDataImageUrl(value: string): { mimeType: string; buffer: Buffer } 
   }
 }
 
-async function uploadOrgMarketplaceImage(
+export async function uploadOrgMarketplaceImage(
   orgId: string,
   kind: 'logo' | 'cover' | 'photo',
   mediaBuffer: Buffer,
