@@ -685,7 +685,9 @@
         "lastActiveDaysAgo": "{days} күн мурун",
         "removeChild": "Баланы алып салуу",
         "removeConfirm": "Бул баланы уюмдан алып саласызбы?",
-        "removeFailed": "Баланы алып салуу мүмкүн болбоду"
+        "removeFailed": "Баланы алып салуу мүмкүн болбоду",
+        "editName": "Атын өзгөртүү",
+        "editNameFailed": "Атын өзгөртүү мүмкүн болгон жок"
       },
       "childDetail": {
         "backToChildren": "Балдарга кайтуу",
@@ -792,7 +794,6 @@
         "relationship": "Туугандык байланышы",
         "phone": "Телефон",
         "whatsapp": "WhatsApp",
-        "cancel": "Жокко чыгаруу",
         "saving": "Сакталууда...",
         "add": "Кошуу",
         "connectedViaApp": "Колдонмо аркылуу туташкан",
@@ -988,7 +989,8 @@
             "undress": "Чечинет",
             "teeth": "Тиш чистит"
           }
-        }
+        },
+        "editName": "Атын өзгөртүү"
       },
       "integrations": {
         "title": "Интеграциялар",
@@ -1181,7 +1183,27 @@
         "inviteCodeForApp": "Чакыруу коду (тиркеме үчүн):",
         "copyCodeBtn": "Кодду көчүрүү",
         "failedCreateInvite": "Чакыруу түзүлбөдү",
-        "failedCreateParentInvite": "Ата-эне чакыруусу түзүлбөдү"
+        "failedCreateParentInvite": "Ата-эне чакыруусу түзүлбөдү",
+        "childInvites": {
+          "title": "Балдар үчүн чакыруулар",
+          "subtitle": "Баланы каттаңыз жана ата-энесине жеке шилтеме/QR бериңиз.",
+          "addChild": "Бала кошуу",
+          "childNameLabel": "Баланын аты",
+          "childNamePlaceholder": "Мисалы, Айчурок",
+          "groupLabel": "Топ (милдеттүү эмес)",
+          "groupPlaceholder": "Мисалы, Көпөлөктөр",
+          "create": "Чакыруу түзүү",
+          "creating": "Түзүлүүдө...",
+          "noInvites": "Азырынча балдар үчүн чакыруу жок",
+          "statusPending": "Активдештирилген жок",
+          "statusClaimed": "Активдештирилген",
+          "copyLink": "Шилтемени көчүрүү",
+          "regenerate": "Жаңылоо",
+          "regenerating": "Жаңылануудо...",
+          "scanToConnect": "{name} менен байланышуу үчүн сканерлеңиз",
+          "failedCreateChild": "Баланы түзүү мүмкүн болгон жок",
+          "failedCreateInvite": "Чакырууну түзүү мүмкүн болгон жок"
+        }
       },
       "onboarding": {
         "welcome": "Nuroo B2B го кош келиңиз",
@@ -2676,5 +2698,15 @@
     "home": "Башкы бетке",
     "retry": "Кайра аракет кылуу",
     "title": "Бир жерден ката кетти"
+  },
+  "joinPage": {
+    "invitedBy": "{orgName} сизди Nuroo'го чакырды",
+    "connectWith": "{childName} менен байланышуу",
+    "continue": "Улантуу",
+    "noAppYet": "Колдонмо жокпу?",
+    "openLinkAgain": "Орноткондон кийин бул шилтемени кайра ачыңыз",
+    "alreadyClaimed": "Бул чакыруу мурунтан эле колдонулган.",
+    "linkNotFound": "Шилтеме табылган жок",
+    "linkInvalid": "Бул шилтеме жараксыз же мөөнөтү өткөн"
   }
 }

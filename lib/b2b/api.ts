@@ -973,6 +973,18 @@ export class ApiClient {
     )
   }
 
+  async updateChildName(orgId: string, childId: string, fullName: string) {
+    cache.invalidate(`children:${orgId}`)
+    cache.invalidate(`child:${orgId}:${childId}`)
+    return this.request<{ ok: boolean; profile: { fullName: string } }>(
+      `/orgs/${orgId}/children/${childId}/profile`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ fullName }),
+      }
+    )
+  }
+
   async removeChild(orgId: string, childId: string) {
     cache.invalidate(`children:${orgId}`)
     cache.invalidate(`child:${orgId}:${childId}`)
@@ -1253,6 +1265,55 @@ export class ApiClient {
         body: JSON.stringify({}),
       }
     )
+  }
+
+  // Child pre-registration + personalized invite (QR/link), org-admin only
+  async createChild(
+    orgId: string,
+    data: { firstName: string; lastName?: string; branchId?: string | null }
+  ) {
+    cache.invalidate(`children:${orgId}`)
+    return this.request<{ ok: boolean; child: { id: string; name: string } }>(
+      `/orgs/${orgId}/children`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    )
+  }
+
+  async createChildInvite(
+    orgId: string,
+    childId: string,
+    data?: {
+      groupLabel?: string
+      expectedParentName?: string
+      relationship?: string
+      contactPhone?: string
+      contactEmail?: string
+    }
+  ) {
+    return this.request<{ ok: boolean; token: string; link: string }>(
+      `/orgs/${orgId}/children/${childId}/invite`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data || {}),
+      }
+    )
+  }
+
+  async getChildInvite(orgId: string, childId: string) {
+    return this.request<{
+      ok: boolean
+      invite: {
+        token: string
+        link: string
+        status: 'pending' | 'claimed'
+        groupLabel: string | null
+        createdAt: unknown
+        claimedAt: unknown
+      } | null
+    }>(`/orgs/${orgId}/children/${childId}/invite`)
   }
 
   // Parents & Connections

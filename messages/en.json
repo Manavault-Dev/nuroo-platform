@@ -685,7 +685,9 @@
         "lastActiveDaysAgo": "{days}d ago",
         "removeChild": "Remove child",
         "removeConfirm": "Remove this child from the organization?",
-        "removeFailed": "Failed to remove child"
+        "removeFailed": "Failed to remove child",
+        "editName": "Edit name",
+        "editNameFailed": "Failed to update name"
       },
       "childDetail": {
         "backToChildren": "Back to Children",
@@ -792,7 +794,6 @@
         "relationship": "Relationship",
         "phone": "Phone",
         "whatsapp": "WhatsApp",
-        "cancel": "Cancel",
         "saving": "Saving...",
         "add": "Add",
         "connectedViaApp": "Connected via app",
@@ -988,7 +989,8 @@
             "undress": "Undress themselves",
             "teeth": "Brush their teeth"
           }
-        }
+        },
+        "editName": "Edit name"
       },
       "integrations": {
         "title": "Integrations",
@@ -1181,7 +1183,27 @@
         "inviteCodeForApp": "Invite Code (for mobile app):",
         "copyCodeBtn": "Copy Code",
         "failedCreateInvite": "Failed to create invite code",
-        "failedCreateParentInvite": "Failed to create parent invite code"
+        "failedCreateParentInvite": "Failed to create parent invite code",
+        "childInvites": {
+          "title": "Child invites",
+          "subtitle": "Register a child and generate a personalized link/QR for their parent.",
+          "addChild": "Add child",
+          "childNameLabel": "Child's name",
+          "childNamePlaceholder": "e.g. Anna",
+          "groupLabel": "Group (optional)",
+          "groupPlaceholder": "e.g. Butterflies",
+          "create": "Create invite",
+          "creating": "Creating...",
+          "noInvites": "No child invites yet",
+          "statusPending": "Not activated",
+          "statusClaimed": "Activated",
+          "copyLink": "Copy link",
+          "regenerate": "Regenerate",
+          "regenerating": "Regenerating...",
+          "scanToConnect": "Scan to connect to {name}",
+          "failedCreateChild": "Failed to create child",
+          "failedCreateInvite": "Failed to create invite"
+        }
       },
       "onboarding": {
         "welcome": "Welcome to Nuroo B2B",
@@ -2676,5 +2698,15 @@
     "home": "Home",
     "retry": "Try again",
     "title": "Something went wrong"
+  },
+  "joinPage": {
+    "invitedBy": "{orgName} invited you to Nuroo",
+    "connectWith": "Connect with {childName}",
+    "continue": "Continue",
+    "noAppYet": "Don't have the app yet?",
+    "openLinkAgain": "After installing, open this link again",
+    "alreadyClaimed": "This invite has already been used.",
+    "linkNotFound": "Link not found",
+    "linkInvalid": "This link is invalid or has expired"
   }
 }
