@@ -60,6 +60,8 @@ import {
   ThumbsUp,
   RotateCcw,
   Loader2,
+  Pencil,
+  Check,
 } from 'lucide-react'
 
 // ── Tab types ─────────────────────────────────────────────────────────────────
@@ -2118,6 +2120,9 @@ export default function ChildDetailPage() {
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [showAIReport, setShowAIReport] = useState(false)
   const [aiReportSent, setAIReportSent] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput, setNameInput] = useState('')
+  const [savingName, setSavingName] = useState(false)
 
   const t = useTranslations('b2b.pages.childDetail')
   const tAIReport = useTranslations('b2b.pages.aiReport')
@@ -2145,6 +2150,26 @@ export default function ChildDetailPage() {
     }
     load()
   }, [orgId, childId, router, t])
+
+  const handleStartEditName = () => {
+    setNameInput(childDetail?.name || '')
+    setEditingName(true)
+  }
+
+  const handleSaveName = async () => {
+    const trimmed = nameInput.trim()
+    if (!trimmed || !orgId || !childDetail) return
+    setSavingName(true)
+    try {
+      await apiClient.updateChildName(orgId, childId, trimmed)
+      setChildDetail({ ...childDetail, name: trimmed })
+      setEditingName(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('failedToLoad'))
+    } finally {
+      setSavingName(false)
+    }
+  }
 
   const formatShortDate = (d: string) => new Date(d).toLocaleDateString(dateLocale)
 
@@ -2211,9 +2236,50 @@ export default function ChildDetailPage() {
             </div>
             <div className="flex-1 min-w-0 pt-1">
               <div className="flex items-start justify-between gap-3">
-                <h1 className="text-2xl font-bold text-gray-900 leading-tight">
-                  {childDetail.name}
-                </h1>
+                {editingName ? (
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <input
+                      type="text"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveName()
+                        if (e.key === 'Escape') setEditingName(false)
+                      }}
+                      autoFocus
+                      className="text-2xl font-bold text-gray-900 leading-tight border-b-2 border-primary-500 outline-none bg-transparent flex-1 min-w-0"
+                    />
+                    <button
+                      onClick={handleSaveName}
+                      disabled={savingName || !nameInput.trim()}
+                      className="shrink-0 p-1.5 text-primary-600 hover:bg-primary-50 rounded-lg disabled:opacity-50 transition-colors"
+                    >
+                      {savingName ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setEditingName(false)}
+                      disabled={savingName}
+                      className="shrink-0 p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 leading-tight min-w-0">
+                    <span className="truncate">{childDetail.name}</span>
+                    <button
+                      onClick={handleStartEditName}
+                      className="shrink-0 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                      title={t('editName')}
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  </h1>
+                )}
                 <button
                   onClick={() => {
                     setShowAIReport(true)

@@ -168,6 +168,7 @@ async function buildServer() {
     if (urlPath.startsWith('/api/parent/access/')) return
     if (urlPath.startsWith('/webhooks/')) return
     if (urlPath.startsWith('/internal/cron/trial-notifications')) return // authenticated via its own CRON_SECRET, not Firebase
+    if (method === 'GET' && urlPath.startsWith('/invites/child/')) return // public child-invite landing lookup — org/child name only, no auth required
     if (urlPath === '/auth/forgot-password') return
     if (urlPath === '/marketplace/courses' || urlPath.startsWith('/marketplace/courses?')) return
     if (urlPath === '/marketplace/cohorts' || urlPath.startsWith('/marketplace/cohorts?')) return

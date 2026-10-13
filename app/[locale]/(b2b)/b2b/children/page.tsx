@@ -5,7 +5,18 @@ import { useRouter } from '@/i18n/navigation'
 import { useTranslations } from 'next-intl'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
 import { apiClient, type ChildSummary } from '@/lib/b2b/api'
-import { Users, ChevronRight, CheckCircle2, Clock, Search, Trash2, Loader2 } from 'lucide-react'
+import {
+  Users,
+  ChevronRight,
+  CheckCircle2,
+  Clock,
+  Search,
+  Trash2,
+  Loader2,
+  Pencil,
+  Check,
+  X,
+} from 'lucide-react'
 import { useAlert } from '@/components/ui/AlertDialog'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -57,6 +68,9 @@ export default function ChildrenPage() {
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [removingChildId, setRemovingChildId] = useState<string | null>(null)
+  const [editingChildId, setEditingChildId] = useState<string | null>(null)
+  const [nameDraft, setNameDraft] = useState('')
+  const [savingNameId, setSavingNameId] = useState<string | null>(null)
 
   const { alert, confirm } = useAlert()
 
@@ -91,6 +105,28 @@ export default function ChildrenPage() {
       alert(err instanceof Error ? err.message : t('removeFailed'), { type: 'error' })
     } finally {
       setRemovingChildId(null)
+    }
+  }
+
+  const handleStartEditName = (child: ChildSummary, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setEditingChildId(child.id)
+    setNameDraft(child.name)
+  }
+
+  const handleSaveName = async (childId: string) => {
+    const trimmed = nameDraft.trim()
+    if (!trimmed || !orgId) return
+    setSavingNameId(childId)
+    try {
+      await apiClient.updateChildName(orgId, childId, trimmed)
+      setChildren((prev) => prev.map((c) => (c.id === childId ? { ...c, name: trimmed } : c)))
+      setEditingChildId(null)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t('editNameFailed'), { type: 'error' })
+    } finally {
+      setSavingNameId(null)
     }
   }
 
@@ -237,15 +273,64 @@ export default function ChildrenPage() {
 
                 {/* Name + age */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-900 truncate">{child.name}</span>
-                    {child.age !== undefined && (
-                      <span className="text-xs text-gray-400 shrink-0">{child.age}y</span>
-                    )}
-                  </div>
+                  {editingChildId === child.id ? (
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="text"
+                        value={nameDraft}
+                        onChange={(e) => setNameDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveName(child.id)
+                          if (e.key === 'Escape') setEditingChildId(null)
+                        }}
+                        autoFocus
+                        className="text-sm font-medium text-gray-900 border-b-2 border-primary-500 outline-none bg-transparent min-w-0 flex-1"
+                      />
+                      <button
+                        onClick={() => handleSaveName(child.id)}
+                        disabled={savingNameId === child.id || !nameDraft.trim()}
+                        className="shrink-0 p-1 text-primary-600 hover:bg-primary-50 rounded disabled:opacity-50"
+                      >
+                        {savingNameId === child.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Check className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setEditingChildId(null)}
+                        disabled={savingNameId === child.id}
+                        className="shrink-0 p-1 text-gray-400 hover:bg-gray-100 rounded"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900 truncate">
+                        {child.name}
+                      </span>
+                      {child.age !== undefined && (
+                        <span className="text-xs text-gray-400 shrink-0">{child.age}y</span>
+                      )}
+                    </div>
+                  )}
                   <div className="sm:hidden mt-1">
                     <StatusPill status={status} label={statusLabels[status]} />
                   </div>
+                </div>
+
+                {/* Edit name — fixed column, aligned across every row */}
+                <div className="w-7 shrink-0 flex justify-center">
+                  {editingChildId !== child.id && (
+                    <button
+                      onClick={(e) => handleStartEditName(child, e)}
+                      className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                      title={t('editName')}
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Status */}
