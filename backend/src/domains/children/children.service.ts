@@ -136,24 +136,10 @@ export async function resolveChildName(
     if (fromUser && fromUser !== 'Unknown') return fromUser
   }
 
-  if (parentUserId && parentUserId !== childId) {
-    const parentSnap = await db.doc(`users/${parentUserId}`).get()
-    if (parentSnap.exists) {
-      const p = parentSnap.data()
-      const fromParent = pickStoredProfileName(p ?? undefined)
-      if (fromParent && fromParent !== 'Unknown') return fromParent
-    }
-  }
-
-  const authUids = [...new Set([childId, parentUserId].filter(Boolean) as string[])]
-  for (const uid of authUids) {
-    try {
-      const user = await admin.auth().getUser(uid)
-      if (user.displayName?.trim()) return user.displayName.trim()
-      if (user.email) return user.email.split('@')[0]
-    } catch {}
-  }
-
+  // Intentionally does NOT fall back to the parent's own name/email here — a
+  // child row showing the connected parent's identity (with no indication
+  // it isn't the child's name) is misleading, not a graceful degradation.
+  // 'Unknown' tells staff a name is genuinely missing so they can fix it.
   return 'Unknown'
 }
 
@@ -599,12 +585,17 @@ export async function updateChildProfile(
 ) {
   const now = admin.firestore.Timestamp.fromDate(new Date())
 
-  if (data.firstName !== undefined || data.lastName !== undefined) {
+  if (data.firstName !== undefined || data.lastName !== undefined || data.fullName !== undefined) {
     const orgDoc = await db.doc(`${COLLECTIONS.ORG_CHILDREN(orgId)}/${childId}`).get()
     const existing = orgDoc.exists ? orgDoc.data() : {}
     const fn = (data.firstName as string) ?? existing?.firstName ?? ''
     const ln = (data.lastName as string) ?? existing?.lastName ?? ''
-    data.fullName = `${fn} ${ln}`.trim() || fn || ln
+    const computedFullName = `${fn} ${ln}`.trim() || fn || ln
+    // `name` is what the children list/search actually reads
+    // (pickStoredProfileName checks it before fullName) — keep both in sync
+    // so an edit here is immediately visible there.
+    data.fullName = (data.fullName as string) || computedFullName
+    data.name = data.fullName
   }
 
   const updateData = { ...data, updatedAt: now }
