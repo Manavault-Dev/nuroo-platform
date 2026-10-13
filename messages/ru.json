@@ -685,7 +685,9 @@
         "lastActiveDaysAgo": "{days}дн. назад",
         "removeChild": "Удалить ребёнка",
         "removeConfirm": "Удалить этого ребёнка из организации?",
-        "removeFailed": "Не удалось удалить ребёнка"
+        "removeFailed": "Не удалось удалить ребёнка",
+        "editName": "Изменить имя",
+        "editNameFailed": "Не удалось изменить имя"
       },
       "childDetail": {
         "backToChildren": "К списку детей",
@@ -792,7 +794,6 @@
         "relationship": "Кем приходится",
         "phone": "Телефон",
         "whatsapp": "WhatsApp",
-        "cancel": "Отмена",
         "saving": "Сохраняем…",
         "add": "Добавить",
         "connectedViaApp": "Подключён через приложение",
@@ -988,7 +989,8 @@
             "undress": "Раздеваться",
             "teeth": "Чистить зубы"
           }
-        }
+        },
+        "editName": "Изменить имя"
       },
       "integrations": {
         "title": "Интеграции",
@@ -1181,7 +1183,27 @@
         "inviteCodeForApp": "Код приглашения (для приложения):",
         "copyCodeBtn": "Копировать код",
         "failedCreateInvite": "Не удалось создать приглашение",
-        "failedCreateParentInvite": "Не удалось создать приглашение родителя"
+        "failedCreateParentInvite": "Не удалось создать приглашение родителя",
+        "childInvites": {
+          "title": "Приглашения для детей",
+          "subtitle": "Зарегистрируйте ребёнка и выдайте персональную ссылку/QR его родителю.",
+          "addChild": "Добавить ребёнка",
+          "childNameLabel": "Имя ребёнка",
+          "childNamePlaceholder": "Например, Айчурок",
+          "groupLabel": "Группа (необязательно)",
+          "groupPlaceholder": "Например, Бабочки",
+          "create": "Создать приглашение",
+          "creating": "Создание...",
+          "noInvites": "Пока нет приглашений для детей",
+          "statusPending": "Не активировано",
+          "statusClaimed": "Активировано",
+          "copyLink": "Копировать ссылку",
+          "regenerate": "Обновить",
+          "regenerating": "Обновление...",
+          "scanToConnect": "Отсканируйте, чтобы подключиться к {name}",
+          "failedCreateChild": "Не удалось создать ребёнка",
+          "failedCreateInvite": "Не удалось создать приглашение"
+        }
       },
       "onboarding": {
         "welcome": "Добро пожаловать в Nuroo B2B",
@@ -2676,5 +2698,15 @@
     "home": "На главную",
     "retry": "Попробовать снова",
     "title": "Что-то пошло не так"
+  },
+  "joinPage": {
+    "invitedBy": "{orgName} пригласил(а) вас в Nuroo",
+    "connectWith": "Подключиться к {childName}",
+    "continue": "Продолжить",
+    "noAppYet": "Ещё нет приложения?",
+    "openLinkAgain": "После установки откройте эту ссылку снова",
+    "alreadyClaimed": "Это приглашение уже использовано.",
+    "linkNotFound": "Ссылка не найдена",
+    "linkInvalid": "Эта ссылка недействительна или устарела"
   }
 }
