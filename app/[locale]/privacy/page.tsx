@@ -5,7 +5,7 @@ import { setRequestLocale } from 'next-intl/server'
 import { getTranslations } from 'next-intl/server'
 import { getAbsoluteUrl } from '@/lib/seo/site'
 
-type Props = { params: { locale: string } }
+type Props = { params: Promise<{ locale: string }> }
 
 const LOCALE_OG: Record<string, string> = { ru: 'ru_RU', en: 'en_US', ky: 'ky_KG' }
 
@@ -15,7 +15,8 @@ const PRIVACY_KEYWORDS: Record<string, string[]> = {
   ky: ['Nuroo купуялык саясаты', 'жеке маалыматтар', 'маалымат коргоо'],
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params
   const { locale } = params
   const t = await getTranslations({ locale, namespace: 'privacyPage' })
   const title = `${t('title')} | Nuroo`
@@ -55,7 +56,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
-export default async function PrivacyPage({ params }: Props) {
+export default async function PrivacyPage(props: Props) {
+  const params = await props.params
   const { locale } = params
   setRequestLocale(locale)
   const t = await getTranslations('privacyPage')

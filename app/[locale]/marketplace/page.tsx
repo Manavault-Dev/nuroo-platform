@@ -7,8 +7,8 @@ import { MarketplaceClient } from './MarketplaceClient'
 export const revalidate = 60
 
 type Props = {
-  params: { locale: string }
-  searchParams?: { q?: string }
+  params: Promise<{ locale: string }>
+  searchParams?: Promise<{ q?: string }>
 }
 
 const SERVER_API_URL = `${(process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3101').replace(/\/+$/, '')}/v1`
@@ -90,7 +90,8 @@ const MARKETPLACE_META = {
   },
 } as const
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params
   const locale = params.locale
   const meta = MARKETPLACE_META[locale as keyof typeof MARKETPLACE_META] ?? MARKETPLACE_META.en
   const alternateLocales = (['ru', 'en', 'ky'] as const)
@@ -176,7 +177,9 @@ const jsonLd = {
   ],
 }
 
-export default async function MarketplacePage({ params, searchParams }: Props) {
+export default async function MarketplacePage(props: Props) {
+  const searchParams = await props.searchParams
+  const params = await props.params
   setRequestLocale(params.locale)
   const initialQuery = typeof searchParams?.q === 'string' ? searchParams.q : ''
 

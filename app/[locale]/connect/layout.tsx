@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { getAbsoluteUrl } from '@/lib/seo/site'
 
-type Props = { params: { locale: string }; children: React.ReactNode }
+type Props = { params: Promise<{ locale: string }>; children: React.ReactNode }
 
 const LOCALE_OG: Record<string, string> = { ru: 'ru_RU', en: 'en_US', ky: 'ky_KG' }
 
@@ -38,7 +38,8 @@ const CONNECT_META: Record<string, { title: string; description: string; keyword
   },
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params
   const { locale } = params
   const meta = CONNECT_META[locale] ?? CONNECT_META.en
   const ogLocale = LOCALE_OG[locale] ?? 'en_US'
