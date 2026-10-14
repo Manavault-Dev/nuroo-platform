@@ -17,7 +17,7 @@ interface ChildInvite {
   groupLabel: string | null
   token: string
   link: string
-  status: 'pending' | 'claimed'
+  status: 'pending' | 'claimed' | 'pending_review'
 }
 
 function ChildInviteQr({ link }: { link: string }) {
@@ -75,6 +75,7 @@ export default function InvitesPage() {
   const [childGroupLabel, setChildGroupLabel] = useState('')
   const [creatingChildInvite, setCreatingChildInvite] = useState(false)
   const [regeneratingChildId, setRegeneratingChildId] = useState<string | null>(null)
+  const [reviewingChildId, setReviewingChildId] = useState<string | null>(null)
   const { alert } = useAlert()
   const currentOrg =
     profile?.organizations.find((org) => org.orgId === currentOrgId) ?? profile?.organizations[0]
@@ -186,6 +187,20 @@ export default function InvitesPage() {
       alert(errorMessage, { type: 'error' })
     } finally {
       setRegeneratingChildId(null)
+    }
+  }
+
+  const handleReviewClaim = async (childId: string, approve: boolean) => {
+    if (!currentOrgId) return
+    setReviewingChildId(childId)
+    try {
+      const { status } = await apiClient.reviewChildInviteClaim(currentOrgId, childId, approve)
+      setChildInvites(childInvites.map((ci) => (ci.childId === childId ? { ...ci, status } : ci)))
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : tChild('failedCreateInvite')
+      alert(errorMessage, { type: 'error' })
+    } finally {
+      setReviewingChildId(null)
     }
   }
 
@@ -589,13 +604,42 @@ export default function InvitesPage() {
                       className={`px-2.5 py-1 text-xs font-semibold rounded-full mb-3 ${
                         invite.status === 'claimed'
                           ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-100 text-gray-600'
+                          : invite.status === 'pending_review'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-gray-100 text-gray-600'
                       }`}
                     >
                       {invite.status === 'claimed'
                         ? tChild('statusClaimed')
-                        : tChild('statusPending')}
+                        : invite.status === 'pending_review'
+                          ? tChild('statusPendingReview')
+                          : tChild('statusPending')}
                     </span>
+                    {invite.status === 'pending_review' && (
+                      <div className="w-full mb-2">
+                        <p className="text-xs text-amber-600 mb-2">{tChild('pendingReviewHint')}</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleReviewClaim(invite.childId, true)}
+                            disabled={reviewingChildId === invite.childId}
+                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                          >
+                            {reviewingChildId === invite.childId ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              tChild('approveBtn')
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleReviewClaim(invite.childId, false)}
+                            disabled={reviewingChildId === invite.childId}
+                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-red-50 text-red-600 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors"
+                          >
+                            {tChild('rejectBtn')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex gap-2 w-full">
                       <button
                         onClick={() => handleCopy(invite.link)}
@@ -614,7 +658,9 @@ export default function InvitesPage() {
                       <button
                         onClick={() => handleRegenerateChildInvite(invite)}
                         disabled={
-                          regeneratingChildId === invite.childId || invite.status === 'claimed'
+                          regeneratingChildId === invite.childId ||
+                          invite.status === 'claimed' ||
+                          invite.status === 'pending_review'
                         }
                         className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >

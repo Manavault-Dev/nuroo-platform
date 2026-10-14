@@ -1202,7 +1202,11 @@
           "regenerating": "Regenerating...",
           "scanToConnect": "Scan to connect to {name}",
           "failedCreateChild": "Failed to create child",
-          "failedCreateInvite": "Failed to create invite"
+          "failedCreateInvite": "Failed to create invite",
+          "statusPendingReview": "Needs review",
+          "pendingReviewHint": "The phone number didn't match the one on file. Confirm this is the right parent.",
+          "approveBtn": "Approve",
+          "rejectBtn": "Reject"
         }
       },
       "onboarding": {
@@ -2707,6 +2711,7 @@
     "openLinkAgain": "After installing, open this link again",
     "alreadyClaimed": "This invite has already been used.",
     "linkNotFound": "Link not found",
-    "linkInvalid": "This link is invalid or has expired"
+    "linkInvalid": "This link is invalid or has expired",
+    "pendingReview": "Your request is awaiting confirmation from the organization. We'll let you know once it's approved."
   }
 }

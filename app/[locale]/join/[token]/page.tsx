@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { Loader2, Building2, CheckCircle2 } from 'lucide-react'
+import { Loader2, Building2, CheckCircle2, Clock } from 'lucide-react'
 import { AppStoreButton } from '@/components/landing/AppStoreButton'
 import { GooglePlayButton } from '@/components/landing/GooglePlayButton'
 
@@ -12,7 +12,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3101'
 interface InviteInfo {
   orgName: string
   childName: string
-  status: 'pending' | 'claimed'
+  status: 'pending' | 'claimed' | 'pending_review'
 }
 
 export default function JoinChildInvitePage() {
@@ -79,6 +79,8 @@ export default function JoinChildInvitePage() {
         <div className="w-16 h-16 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
           {invite.status === 'claimed' ? (
             <CheckCircle2 className="w-8 h-8 text-teal-600" />
+          ) : invite.status === 'pending_review' ? (
+            <Clock className="w-8 h-8 text-amber-500" />
           ) : (
             <Building2 className="w-8 h-8 text-teal-600" />
           )}
@@ -91,6 +93,8 @@ export default function JoinChildInvitePage() {
 
         {invite.status === 'claimed' ? (
           <p className="text-sm text-gray-500">{t('alreadyClaimed')}</p>
+        ) : invite.status === 'pending_review' ? (
+          <p className="text-sm text-gray-500">{t('pendingReview')}</p>
         ) : (
           <>
             <button

@@ -32,6 +32,11 @@ function generateChildInviteToken(): string {
   return randomBytes(24).toString('base64url')
 }
 
+/** Loose match helper — strips spaces/dashes/parens before comparing. */
+function normalizePhoneForCompare(input: string): string {
+  return input.trim().replace(/[\s\-().]/g, '')
+}
+
 export const childInvitesRoute: FastifyPluginAsync = async (fastify) => {
   // POST /orgs/:orgId/children/:childId/invite — create or regenerate
   fastify.post<{
@@ -133,7 +138,7 @@ export const childInvitesRoute: FastifyPluginAsync = async (fastify) => {
           .collection('childInvites')
           .where('orgId', '==', orgId)
           .where('childId', '==', childId)
-          .where('status', 'in', ['pending', 'claimed'])
+          .where('status', 'in', ['pending', 'claimed', 'pending_review'])
           .get()
 
         if (snap.empty) {
@@ -225,6 +230,31 @@ export const childInvitesRoute: FastifyPluginAsync = async (fastify) => {
 
       const now = admin.firestore.Timestamp.now()
 
+      // If the org captured an expected parent phone when creating the
+      // invite, require the authenticated (phone-verified) user's phone to
+      // match before auto-granting access — otherwise a forwarded QR/link
+      // could let the wrong family member (or stranger) connect to the
+      // child. No expectedPhone on file = no added friction, same as today.
+      const expectedPhone = inviteData.contactPhone as string | null
+      if (expectedPhone) {
+        const userSnap = await db.doc(`users/${parentUid}`).get()
+        const actualPhone = userSnap.exists
+          ? (userSnap.data()?.phoneNumber as string | undefined)
+          : undefined
+        const matches =
+          !!actualPhone &&
+          normalizePhoneForCompare(actualPhone) === normalizePhoneForCompare(expectedPhone)
+
+        if (!matches) {
+          await inviteRef.update({
+            status: 'pending_review',
+            claimedAt: now,
+            claimedByUid: parentUid,
+          })
+          return { ok: true, status: 'pending_review', orgId, childId }
+        }
+      }
+
       await orgChildRef.update({
         parentUserId: parentUid,
         assignedAt: now,
@@ -242,7 +272,7 @@ export const childInvitesRoute: FastifyPluginAsync = async (fastify) => {
         claimedByUid: parentUid,
       })
 
-      return { ok: true, orgId, childId }
+      return { ok: true, status: 'claimed', orgId, childId }
     } catch (error: unknown) {
       fastify.log.error({ err: error }, 'Failed to accept child invite')
       return reply
@@ -252,4 +282,71 @@ export const childInvitesRoute: FastifyPluginAsync = async (fastify) => {
   }
 
   fastify.post('/invites/child/:token/accept', handleAcceptChildInvite)
+
+  // POST /orgs/:orgId/children/:childId/invite/review — org admin approves
+  // or rejects a pending_review claim (wrong-phone match from accept above).
+  fastify.post<{
+    Params: { orgId: string; childId: string }
+    Body: { approve: boolean }
+  }>('/orgs/:orgId/children/:childId/invite/review', async (request, reply) => {
+    if (!request.user) {
+      return reply.code(401).send({ error: 'Unauthorized' })
+    }
+    const { orgId, childId } = request.params
+    const member = await requireOrgMember(request, reply, orgId)
+    if (reply.sent) return
+    if (member.role !== 'org_admin') {
+      return reply.code(403).send({ error: 'Only organization admins can review claims' })
+    }
+
+    const approve = request.body?.approve !== false
+
+    try {
+      const db = getFirestore()
+      const snap = await db
+        .collection('childInvites')
+        .where('orgId', '==', orgId)
+        .where('childId', '==', childId)
+        .where('status', '==', 'pending_review')
+        .get()
+
+      if (snap.empty) {
+        return reply.code(404).send({ error: 'No pending review for this child' })
+      }
+      const inviteDoc = snap.docs[0]
+      const inviteData = inviteDoc.data()
+      const claimantUid = inviteData.claimedByUid as string
+
+      const now = admin.firestore.Timestamp.now()
+
+      if (!approve) {
+        // Reject: nothing was ever written to the child, just reopen the
+        // same link for the legitimate parent to try again.
+        await inviteDoc.ref.update({
+          status: 'pending',
+          claimedAt: null,
+          claimedByUid: null,
+        })
+        return { ok: true, status: 'pending' }
+      }
+
+      const orgChildRef = db.doc(`organizations/${orgId}/children/${childId}`)
+      await orgChildRef.update({ parentUserId: claimantUid, assignedAt: now })
+
+      const childRef = db.doc(`children/${childId}`)
+      const childSnap = await childRef.get()
+      if (childSnap.exists) {
+        await childRef.update({ updatedAt: now })
+      }
+
+      await inviteDoc.ref.update({ status: 'claimed', claimedAt: now })
+
+      return { ok: true, status: 'claimed' }
+    } catch (error: unknown) {
+      fastify.log.error({ err: error }, 'Failed to review child invite claim')
+      return reply
+        .code(500)
+        .send({ error: error instanceof Error ? error.message : 'Failed to review claim' })
+    }
+  })
 }

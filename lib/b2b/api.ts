@@ -1282,6 +1282,16 @@ export class ApiClient {
     )
   }
 
+  async reviewChildInviteClaim(orgId: string, childId: string, approve: boolean) {
+    return this.request<{ ok: boolean; status: 'pending' | 'claimed' }>(
+      `/orgs/${orgId}/children/${childId}/invite/review`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ approve }),
+      }
+    )
+  }
+
   async createChildInvite(
     orgId: string,
     childId: string,
@@ -1308,7 +1318,7 @@ export class ApiClient {
       invite: {
         token: string
         link: string
-        status: 'pending' | 'claimed'
+        status: 'pending' | 'claimed' | 'pending_review'
         groupLabel: string | null
         createdAt: unknown
         claimedAt: unknown
