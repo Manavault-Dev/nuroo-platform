@@ -42,6 +42,7 @@ import { auditRoutes } from './infrastructure/audit/audit.routes.js'
 import { calendarRoutes } from './domains/calendar/calendar.routes.js'
 import { legalRoutes } from './domains/legal/legal.routes.js'
 import { passwordResetRoutes } from './domains/auth/password-reset.routes.js'
+import { phoneAuthRoutes } from './domains/auth/phoneAuth.routes.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -170,6 +171,7 @@ async function buildServer() {
     if (urlPath.startsWith('/internal/cron/trial-notifications')) return // authenticated via its own CRON_SECRET, not Firebase
     if (method === 'GET' && urlPath.startsWith('/invites/child/')) return // public child-invite landing lookup — org/child name only, no auth required
     if (urlPath === '/auth/forgot-password') return
+    if (urlPath === '/auth/phone/send-otp' || urlPath === '/auth/phone/verify-otp') return // parent phone-OTP login — not yet authenticated by definition
     if (urlPath === '/marketplace/courses' || urlPath.startsWith('/marketplace/courses?')) return
     if (urlPath === '/marketplace/cohorts' || urlPath.startsWith('/marketplace/cohorts?')) return
     if (urlPath === '/marketplace/events' || urlPath.startsWith('/marketplace/events?')) return
@@ -257,6 +259,7 @@ async function buildServer() {
     calendarRoutes,
     legalRoutes,
     passwordResetRoutes,
+    phoneAuthRoutes,
     notificationsDomain,
     parentApiRoutes, // external module
   ]
