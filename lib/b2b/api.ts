@@ -1131,7 +1131,8 @@ export class ApiClient {
     name: string,
     country?: string,
     plan?: 'nuroo' | 'nuroo_business',
-    specializations?: string[]
+    specializations?: string[],
+    type?: 'kindergarten' | 'development_center' | 'school' | 'specialist' | 'other'
   ) {
     cache.invalidate('profile')
     cache.invalidate('organizations')
@@ -1139,7 +1140,7 @@ export class ApiClient {
       '/orgs',
       {
         method: 'POST',
-        body: JSON.stringify({ name, country, plan, specializations }),
+        body: JSON.stringify({ name, country, plan, specializations, type }),
       }
     )
   }
