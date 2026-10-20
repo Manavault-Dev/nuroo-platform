@@ -2713,5 +2713,12 @@
     "linkNotFound": "Шилтеме табылган жок",
     "linkInvalid": "Бул шилтеме жараксыз же мөөнөтү өткөн",
     "pendingReview": "Арыз уюм тарабынан каралууда. Ал бекитилгенде сизге билдиребиз."
+  },
+  "calendarConnected": {
+    "successTitle": "Google Calendar туташты",
+    "successMessage": "Бул баракты жаап, Nuroo колдонмосуна кайта кирсеңиз болот.",
+    "errorTitle": "Google Calendar туташпай калды",
+    "errorMessage": "Бир жерден ката кетти. Колдонмого кайтып, кайра аракет кылыңыз.",
+    "backToApp": "Колдонмого кайтуу"
   }
 }

@@ -2713,5 +2713,12 @@
     "linkNotFound": "Link not found",
     "linkInvalid": "This link is invalid or has expired",
     "pendingReview": "Your request is awaiting confirmation from the organization. We'll let you know once it's approved."
+  },
+  "calendarConnected": {
+    "successTitle": "Google Calendar connected",
+    "successMessage": "You can close this tab and return to the Nuroo app.",
+    "errorTitle": "Couldn't connect Google Calendar",
+    "errorMessage": "Something went wrong. Please return to the app and try again.",
+    "backToApp": "Return to the app"
   }
 }

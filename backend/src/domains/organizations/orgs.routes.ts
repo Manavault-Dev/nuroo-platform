@@ -10,11 +10,21 @@ import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
 const NUROO_PLAN_IDS = ['nuroo', 'nuroo_business'] as const
 type NurooPlanId = (typeof NUROO_PLAN_IDS)[number]
 
+export const ORG_TYPES = [
+  'kindergarten',
+  'development_center',
+  'school',
+  'specialist',
+  'other',
+] as const
+export type OrgType = (typeof ORG_TYPES)[number]
+
 const createOrgSchema = z.object({
   name: z.string().trim().min(1).max(200),
   country: z.string().trim().max(100).optional(),
   plan: z.enum(NUROO_PLAN_IDS).optional(),
   specializations: z.array(z.string().trim().max(100)).max(20).optional(),
+  type: z.enum(ORG_TYPES).nullable().optional(),
 })
 
 export const imageSourceSchema = z
@@ -71,6 +81,7 @@ const updateOrgSchema = z
     name: z.string().trim().min(1).max(200).optional(),
     country: z.string().trim().max(100).optional(),
     city: z.string().trim().max(100).optional(),
+    type: z.enum(ORG_TYPES).nullable().optional(),
     categories: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
     // Marketplace profile fields
     description: z.string().trim().max(1000).optional(),
@@ -150,6 +161,7 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
     await orgRef.set({
       name: body.name,
       country: body.country || null,
+      type: body.type ?? null,
       createdAt: admin.firestore.Timestamp.fromDate(now),
       createdBy: uid,
       isActive: true,
@@ -293,6 +305,7 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
     if (body.name !== undefined) updateData.name = body.name
     if (body.country !== undefined) updateData.country = body.country || null
     if (body.city !== undefined) updateData.city = body.city || null
+    if (body.type !== undefined) updateData.type = body.type
     if (body.categories !== undefined) updateData.categories = body.categories
     if (body.description !== undefined) updateData.description = body.description || null
     if (body.address !== undefined) updateData.address = body.address || null
@@ -447,6 +460,68 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
   const ORGS_CACHE_TTL = 5 * 60_000
   let _orgsCache: { data: Record<string, unknown>[]; expiresAt: number } | null = null
 
+  function mapPublicOrg(id: string, raw: Record<string, unknown>) {
+    const d = raw as any
+    const logoUrl = d.logoUrl ?? null
+    const coverImageUrl = d.coverImageUrl ?? null
+
+    return {
+      id,
+      name: d.name ?? '',
+      logoUrl,
+      coverImageUrl,
+      marketplaceLogoUrl: logoUrl,
+      marketplaceCoverImageUrl: coverImageUrl,
+      coverImage: coverImageUrl,
+      imageUrl: coverImageUrl,
+      logoPositionX: d.logoPositionX ?? null,
+      logoPositionY: d.logoPositionY ?? null,
+      logoScale: d.logoScale ?? null,
+      coverPositionX: d.coverPositionX ?? null,
+      coverPositionY: d.coverPositionY ?? null,
+      coverScale: d.coverScale ?? null,
+      description: d.description ?? null,
+      country: d.country ?? null,
+      city: d.city ?? null,
+      address: d.address ?? null,
+      categories: Array.isArray(d.categories) ? d.categories : [],
+      contactPhone: d.contactPhone ?? null,
+      whatsappNumber: d.whatsappNumber ?? null,
+      websiteUrl: d.websiteUrl ?? null,
+      reviewCount: (d.reviewCount as number) ?? 0,
+      averageRating: (d.averageRating as number) ?? 0,
+      plan: d.nurooPlan ?? d.plan ?? 'nuroo_business',
+      isOnline: d.isOnline === true,
+      priceFrom: (d.priceFrom as number) ?? null,
+      currency: (d.currency as string) ?? 'KGS',
+      ageMin: (d.ageMin as number) ?? null,
+      ageMax: (d.ageMax as number) ?? null,
+      lat: typeof d.lat === 'number' ? d.lat : null,
+      lng: typeof d.lng === 'number' ? d.lng : null,
+      photos: Array.isArray(d.photos)
+        ? (d.photos as string[]).filter(
+            (p: string) => typeof p === 'string' && p.startsWith('http')
+          )
+        : [],
+    }
+  }
+
+  // ── GET /api/organizations/public/:id — single org, for org-detail screens ───
+  fastify.get<{ Params: { id: string } }>(
+    '/api/organizations/public/:id',
+    async (request, reply) => {
+      const db = getFirestore()
+      const doc = await db.collection('organizations').doc(request.params.id).get()
+      const d = doc.data()
+      if (!doc.exists || !d || d.isPublicMarketplaceEnabled !== true) {
+        return reply.code(404).send({ error: 'Organization not found' })
+      }
+
+      reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
+      return { ok: true, organization: mapPublicOrg(doc.id, d) }
+    }
+  )
+
   // ── GET /api/organizations/public — unauthenticated marketplace listing ───────
   fastify.get<{
     Querystring: { category?: string; search?: string; country?: string; city?: string }
@@ -477,52 +552,7 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
       }
     }
 
-    const orgs = orgsRaw.map((raw) => {
-      const d = raw as any
-      const id = d._id as string
-      const logoUrl = d.logoUrl ?? null
-      const coverImageUrl = d.coverImageUrl ?? null
-
-      return {
-        id,
-        name: d.name ?? '',
-        logoUrl,
-        coverImageUrl,
-        marketplaceLogoUrl: logoUrl,
-        marketplaceCoverImageUrl: coverImageUrl,
-        coverImage: coverImageUrl,
-        imageUrl: coverImageUrl,
-        logoPositionX: d.logoPositionX ?? null,
-        logoPositionY: d.logoPositionY ?? null,
-        logoScale: d.logoScale ?? null,
-        coverPositionX: d.coverPositionX ?? null,
-        coverPositionY: d.coverPositionY ?? null,
-        coverScale: d.coverScale ?? null,
-        description: d.description ?? null,
-        country: d.country ?? null,
-        city: d.city ?? null,
-        address: d.address ?? null,
-        categories: Array.isArray(d.categories) ? d.categories : [],
-        contactPhone: d.contactPhone ?? null,
-        whatsappNumber: d.whatsappNumber ?? null,
-        websiteUrl: d.websiteUrl ?? null,
-        reviewCount: (d.reviewCount as number) ?? 0,
-        averageRating: (d.averageRating as number) ?? 0,
-        plan: d.nurooPlan ?? d.plan ?? 'nuroo_business',
-        isOnline: d.isOnline === true,
-        priceFrom: (d.priceFrom as number) ?? null,
-        currency: (d.currency as string) ?? 'KGS',
-        ageMin: (d.ageMin as number) ?? null,
-        ageMax: (d.ageMax as number) ?? null,
-        lat: typeof d.lat === 'number' ? d.lat : null,
-        lng: typeof d.lng === 'number' ? d.lng : null,
-        photos: Array.isArray(d.photos)
-          ? (d.photos as string[]).filter(
-              (p: string) => typeof p === 'string' && p.startsWith('http')
-            )
-          : [],
-      }
-    })
+    const orgs = orgsRaw.map((raw) => mapPublicOrg((raw as any)._id, raw))
 
     // Server-side filters (client can also filter, but this reduces payload)
     let result = orgs.filter((o) => o.name)
