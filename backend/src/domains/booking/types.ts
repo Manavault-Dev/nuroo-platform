@@ -79,6 +79,8 @@ export interface BookingDoc {
   completedAt: string | null
   cancelledAt: string | null
   noShowAt: string | null
+  /** Google Calendar event id on the parent's calendar, if they've connected it. */
+  googleCalendarEventId?: string | null
 }
 
 /** A specialist saved to a parent's favorites list */
