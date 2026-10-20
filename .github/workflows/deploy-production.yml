@@ -27,7 +27,7 @@ env:
   PRODUCTION_CORS_ORIGIN: 'https://usenuroo.com,https://www.usenuroo.com'
 
 jobs:
-  # ── Gate: fast typecheck before spending any GCP resources ──────────────────
+  # ── Gate: validate and test before spending any GCP resources ───────────────
 
   ci-gate:
     name: CI Gate
@@ -45,8 +45,11 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
-      - name: Frontend typecheck
-        run: npm run typecheck
+      - name: Validate frontend
+        run: npm run validate
+
+      - name: Test frontend
+        run: npm test
 
       - name: Setup Node.js (backend)
         uses: actions/setup-node@v4
@@ -59,9 +62,13 @@ jobs:
         working-directory: backend
         run: npm ci
 
-      - name: Backend typecheck
+      - name: Validate backend
         working-directory: backend
-        run: npm run typecheck
+        run: npm run validate
+
+      - name: Test backend
+        working-directory: backend
+        run: npm test
 
   # ── Detect which parts of the repo changed ──────────────────────────────────
 
