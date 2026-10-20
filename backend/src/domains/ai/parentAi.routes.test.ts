@@ -12,7 +12,7 @@ describe('buildSystemMessages', () => {
     })
 
     expect(messages).toHaveLength(2)
-    expect(messages[0].content).toContain('You are Nuroo')
+    expect(messages[0].content).toContain('You are Nuri')
     expect(messages[0].content).not.toContain('Sam')
 
     expect(messages[1].content).toContain('untrusted user-provided child context')
