@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 
 interface ErrorProps {
@@ -34,12 +35,12 @@ export default function GlobalError({ error, reset }: ErrorProps) {
           >
             {t('retry')}
           </button>
-          <a
+          <Link
             href="/"
             className="px-6 py-2.5 border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-100 transition-colors"
           >
             {t('home')}
-          </a>
+          </Link>
         </div>
       </div>
     </div>
