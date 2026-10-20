@@ -17,6 +17,11 @@ import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
 import { timesOverlap, validateBookingInput } from './booking.service.js'
 import type { BookingDoc, Slot } from './types.js'
 import { writeAudit } from '../../infrastructure/audit/audit.js'
+import {
+  getParentCalendarAuth,
+  updateCalendarEvent,
+  upsertCalendarEvent,
+} from '../../infrastructure/calendar/calendarSync.service.js'
 
 const RATE = { max: 30, timeWindow: '1 minute' }
 
@@ -172,6 +177,24 @@ export const bookingRescheduleRoute: FastifyPluginAsync = async (fastify) => {
         reason: reason ?? null,
       })
 
+      // Keep the parent's calendar event in sync with the new time (fire-and-forget) —
+      // this route had no side-effect dispatch at all before calendar sync.
+      if (booking.googleCalendarEventId) {
+        void (async () => {
+          try {
+            const auth = await getParentCalendarAuth(booking.parentId)
+            if (auth.connected && auth.refreshToken) {
+              await updateCalendarEvent(auth.refreshToken, booking.googleCalendarEventId!, {
+                startDateTime: `${date}T${startTime}:00`,
+                endDateTime: `${date}T${endTime}:00`,
+              })
+            }
+          } catch (err) {
+            console.error('[Booking] Calendar event update failed:', err)
+          }
+        })()
+      }
+
       return { ok: true }
     }
   )
@@ -267,6 +290,38 @@ export const bookingRescheduleRoute: FastifyPluginAsync = async (fastify) => {
           return reply.code(409).send({ error: 'This slot is no longer available' })
         throw err
       }
+
+      // Sync the new booking to the parent's calendar (fire-and-forget)
+      void (async () => {
+        try {
+          const auth = await getParentCalendarAuth(parentId)
+          if (!auth.connected || !auth.refreshToken) return
+
+          const [specialistSnap, orgSnap] = await Promise.all([
+            db.doc(`users/${original.specialistId}`).get(),
+            db.doc(`organizations/${orgId}`).get(),
+          ])
+          const specialistName: string =
+            (specialistSnap.data() as { fullName?: string } | undefined)?.fullName ?? 'Специалист'
+          const orgName: string = (orgSnap.data() as { name?: string } | undefined)?.name ?? 'Nuroo'
+
+          const googleEventId = await upsertCalendarEvent(auth.refreshToken, {
+            title: `${specialistName} — ${orgName}`,
+            description: notes ?? undefined,
+            location: orgName,
+            startDateTime: `${date}T${startTime}:00`,
+            endDateTime: `${date}T${endTime}:00`,
+          })
+          await Promise.all([
+            newRef.update({ googleCalendarEventId: googleEventId }),
+            db
+              .doc(`userBookings/${parentId}/items/${newRef.id}`)
+              .update({ googleCalendarEventId: googleEventId }),
+          ])
+        } catch (err) {
+          console.error('[Booking] Calendar sync failed:', err)
+        }
+      })()
 
       return reply.code(201).send({ ok: true, bookingId: newRef.id })
     }

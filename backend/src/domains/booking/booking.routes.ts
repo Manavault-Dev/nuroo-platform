@@ -6,6 +6,11 @@ import { canTransition, buildStatusUpdate, validateBookingInput } from './bookin
 import type { BookingDoc, Slot } from './types.js'
 import { eventDispatcher } from '../../modules/notifications/event.dispatcher.js'
 import { writeAudit } from '../../infrastructure/audit/audit.js'
+import {
+  getParentCalendarAuth,
+  upsertCalendarEvent,
+  deleteCalendarEvent,
+} from '../../infrastructure/calendar/calendarSync.service.js'
 
 const RATE = { max: 30, timeWindow: '1 minute' }
 const RATE_READ = { max: 120, timeWindow: '1 minute' }
@@ -185,20 +190,25 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
       const orgData = orgSnap.data() as { name?: string } | undefined
       const parentUser = request.user
       void (async () => {
+        let specialistName = 'Специалист'
         try {
           const [specialistSnap, parentSnap] = await Promise.all([
             db.doc(`users/${specialistId}`).get(),
             db.doc(`users/${parentId}`).get(),
           ])
-          const specialistName: string =
+          specialistName =
             (specialistSnap.data() as { fullName?: string } | undefined)?.fullName ?? 'Специалист'
-          const parentEmail: string =
-            (parentSnap.data() as { email?: string } | undefined)?.email ?? parentUser?.email ?? ''
-          const parentName: string =
-            (parentSnap.data() as { fullName?: string } | undefined)?.fullName ?? 'Родитель'
+          const parentData = parentSnap.data() as
+            | { email?: string; fullName?: string; phoneNumber?: string }
+            | undefined
+          const parentEmail: string = parentData?.email ?? parentUser?.email ?? ''
+          const parentPhone: string | null = parentData?.phoneNumber ?? null
+          const parentName: string = parentData?.fullName ?? 'Родитель'
 
-          console.log(`[Booking] Sending booking_confirmed email to: "${parentEmail}"`)
-          if (parentEmail) {
+          console.log(
+            `[Booking] Sending booking_confirmed notification — email: "${parentEmail}", phone: "${parentPhone ?? ''}"`
+          )
+          if (parentEmail || parentPhone) {
             eventDispatcher.dispatch({
               type: 'booking_confirmed',
               bookingId: bookingRef.id,
@@ -206,7 +216,8 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
               orgName: orgData?.name ?? orgId,
               parentId,
               parentName,
-              parentEmail,
+              parentEmail: parentEmail || undefined,
+              parentPhone,
               specialistName,
               date,
               startTime,
@@ -215,6 +226,27 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
           }
         } catch (err) {
           console.error('[Booking] Notification dispatch failed:', err)
+        }
+
+        try {
+          const auth = await getParentCalendarAuth(parentId)
+          if (auth.connected && auth.refreshToken) {
+            const googleEventId = await upsertCalendarEvent(auth.refreshToken, {
+              title: `${specialistName} — ${orgData?.name ?? 'Nuroo'}`,
+              description: notes ?? undefined,
+              location: orgData?.name ?? undefined,
+              startDateTime: `${date}T${startTime}:00`,
+              endDateTime: `${date}T${endTime}:00`,
+            })
+            await Promise.all([
+              bookingRef.update({ googleCalendarEventId: googleEventId }),
+              db
+                .doc(`userBookings/${parentId}/items/${bookingRef.id}`)
+                .update({ googleCalendarEventId: googleEventId }),
+            ])
+          }
+        } catch (err) {
+          console.error('[Booking] Calendar sync failed:', err)
         }
       })()
 
@@ -322,12 +354,12 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
             db.doc(`users/${parentId}`).get(),
             db.doc(`users/${booking.specialistId}`).get(),
           ])
-          const parentEmail: string =
-            (parentSnap.data() as { email?: string } | undefined)?.email ??
-            request.user?.email ??
-            ''
-          const parentName: string =
-            (parentSnap.data() as { fullName?: string } | undefined)?.fullName ?? 'Родитель'
+          const cancelParentData = parentSnap.data() as
+            | { email?: string; fullName?: string; phoneNumber?: string }
+            | undefined
+          const parentEmail: string = cancelParentData?.email ?? request.user?.email ?? ''
+          const parentPhone: string | null = cancelParentData?.phoneNumber ?? null
+          const parentName: string = cancelParentData?.fullName ?? 'Родитель'
           const specialistName: string =
             (specialistSnap.data() as { fullName?: string } | undefined)?.fullName ?? 'Специалист'
           eventDispatcher.dispatch({
@@ -336,7 +368,8 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
             orgId,
             parentId,
             parentName,
-            parentEmail,
+            parentEmail: parentEmail || undefined,
+            parentPhone,
             specialistName,
             date: booking.date,
             startTime: booking.startTime,
@@ -344,6 +377,17 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
           })
         } catch (err) {
           console.error('[Booking] Cancellation notification failed:', err)
+        }
+
+        if (booking.googleCalendarEventId) {
+          try {
+            const auth = await getParentCalendarAuth(parentId)
+            if (auth.connected && auth.refreshToken) {
+              await deleteCalendarEvent(auth.refreshToken, booking.googleCalendarEventId)
+            }
+          } catch (err) {
+            console.error('[Booking] Calendar event delete failed:', err)
+          }
         }
       })()
 
@@ -440,6 +484,24 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
         after: { status: parse.data.status },
         reason: parse.data.cancelReason ?? null,
       })
+
+      // Org-admin cancel/no-show also needs to remove the parent's calendar event
+      // (fire-and-forget) — parent self-cancel handles its own path above.
+      if (
+        (parse.data.status === 'cancelled' || parse.data.status === 'no_show') &&
+        booking.googleCalendarEventId
+      ) {
+        void (async () => {
+          try {
+            const auth = await getParentCalendarAuth(booking.parentId)
+            if (auth.connected && auth.refreshToken) {
+              await deleteCalendarEvent(auth.refreshToken, booking.googleCalendarEventId!)
+            }
+          } catch (err) {
+            console.error('[Booking] Calendar event delete failed:', err)
+          }
+        })()
+      }
 
       return { ok: true }
     }

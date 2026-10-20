@@ -23,6 +23,11 @@ export const COL = {
     `organizations/${orgId}/cohorts/${cohortId}/participants/${participantId}`,
   attendance: (orgId: string, cohortId: string, sessionId: string) =>
     `organizations/${orgId}/cohorts/${cohortId}/sessions/${sessionId}/attendance`,
+  /** Per-parent tracking of their Google Calendar event id for a session. */
+  calendarSync: (orgId: string, cohortId: string, sessionId: string) =>
+    `organizations/${orgId}/cohorts/${cohortId}/sessions/${sessionId}/calendarSync`,
+  calendarSyncDoc: (orgId: string, cohortId: string, sessionId: string, parentId: string) =>
+    `organizations/${orgId}/cohorts/${cohortId}/sessions/${sessionId}/calendarSync/${parentId}`,
 }
 
 // ─── Zod schemas ──────────────────────────────────────────────────────────────

@@ -8,6 +8,10 @@ import { writeAudit } from '../../infrastructure/audit/audit.js'
 import { canManageCohort, denyNotInstructor } from './cohorts.auth.js'
 import type { CohortDoc, ParticipantDoc } from './cohorts.types.js'
 import { RATE, COL, participantCreateSchema, nowIso } from './cohorts.helpers.js'
+import {
+  syncNewParticipantAcrossSessions,
+  syncDroppedParticipantAcrossSessions,
+} from './cohorts.calendarSync.js'
 
 export const cohortsParticipantsRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
@@ -82,6 +86,9 @@ export const cohortsParticipantsRoute: FastifyPluginAsync = async (fastify) => {
           updatedAt: now,
         })
       })
+
+      // Create calendar events for every currently-scheduled session (fire-and-forget)
+      void syncNewParticipantAcrossSessions(db, { id: cohortId, ...cohortData }, body.parentId)
 
       void (async () => {
         try {
@@ -165,6 +172,13 @@ export const cohortsParticipantsRoute: FastifyPluginAsync = async (fastify) => {
         .parse(request.body)
 
       await ref.update({ ...body, updatedAt: nowIso() })
+
+      // Dropping a participant removes their events from future sessions (fire-and-forget)
+      if (body.status === 'dropped') {
+        const participant = snap.data() as ParticipantDoc
+        void syncDroppedParticipantAcrossSessions(db, orgId, cohortId, participant.parentId)
+      }
+
       return { ok: true, participant: { id: participantId, ...snap.data(), ...body } }
     }
   )

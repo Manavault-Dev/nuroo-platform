@@ -2,6 +2,10 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { getFirestore } from '../../infrastructure/database/firebase.js'
 import type { EventDoc, PublicEvent } from './events.types.js'
+import {
+  getParentCalendarAuth,
+  upsertCalendarEvent,
+} from '../../infrastructure/calendar/calendarSync.service.js'
 
 const RATE = { max: 120, timeWindow: '1 minute' }
 
@@ -144,7 +148,32 @@ export const eventsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
 
       _cache = null
 
+      // Sync to the parent's Google Calendar if connected (fire-and-forget,
+      // create-only — there's no unregister flow today to delete it on).
+      void (async () => {
+        try {
+          const auth = await getParentCalendarAuth(request.user!.uid)
+          if (!auth.connected || !auth.refreshToken) return
+
+          const endDateTime = event.endDate ?? addOneHour(event.date)
+          const googleEventId = await upsertCalendarEvent(auth.refreshToken, {
+            title: event.title,
+            description: event.description || undefined,
+            location: event.location || undefined,
+            startDateTime: event.date,
+            endDateTime,
+          })
+          await registrationRef.update({ googleCalendarEventId: googleEventId })
+        } catch (err) {
+          console.error('[EventsMarketplace] Calendar sync failed:', err)
+        }
+      })()
+
       return reply.code(201).send({ ok: true })
     }
   )
+}
+
+function addOneHour(isoDateTime: string): string {
+  return new Date(new Date(isoDateTime).getTime() + 60 * 60 * 1000).toISOString()
 }

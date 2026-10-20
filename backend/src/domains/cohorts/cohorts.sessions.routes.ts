@@ -13,6 +13,11 @@ import {
   sortSessionsBySchedule,
   getSpecialistRefreshToken,
 } from './cohorts.helpers.js'
+import {
+  syncSessionCreatedForEnrolledParents,
+  syncSessionUpdatedForEnrolledParents,
+  syncSessionCancelledForEnrolledParents,
+} from './cohorts.calendarSync.js'
 
 export const cohortsSessionsRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
@@ -98,6 +103,10 @@ export const cohortsSessionsRoute: FastifyPluginAsync = async (fastify) => {
       }
 
       await db.doc(COL.session(orgId, cohortId, id)).set(doc)
+
+      // Fan out to already-enrolled parents' calendars (fire-and-forget)
+      void syncSessionCreatedForEnrolledParents(db, { id: cohortId, ...cohortData }, { id, ...doc })
+
       return reply.code(201).send({ ok: true, session: { id, ...doc } })
     }
   )
@@ -123,7 +132,25 @@ export const cohortsSessionsRoute: FastifyPluginAsync = async (fastify) => {
 
       const body = sessionUpdateSchema.parse(request.body)
       await ref.update({ ...body, updatedAt: nowIso() })
-      return { ok: true, session: { id: sessionId, ...snap.data(), ...body } }
+      const updatedSession = { id: sessionId, ...(snap.data() as Omit<SessionDoc, 'id'>), ...body }
+
+      // Keep enrolled parents' calendars in sync (fire-and-forget)
+      const cohortData = cohortSnap.data() as CohortDoc
+      if (body.status === 'cancelled') {
+        void syncSessionCancelledForEnrolledParents(
+          db,
+          { id: cohortId, ...cohortData },
+          updatedSession
+        )
+      } else if (body.date || body.startTime || body.endTime) {
+        void syncSessionUpdatedForEnrolledParents(
+          db,
+          { id: cohortId, ...cohortData },
+          updatedSession
+        )
+      }
+
+      return { ok: true, session: updatedSession }
     }
   )
 
@@ -143,9 +170,24 @@ export const cohortsSessionsRoute: FastifyPluginAsync = async (fastify) => {
       if (!canManageCohort(member, cohortSnap.data() as CohortDoc)) return denyNotInstructor(reply)
 
       const ref = db.doc(COL.session(orgId, cohortId, sessionId))
-      if (!(await ref.get()).exists) return reply.code(404).send({ error: 'Session not found' })
+      const sessionSnap = await ref.get()
+      if (!sessionSnap.exists) return reply.code(404).send({ error: 'Session not found' })
 
       await ref.update({ status: 'cancelled', updatedAt: nowIso() })
+
+      // Remove this session from every enrolled parent's calendar (fire-and-forget)
+      const cohortData = cohortSnap.data() as CohortDoc
+      const cancelledSession = {
+        id: sessionId,
+        ...(sessionSnap.data() as Omit<SessionDoc, 'id'>),
+        status: 'cancelled' as const,
+      }
+      void syncSessionCancelledForEnrolledParents(
+        db,
+        { id: cohortId, ...cohortData },
+        cancelledSession
+      )
+
       return { ok: true }
     }
   )
