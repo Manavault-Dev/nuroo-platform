@@ -66,6 +66,8 @@ export const envSchema = z.object({
   WHATSAPP_ACCESS_TOKEN: z.string().optional(),
   WHATSAPP_TEMPLATE_NAME: z.string().optional(),
   WHATSAPP_TEMPLATE_LANG: z.string().optional(),
+  WHATSAPP_BOOKING_TEMPLATE_NAME: z.string().optional(),
+  WHATSAPP_BOOKING_TEMPLATE_LANG: z.string().optional(),
 })
 
 export type Env = z.infer<typeof envSchema>
