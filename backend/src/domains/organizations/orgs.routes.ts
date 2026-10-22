@@ -358,6 +358,67 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
     }
   })
 
+  fastify.delete<{ Params: { orgId: string } }>('/orgs/:orgId', async (request, reply) => {
+    if (!request.user) {
+      return reply.code(401).send({ error: 'Unauthorized' })
+    }
+
+    const { orgId } = request.params
+    const member = await requireOrgMember(request, reply, orgId)
+    if (reply.sent) return
+
+    if (member.role !== 'org_admin') {
+      return reply.code(403).send({ error: 'Only organization admins can perform this action' })
+    }
+
+    const db = getFirestore()
+
+    const [childrenSnap, bookingsSnap, membersSnap] = await Promise.all([
+      db.collection(`organizations/${orgId}/children`).limit(1).get(),
+      db.collection(`organizations/${orgId}/bookings`).limit(1).get(),
+      db.collection(`organizations/${orgId}/members`).where('status', '==', 'active').get(),
+    ])
+
+    if (!childrenSnap.empty) {
+      return reply.code(400).send({
+        error: 'Cannot delete an organization that still has children. Remove them first.',
+      })
+    }
+    if (!bookingsSnap.empty) {
+      return reply
+        .code(400)
+        .send({ error: 'Cannot delete an organization that has bookings. Remove them first.' })
+    }
+    if (membersSnap.size > 1) {
+      return reply
+        .code(400)
+        .send({ error: 'Cannot delete an organization with other members. Remove them first.' })
+    }
+
+    const uid = request.user.uid
+    const now = admin.firestore.Timestamp.fromDate(new Date())
+
+    const batch = db.batch()
+    batch.delete(db.doc(`organizations/${orgId}`))
+    for (const doc of membersSnap.docs) {
+      batch.delete(doc.ref)
+    }
+    batch.delete(db.doc(`specialists/${uid}/organizations/${orgId}`))
+    await batch.commit()
+
+    const specialistRef = db.doc(`specialists/${uid}`)
+    const specialistSnap = await specialistRef.get()
+    if (specialistSnap.exists && specialistSnap.data()?.orgId === orgId) {
+      await specialistRef.update({
+        orgId: admin.firestore.FieldValue.delete(),
+        role: admin.firestore.FieldValue.delete(),
+        updatedAt: now,
+      })
+    }
+
+    return { ok: true }
+  })
+
   fastify.post<{ Params: { orgId: string } }>('/orgs/:orgId/media', async (request, reply) => {
     if (!request.user) {
       return reply.code(401).send({ error: 'Unauthorized' })

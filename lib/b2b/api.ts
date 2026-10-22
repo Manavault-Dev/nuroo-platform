@@ -1221,6 +1221,14 @@ export class ApiClient {
     })
   }
 
+  async deleteOrganization(orgId: string) {
+    cache.invalidate('profile')
+    cache.invalidate('organizations')
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}`, {
+      method: 'DELETE',
+    })
+  }
+
   async getOrgDetails(orgId: string): Promise<{ photos?: string[]; [key: string]: unknown }> {
     const res = await this.request<{ ok: boolean; org: Record<string, unknown> }>(`/orgs/${orgId}`)
     return res.org as { photos?: string[]; [key: string]: unknown }
