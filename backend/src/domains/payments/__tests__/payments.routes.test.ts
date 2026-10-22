@@ -33,6 +33,16 @@ vi.mock('../payments.service.js', () => ({
   getPlanNames: (...args: unknown[]) => mockGetPlanNames(...args),
 }))
 
+// payments.routes.ts imports PLAN_LIMITS from planLimits.js, which imports
+// payments.repository.js, which calls getFirestore() at module load time
+// (not lazily). Without Firebase Admin configured (e.g. in CI, with no
+// service-account credentials), that throws before any test runs — mock it
+// out the same way planLimits.test.ts does, even though this file never
+// exercises Firestore itself (payments.service.js above is fully mocked).
+vi.mock('../../../infrastructure/database/firebase.js', () => ({
+  getFirestore: vi.fn(() => ({})),
+}))
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function buildApp(withUser = true): Promise<FastifyInstance> {
