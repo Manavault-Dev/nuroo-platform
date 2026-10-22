@@ -56,7 +56,39 @@ async function listParentBookings(db: FirebaseFirestore.Firestore, parentId: str
     })
   )
 
-  return sortBookingsByDateDesc(freshDocs.filter((b): b is NonNullable<typeof b> => b !== null))
+  const bookings = freshDocs.filter((b): b is NonNullable<typeof b> => b !== null)
+
+  // Resolve org/specialist display names once per unique id — the card list
+  // needs "who/where" as the headline, not just a date, and the booking doc
+  // itself only stores ids.
+  const orgIds = [...new Set(bookings.map((b) => b.orgId).filter(Boolean))]
+  const specialistIds = [...new Set(bookings.map((b) => b.specialistId).filter(Boolean))]
+
+  const [orgSnaps, specialistSnaps] = await Promise.all([
+    Promise.all(orgIds.map((id) => db.doc(`organizations/${id}`).get())),
+    Promise.all(specialistIds.map((id) => db.doc(`users/${id}`).get())),
+  ])
+
+  const orgNames = new Map(
+    orgSnaps.map((snap, i) => [
+      orgIds[i],
+      (snap.data() as { name?: string } | undefined)?.name ?? null,
+    ])
+  )
+  const specialistNames = new Map(
+    specialistSnaps.map((snap, i) => [
+      specialistIds[i],
+      (snap.data() as { fullName?: string } | undefined)?.fullName ?? null,
+    ])
+  )
+
+  const enriched = bookings.map((b) => ({
+    ...b,
+    orgName: orgNames.get(b.orgId) ?? null,
+    specialistName: specialistNames.get(b.specialistId) ?? null,
+  }))
+
+  return sortBookingsByDateDesc(enriched)
 }
 
 export const bookingRoute: FastifyPluginAsync = async (fastify) => {
