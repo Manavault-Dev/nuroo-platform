@@ -1124,7 +1124,16 @@
         "imageReadyHint": "Click «Save» to apply this image.",
         "imageSavedHint": "Image uploaded and saved.",
         "imageSourceHint": "Paste an image link or upload a file from your device.",
-        "imageUploadError": "Failed to upload the image."
+        "imageUploadError": "Failed to upload the image.",
+        "dangerZoneTitle": "Danger zone",
+        "dangerZoneSubtitle": "Irreversible actions for this organization.",
+        "deleteOrgButton": "Delete organization",
+        "deleteOrgTitle": "Delete organization?",
+        "deleteOrgSubtitle": "This action cannot be undone",
+        "deleteOrgDescription": "The organization will be permanently deleted. This is only possible if it has no children, bookings, or other team members.",
+        "deleteOrgConfirm": "Delete permanently",
+        "deleteOrgCancel": "Cancel",
+        "deleteOrgError": "Failed to delete the organization."
       },
       "team": {
         "title": "Members",
