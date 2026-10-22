@@ -12,9 +12,52 @@ const createInviteSchema = z.object({
   expiresInDays: z.number().min(1).max(365).default(30),
 })
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
 export const inviteCreationRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Params: { orgId: string }; Body: z.infer<typeof createInviteSchema> }>(
     '/orgs/:orgId/invites',
+    {
+      schema: {
+        tags: ['Invitations'],
+        summary: 'Create an organization staff invite code (specialist/org_admin role)',
+        params: orgIdParamsSchema,
+        body: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            role: { type: 'string', enum: ['specialist', 'org_admin', 'admin'] },
+            maxUses: { type: 'number', minimum: 1, maximum: 1000 },
+            expiresInDays: { type: 'number', minimum: 1, maximum: 365 },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'inviteCode', 'expiresAt', 'role'],
+            properties: {
+              ok: { type: 'boolean' },
+              inviteCode: { type: 'string' },
+              expiresAt: { type: 'string', format: 'date-time' },
+              role: { type: 'string' },
+              maxUses: { type: ['number', 'null'] },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) {
         return reply.code(401).send({ error: 'Unauthorized' })
@@ -66,6 +109,28 @@ export const inviteCreationRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/parent-invites',
+    {
+      schema: {
+        tags: ['Invitations'],
+        summary: 'Create a reusable parent-invite code for this organization',
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'inviteCode', 'expiresAt', 'orgId'],
+            properties: {
+              ok: { type: 'boolean' },
+              inviteCode: { type: 'string' },
+              expiresAt: { type: 'string', format: 'date-time' },
+              orgId: { type: 'string' },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) {
         return reply.code(401).send({ error: 'Unauthorized' })
@@ -115,116 +180,140 @@ export const inviteCreationRoute: FastifyPluginAsync = async (fastify) => {
     }
   )
 
-  fastify.post('/specialists/invites', async (request, reply) => {
-    if (!request.user) {
-      return reply.code(401).send({ error: 'Unauthorized' })
-    }
-
-    try {
-      const db = getFirestore()
-      const { uid, email } = request.user
-
-      const specialistRef = db.doc(`specialists/${uid}`)
-      const specialistSnap = await specialistRef.get()
-
-      const now = new Date()
-      let specialistName = ''
-      if (specialistSnap.exists) {
-        const d = specialistSnap.data()
-        specialistName = d?.fullName || d?.name || ''
-      } else {
-        await specialistRef.set({
-          uid,
-          email: email || '',
-          name: specialistName,
-          createdAt: admin.firestore.Timestamp.fromDate(now),
-          updatedAt: admin.firestore.Timestamp.fromDate(now),
-        })
+  fastify.post(
+    '/specialists/invites',
+    {
+      schema: {
+        tags: ['Invitations'],
+        summary:
+          "Create a parent-invite code for the calling specialist's personal organization (bootstraps the org if needed)",
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'inviteCode', 'expiresAt', 'orgId'],
+            properties: {
+              ok: { type: 'boolean' },
+              inviteCode: { type: 'string' },
+              expiresAt: { type: 'string', format: 'date-time' },
+              orgId: { type: 'string' },
+            },
+          },
+          401: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.code(401).send({ error: 'Unauthorized' })
       }
-      const orgsSnapshot = await db
-        .collection('organizations')
-        .where('ownerId', '==', uid)
-        .limit(1)
-        .get()
 
-      let personalOrgId: string
-      if (orgsSnapshot.empty) {
-        const personalOrgName = `${specialistName}'s Practice`
-        const orgRef = db.collection('organizations').doc()
-        personalOrgId = orgRef.id
+      try {
+        const db = getFirestore()
+        const { uid, email } = request.user
 
-        await orgRef.set({
-          name: personalOrgName,
-          type: 'personal',
-          ownerId: uid,
-          createdAt: admin.firestore.Timestamp.fromDate(now),
-          updatedAt: admin.firestore.Timestamp.fromDate(now),
-        })
+        const specialistRef = db.doc(`specialists/${uid}`)
+        const specialistSnap = await specialistRef.get()
 
-        const memberRef = orgRef.collection('members').doc(uid)
-        await memberRef.set({
-          uid,
-          role: 'org_admin',
-          status: 'active',
-          joinedAt: admin.firestore.Timestamp.fromDate(now),
-        })
-
-        await specialistRef
-          .collection('organizations')
-          .doc(personalOrgId)
-          .set({
-            orgId: personalOrgId,
-            orgName: personalOrgName,
-            country: null,
-            role: 'org_admin',
-            status: 'active',
+        const now = new Date()
+        let specialistName = ''
+        if (specialistSnap.exists) {
+          const d = specialistSnap.data()
+          specialistName = d?.fullName || d?.name || ''
+        } else {
+          await specialistRef.set({
+            uid,
+            email: email || '',
+            name: specialistName,
+            createdAt: admin.firestore.Timestamp.fromDate(now),
             updatedAt: admin.firestore.Timestamp.fromDate(now),
           })
-      } else {
-        personalOrgId = orgsSnapshot.docs[0].id
-        await specialistRef
+        }
+        const orgsSnapshot = await db
           .collection('organizations')
-          .doc(personalOrgId)
-          .set(
-            {
+          .where('ownerId', '==', uid)
+          .limit(1)
+          .get()
+
+        let personalOrgId: string
+        if (orgsSnapshot.empty) {
+          const personalOrgName = `${specialistName}'s Practice`
+          const orgRef = db.collection('organizations').doc()
+          personalOrgId = orgRef.id
+
+          await orgRef.set({
+            name: personalOrgName,
+            type: 'personal',
+            ownerId: uid,
+            createdAt: admin.firestore.Timestamp.fromDate(now),
+            updatedAt: admin.firestore.Timestamp.fromDate(now),
+          })
+
+          const memberRef = orgRef.collection('members').doc(uid)
+          await memberRef.set({
+            uid,
+            role: 'org_admin',
+            status: 'active',
+            joinedAt: admin.firestore.Timestamp.fromDate(now),
+          })
+
+          await specialistRef
+            .collection('organizations')
+            .doc(personalOrgId)
+            .set({
               orgId: personalOrgId,
-              orgName: orgsSnapshot.docs[0].data().name || personalOrgId,
-              country: orgsSnapshot.docs[0].data().country ?? null,
+              orgName: personalOrgName,
+              country: null,
               role: 'org_admin',
               status: 'active',
               updatedAt: admin.firestore.Timestamp.fromDate(now),
-            },
-            { merge: true }
-          )
-      }
+            })
+        } else {
+          personalOrgId = orgsSnapshot.docs[0].id
+          await specialistRef
+            .collection('organizations')
+            .doc(personalOrgId)
+            .set(
+              {
+                orgId: personalOrgId,
+                orgName: orgsSnapshot.docs[0].data().name || personalOrgId,
+                country: orgsSnapshot.docs[0].data().country ?? null,
+                role: 'org_admin',
+                status: 'active',
+                updatedAt: admin.firestore.Timestamp.fromDate(now),
+              },
+              { merge: true }
+            )
+        }
 
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-      let inviteCode = ''
-      for (let i = 0; i < 8; i++) {
-        inviteCode += chars.charAt(randomInt(0, chars.length))
-      }
-      const expiresAt = new Date()
-      expiresAt.setDate(expiresAt.getDate() + 365)
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+        let inviteCode = ''
+        for (let i = 0; i < 8; i++) {
+          inviteCode += chars.charAt(randomInt(0, chars.length))
+        }
+        const expiresAt = new Date()
+        expiresAt.setDate(expiresAt.getDate() + 365)
 
-      const inviteRef = db.doc(`parentInvites/${inviteCode}`)
-      await inviteRef.set({
-        specialistId: uid,
-        orgId: personalOrgId,
-        maxUses: null,
-        usedCount: 0,
-        expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
-        createdAt: admin.firestore.Timestamp.fromDate(now),
-      })
+        const inviteRef = db.doc(`parentInvites/${inviteCode}`)
+        await inviteRef.set({
+          specialistId: uid,
+          orgId: personalOrgId,
+          maxUses: null,
+          usedCount: 0,
+          expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+          createdAt: admin.firestore.Timestamp.fromDate(now),
+        })
 
-      return {
-        ok: true,
-        inviteCode,
-        expiresAt: expiresAt.toISOString(),
-        orgId: personalOrgId,
+        return {
+          ok: true,
+          inviteCode,
+          expiresAt: expiresAt.toISOString(),
+          orgId: personalOrgId,
+        }
+      } catch (error: any) {
+        fastify.log.error({ err: error }, 'Route handler failed')
+        return reply.code(500).send({ error: error.message || 'Failed to create invite code' })
       }
-    } catch (error: any) {
-      fastify.log.error({ err: error }, 'Route handler failed')
-      return reply.code(500).send({ error: error.message || 'Failed to create invite code' })
     }
-  })
+  )
 }

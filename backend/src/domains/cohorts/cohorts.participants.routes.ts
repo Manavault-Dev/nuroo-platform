@@ -13,6 +13,80 @@ import {
   syncDroppedParticipantAcrossSessions,
 } from './cohorts.calendarSync.js'
 
+const cohortParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'cohortId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    cohortId: { type: 'string', description: 'Cohort ID' },
+  },
+} as const
+
+const participantParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'cohortId', 'participantId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    cohortId: { type: 'string', description: 'Cohort ID' },
+    participantId: { type: 'string', description: 'Participant ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
+const participantSchema = {
+  type: 'object',
+  required: ['id', 'cohortId', 'orgId', 'childId', 'parentId', 'status'],
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    cohortId: { type: 'string' },
+    orgId: { type: 'string' },
+    childId: { type: 'string' },
+    childName: { type: 'string' },
+    parentId: { type: 'string' },
+    parentName: { type: 'string' },
+    parentPhone: { type: ['string', 'null'] },
+    status: { type: 'string', enum: ['active', 'dropped', 'completed'] },
+    paymentStatus: { type: 'string', enum: ['paid', 'partial', 'pending'] },
+    amountPaid: { type: 'number' },
+    totalAmount: { type: 'number' },
+    currency: { type: 'string' },
+    enrolledAt: { type: 'string' },
+    updatedAt: { type: 'string' },
+  },
+} as const
+
+const participantCreateBodySchema = {
+  type: 'object',
+  required: ['childId', 'childName', 'parentId'],
+  additionalProperties: true,
+  properties: {
+    childId: { type: 'string' },
+    childName: { type: 'string', maxLength: 200 },
+    parentId: { type: 'string' },
+    parentName: { type: 'string', maxLength: 200 },
+    parentPhone: { type: ['string', 'null'], maxLength: 30 },
+    paymentStatus: { type: 'string', enum: ['paid', 'partial', 'pending'] },
+    amountPaid: { type: 'number', minimum: 0 },
+  },
+} as const
+
+const participantUpdateBodySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    status: { type: 'string', enum: ['active', 'dropped', 'completed'] },
+    paymentStatus: { type: 'string', enum: ['paid', 'partial', 'pending'] },
+    amountPaid: { type: 'number', minimum: 0 },
+    parentPhone: { type: ['string', 'null'], maxLength: 30 },
+  },
+} as const
+
 export const cohortsParticipantsRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
@@ -20,7 +94,25 @@ export const cohortsParticipantsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string; cohortId: string } }>(
     '/orgs/:orgId/cohorts/:cohortId/participants',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'List all participants enrolled in a cohort',
+        params: cohortParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'participants'],
+            properties: {
+              ok: { type: 'boolean' },
+              participants: { type: 'array', items: participantSchema },
+            },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       await requireOrgMember(request, reply, request.params.orgId)
@@ -40,7 +132,26 @@ export const cohortsParticipantsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string; cohortId: string } }>(
     '/orgs/:orgId/cohorts/:cohortId/participants',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Enroll a child as a participant in a cohort',
+        params: cohortParamsSchema,
+        body: participantCreateBodySchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'participant'],
+            properties: { ok: { type: 'boolean' }, participant: participantSchema },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const member = await requireOrgMember(request, reply, request.params.orgId)
@@ -147,7 +258,25 @@ export const cohortsParticipantsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.patch<{ Params: { orgId: string; cohortId: string; participantId: string } }>(
     '/orgs/:orgId/cohorts/:cohortId/participants/:participantId',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: "Update a participant's status or payment info",
+        params: participantParamsSchema,
+        body: participantUpdateBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'participant'],
+            properties: { ok: { type: 'boolean' }, participant: participantSchema },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const member = await requireOrgMember(request, reply, request.params.orgId)

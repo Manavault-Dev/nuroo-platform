@@ -157,12 +157,87 @@ function generateChildInviteToken(): string {
   return randomBytes(24).toString('base64url')
 }
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+  additionalProperties: true,
+} as const
+
+const importRowSchemaJson = {
+  type: 'object',
+  required: ['firstName'],
+  properties: {
+    firstName: { type: 'string' },
+    lastName: { type: 'string' },
+    dateOfBirth: { type: 'string' },
+    gender: { type: 'string' },
+    groupLabel: { type: 'string' },
+    expectedParentName: { type: 'string' },
+    contactPhone: { type: 'string' },
+    contactEmail: { type: 'string' },
+  },
+  additionalProperties: true,
+} as const
+
+const previewRowSchema = {
+  type: 'object',
+  required: ['row', 'data', 'valid'],
+  properties: {
+    row: { type: 'number' },
+    data: importRowSchemaJson,
+    valid: { type: 'boolean' },
+    error: { type: 'string' },
+  },
+} as const
+
+const commitBodySchema = {
+  type: 'object',
+  required: ['rows'],
+  properties: {
+    rows: { type: 'array', minItems: 1, maxItems: 500, items: importRowSchemaJson },
+  },
+} as const
+
 export const childrenImportRoute: FastifyPluginAsync = async (fastify) => {
   await fastify.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } })
 
   // POST /orgs/:orgId/children/import/preview — parse + validate, no writes
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/children/import/preview',
+    {
+      schema: {
+        tags: ['Children'],
+        summary: 'Preview a spreadsheet import of children (parses and validates, no writes)',
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'totalRows', 'validCount', 'invalidCount', 'rows', 'planOk'],
+            properties: {
+              ok: { type: 'boolean' },
+              totalRows: { type: 'number' },
+              validCount: { type: 'number' },
+              invalidCount: { type: 'number' },
+              rows: { type: 'array', items: previewRowSchema },
+              planOk: { type: 'boolean' },
+              planError: { type: 'string' },
+              maxImportable: { type: 'number' },
+            },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId } = request.params
@@ -217,6 +292,49 @@ export const childrenImportRoute: FastifyPluginAsync = async (fastify) => {
   // POST /orgs/:orgId/children/import/commit — actually create children + invites
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/children/import/commit',
+    {
+      schema: {
+        tags: ['Children'],
+        summary: 'Commit a previewed spreadsheet import, creating children and parent invites',
+        params: orgIdParamsSchema,
+        body: commitBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'created', 'skipped'],
+            properties: {
+              ok: { type: 'boolean' },
+              created: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['row', 'childId', 'childName', 'token', 'link'],
+                  properties: {
+                    row: { type: 'number' },
+                    childId: { type: 'string' },
+                    childName: { type: 'string' },
+                    token: { type: 'string' },
+                    link: { type: 'string' },
+                  },
+                },
+              },
+              skipped: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['row', 'error'],
+                  properties: { row: { type: 'number' }, error: { type: 'string' } },
+                },
+              },
+            },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId } = request.params

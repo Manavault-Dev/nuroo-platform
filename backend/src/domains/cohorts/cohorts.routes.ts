@@ -28,6 +28,98 @@ import {
 } from './cohorts.helpers.js'
 import type { SessionDoc } from './cohorts.types.js'
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const cohortParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'cohortId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    cohortId: { type: 'string', description: 'Cohort ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const cohortSchema = {
+  type: 'object',
+  required: ['id', 'orgId', 'title', 'status'],
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    orgId: { type: 'string' },
+    branchId: { type: ['string', 'null'] },
+    title: { type: 'string' },
+    description: { type: 'string' },
+    instructorId: { type: ['string', 'null'] },
+    instructorName: { type: ['string', 'null'] },
+    category: { type: ['string', 'null'] },
+    ageMin: { type: ['integer', 'null'] },
+    ageMax: { type: ['integer', 'null'] },
+    format: { type: 'string', enum: ['online', 'offline'] },
+    targetAudience: { type: 'string' },
+    startDate: { type: 'string' },
+    endDate: { type: 'string' },
+    price: { type: 'number' },
+    currency: { type: 'string' },
+    maxParticipants: { type: 'integer' },
+    enrolledCount: { type: 'integer' },
+    status: { type: 'string' },
+    scheduleType: { type: 'string' },
+    coverUrl: { type: ['string', 'null'] },
+    meetingUrl: { type: ['string', 'null'] },
+    createdAt: { type: 'string' },
+    updatedAt: { type: 'string' },
+  },
+} as const
+
+const cohortBodySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    branchId: { type: ['string', 'null'] },
+    title: { type: 'string', maxLength: 200 },
+    description: { type: 'string', maxLength: 2000 },
+    instructorId: { type: ['string', 'null'] },
+    category: { type: ['string', 'null'] },
+    ageMin: { type: ['integer', 'null'] },
+    ageMax: { type: ['integer', 'null'] },
+    format: { type: 'string', enum: ['online', 'offline'] },
+    targetAudience: { type: 'string', enum: ['children', 'parents', 'specialists', 'all'] },
+    startDate: { type: 'string', description: 'ISO date YYYY-MM-DD' },
+    endDate: { type: 'string', description: 'ISO date YYYY-MM-DD' },
+    price: { type: 'number' },
+    currency: { type: 'string' },
+    maxParticipants: { type: 'integer' },
+    scheduleType: { type: 'string', enum: ['manual', 'recurring'] },
+    recurringTemplate: {
+      type: ['object', 'null'],
+      additionalProperties: true,
+      properties: {
+        weekdays: { type: 'array', items: { type: 'integer' } },
+        startTime: { type: 'string' },
+        endTime: { type: 'string' },
+        repeatUntil: { type: 'string' },
+      },
+    },
+    coverUrl: { type: ['string', 'null'] },
+  },
+} as const
+
 export const cohortsRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
@@ -35,7 +127,29 @@ export const cohortsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string }; Querystring: { branchId?: string } }>(
     '/orgs/:orgId/cohorts',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: "List an organization's cohorts, optionally filtered by branch",
+        params: orgIdParamsSchema,
+        querystring: {
+          type: 'object',
+          properties: { branchId: { type: 'string', description: 'Filter by branch ID' } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'cohorts'],
+            properties: {
+              ok: { type: 'boolean' },
+              cohorts: { type: 'array', items: cohortSchema },
+            },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const member = await requireOrgMember(request, reply, request.params.orgId)
@@ -62,7 +176,24 @@ export const cohortsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/cohorts',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Create a new cohort for an organization',
+        params: orgIdParamsSchema,
+        body: { ...cohortBodySchema, required: ['title', 'startDate', 'endDate'] },
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'cohort'],
+            properties: { ok: { type: 'boolean' }, cohort: cohortSchema },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const member = await requireOrgMember(request, reply, request.params.orgId)
@@ -158,7 +289,23 @@ export const cohortsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string; cohortId: string } }>(
     '/orgs/:orgId/cohorts/:cohortId',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Get a single cohort by ID',
+        params: cohortParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'cohort'],
+            properties: { ok: { type: 'boolean' }, cohort: cohortSchema },
+          },
+          401: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       await requireOrgMember(request, reply, request.params.orgId)
@@ -176,7 +323,45 @@ export const cohortsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.patch<{ Params: { orgId: string; cohortId: string } }>(
     '/orgs/:orgId/cohorts/:cohortId',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Update a cohort (fields, status transitions, approval flow)',
+        params: cohortParamsSchema,
+        body: {
+          ...cohortBodySchema,
+          properties: {
+            ...cohortBodySchema.properties,
+            status: {
+              type: 'string',
+              enum: [
+                'draft',
+                'pending_approval',
+                'open',
+                'full',
+                'in_progress',
+                'completed',
+                'archived',
+                'cancelled',
+              ],
+            },
+            rejectionComment: { type: ['string', 'null'] },
+            instructorId: { type: ['string', 'null'] },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'cohort'],
+            properties: { ok: { type: 'boolean' }, cohort: cohortSchema },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const member = await requireOrgMember(request, reply, request.params.orgId)
@@ -291,7 +476,27 @@ export const cohortsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.delete<{ Params: { orgId: string; cohortId: string }; Querystring: { force?: string } }>(
     '/orgs/:orgId/cohorts/:cohortId',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Cancel a cohort, or permanently delete it with ?force=true',
+        params: cohortParamsSchema,
+        querystring: {
+          type: 'object',
+          properties: {
+            force: { type: 'string', description: "Pass 'true' to permanently delete" },
+          },
+        },
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const member = await requireOrgMember(request, reply, request.params.orgId)

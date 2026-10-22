@@ -49,6 +49,129 @@ const updateSchema = z.object({
   status: z.enum(['draft', 'sent']).optional(),
 })
 
+const orgChildParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'childId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    childId: { type: 'string', description: 'Child ID' },
+  },
+} as const
+
+const reportParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'childId', 'reportId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    childId: { type: 'string', description: 'Child ID' },
+    reportId: { type: 'string', description: 'AI report ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' }, details: {} },
+  additionalProperties: true,
+} as const
+
+const specialistTypeEnum = [
+  'speech_therapist',
+  'psychologist',
+  'aba_specialist',
+  'defectologist',
+  'ot_specialist',
+]
+
+const generateBodySchema = {
+  type: 'object',
+  required: ['periodStart', 'periodEnd', 'specialistType', 'selectedMetrics', 'childName'],
+  properties: {
+    periodStart: { type: 'string', minLength: 1 },
+    periodEnd: { type: 'string', minLength: 1 },
+    specialistType: { type: 'string', enum: specialistTypeEnum },
+    language: { type: 'string', enum: ['ru', 'en', 'ky'] },
+    selectedMetrics: {
+      type: 'object',
+      additionalProperties: { type: 'array', items: { type: 'string' } },
+    },
+    additionalNotes: { type: ['string', 'null'], maxLength: 1000 },
+    childName: { type: 'string', minLength: 1, maxLength: 200 },
+    childAge: { type: ['number', 'null'], minimum: 0, maximum: 30 },
+  },
+  additionalProperties: true,
+} as const
+
+const generateResponseSchema = {
+  type: 'object',
+  required: ['ok', 'childId', 'text'],
+  properties: {
+    ok: { type: 'boolean' },
+    childId: { type: 'string' },
+    text: { type: 'string' },
+  },
+} as const
+
+const saveBodySchema = {
+  type: 'object',
+  required: [
+    'periodStart',
+    'periodEnd',
+    'specialistType',
+    'selectedMetrics',
+    'aiGeneratedText',
+    'finalText',
+  ],
+  properties: {
+    periodStart: { type: 'string' },
+    periodEnd: { type: 'string' },
+    specialistType: { type: 'string', enum: specialistTypeEnum },
+    language: { type: 'string', enum: ['ru', 'en', 'ky'] },
+    selectedMetrics: {
+      type: 'object',
+      additionalProperties: { type: 'array', items: { type: 'string' } },
+    },
+    additionalNotes: { type: 'string', maxLength: 1000 },
+    aiGeneratedText: { type: 'string' },
+    finalText: { type: 'string' },
+    status: { type: 'string', enum: ['draft', 'sent'] },
+  },
+  additionalProperties: true,
+} as const
+
+const saveResponseSchema = {
+  type: 'object',
+  required: ['ok', 'reportId'],
+  properties: {
+    ok: { type: 'boolean' },
+    reportId: { type: 'string' },
+  },
+} as const
+
+const reportsListResponseSchema = {
+  type: 'object',
+  required: ['ok', 'reports'],
+  properties: {
+    ok: { type: 'boolean' },
+    reports: { type: 'array', items: { type: 'object', additionalProperties: true } },
+  },
+} as const
+
+const updateBodySchema = {
+  type: 'object',
+  properties: {
+    finalText: { type: 'string' },
+    status: { type: 'string', enum: ['draft', 'sent'] },
+  },
+  additionalProperties: true,
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
 // ─── AI prompts ───────────────────────────────────────────────────────────────
 
 function buildReportSystemPrompt(language: string): string {
@@ -250,7 +373,24 @@ export const aiReportRoute: FastifyPluginAsync = async (fastify) => {
   // Generate AI report text (no save)
   fastify.post<{ Params: { orgId: string; childId: string } }>(
     '/orgs/:orgId/children/:childId/ai-reports/generate',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    {
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['AI'],
+        summary: 'Generate an AI-written parent progress report for a child (not saved)',
+        params: orgChildParamsSchema,
+        body: generateBodySchema,
+        response: {
+          200: generateResponseSchema,
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+          502: errorResponseSchema,
+          503: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, childId } = request.params
       await requireOrgMember(request, reply, orgId)
@@ -340,6 +480,20 @@ export const aiReportRoute: FastifyPluginAsync = async (fastify) => {
   // Save report (draft or sent)
   fastify.post<{ Params: { orgId: string; childId: string } }>(
     '/orgs/:orgId/children/:childId/ai-reports',
+    {
+      schema: {
+        tags: ['AI'],
+        summary: 'Save an AI progress report as a draft or send it to the parent',
+        params: orgChildParamsSchema,
+        body: saveBodySchema,
+        response: {
+          201: saveResponseSchema,
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, childId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -388,6 +542,18 @@ export const aiReportRoute: FastifyPluginAsync = async (fastify) => {
   // List reports for child
   fastify.get<{ Params: { orgId: string; childId: string } }>(
     '/orgs/:orgId/children/:childId/ai-reports',
+    {
+      schema: {
+        tags: ['AI'],
+        summary: 'List AI-generated progress reports for a child',
+        params: orgChildParamsSchema,
+        response: {
+          200: reportsListResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, childId } = request.params
       await requireOrgMember(request, reply, orgId)
@@ -408,6 +574,21 @@ export const aiReportRoute: FastifyPluginAsync = async (fastify) => {
   // Update report (edit final text or send)
   fastify.patch<{ Params: { orgId: string; childId: string; reportId: string } }>(
     '/orgs/:orgId/children/:childId/ai-reports/:reportId',
+    {
+      schema: {
+        tags: ['AI'],
+        summary: 'Update an AI progress report (edit final text or mark as sent)',
+        params: reportParamsSchema,
+        body: updateBodySchema,
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, childId, reportId } = request.params
       const member = await requireOrgMember(request, reply, orgId)

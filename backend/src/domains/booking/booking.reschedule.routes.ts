@@ -42,6 +42,54 @@ const rebookSchema = z.object({
   notes: z.string().trim().max(1000).optional().nullable(),
 })
 
+const bookingParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'bookingId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    bookingId: { type: 'string', description: 'Booking ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const rescheduleBodySchema = {
+  type: 'object',
+  required: ['slotId', 'date', 'startTime', 'endTime'],
+  additionalProperties: true,
+  properties: {
+    slotId: { type: 'string', minLength: 1 },
+    date: { type: 'string', description: 'YYYY-MM-DD' },
+    startTime: { type: 'string', description: 'HH:MM' },
+    endTime: { type: 'string', description: 'HH:MM' },
+    reason: { type: 'string', maxLength: 500 },
+  },
+} as const
+
+const rebookBodySchema = {
+  type: 'object',
+  required: ['slotId', 'date', 'startTime', 'endTime'],
+  additionalProperties: true,
+  properties: {
+    slotId: { type: 'string', minLength: 1 },
+    date: { type: 'string', description: 'YYYY-MM-DD' },
+    startTime: { type: 'string', description: 'HH:MM' },
+    endTime: { type: 'string', description: 'HH:MM' },
+    childId: { type: ['string', 'null'] },
+    notes: { type: ['string', 'null'], maxLength: 1000 },
+  },
+} as const
+
 export const bookingRescheduleRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
@@ -52,7 +100,22 @@ export const bookingRescheduleRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.put<{ Params: { orgId: string; bookingId: string } }>(
     '/marketplace/organizations/:orgId/bookings/:bookingId/reschedule',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Reschedule a booking to a new slot',
+        params: bookingParamsSchema,
+        body: rescheduleBodySchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params
@@ -206,7 +269,26 @@ export const bookingRescheduleRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Params: { orgId: string; bookingId: string } }>(
     '/marketplace/organizations/:orgId/bookings/:bookingId/rebook',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Create a new booking that repeats an earlier booking in a new slot',
+        params: bookingParamsSchema,
+        body: rebookBodySchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'bookingId'],
+            properties: { ok: { type: 'boolean' }, bookingId: { type: 'string' } },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params

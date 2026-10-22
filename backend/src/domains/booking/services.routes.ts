@@ -24,13 +24,126 @@ function sortByCreatedAtDesc<T extends Record<string, unknown>>(items: T[]): T[]
   )
 }
 
+const orgParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const serviceParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'serviceId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    serviceId: { type: 'string', description: 'Service ID' },
+  },
+} as const
+
+const specialistServicesParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'specialistId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    specialistId: { type: 'string', description: 'Specialist user ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const serviceBodySchema = {
+  type: 'object',
+  required: ['name', 'durationMinutes', 'price', 'specialistId'],
+  additionalProperties: true,
+  properties: {
+    name: { type: 'string', minLength: 1, maxLength: 200 },
+    description: { type: ['string', 'null'], maxLength: 1000 },
+    durationMinutes: { type: 'number', minimum: 5, maximum: 480 },
+    price: { type: 'number', minimum: 0 },
+    currency: { type: 'string', minLength: 3, maxLength: 3, description: 'Defaults to KGS' },
+    specialistId: { type: 'string', minLength: 1 },
+    intakeFormId: { type: ['string', 'null'] },
+  },
+} as const
+
+const updateServiceBodySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    name: { type: 'string', minLength: 1, maxLength: 200 },
+    description: { type: ['string', 'null'], maxLength: 1000 },
+    durationMinutes: { type: 'number', minimum: 5, maximum: 480 },
+    price: { type: 'number', minimum: 0 },
+    currency: { type: 'string', minLength: 3, maxLength: 3 },
+    specialistId: { type: 'string', minLength: 1 },
+    intakeFormId: { type: ['string', 'null'] },
+  },
+} as const
+
+const serviceResponseSchema = {
+  type: 'object',
+  required: [
+    'id',
+    'orgId',
+    'specialistId',
+    'name',
+    'durationMinutes',
+    'price',
+    'currency',
+    'isActive',
+    'createdAt',
+    'updatedAt',
+  ],
+  properties: {
+    id: { type: 'string' },
+    orgId: { type: 'string' },
+    specialistId: { type: 'string' },
+    name: { type: 'string' },
+    description: { type: ['string', 'null'] },
+    durationMinutes: { type: 'number' },
+    price: { type: 'number' },
+    currency: { type: 'string' },
+    isActive: { type: 'boolean' },
+    intakeFormId: { type: ['string', 'null'] },
+    createdAt: { type: 'string' },
+    updatedAt: { type: 'string' },
+  },
+} as const
+
 export const servicesRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
   /** GET /orgs/:orgId/services — list services */
   fastify.get<{ Params: { orgId: string } }>(
     '/orgs/:orgId/services',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'List active services for an organization',
+        params: orgParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'services'],
+            properties: {
+              ok: { type: 'boolean' },
+              services: { type: 'array', items: serviceResponseSchema },
+            },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId } = request.params
@@ -52,7 +165,24 @@ export const servicesRoute: FastifyPluginAsync = async (fastify) => {
   /** POST /orgs/:orgId/services — create service */
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/services',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Create a new service for a specialist',
+        params: orgParamsSchema,
+        body: serviceBodySchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'service'],
+            properties: { ok: { type: 'boolean' }, service: serviceResponseSchema },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId } = request.params
@@ -85,7 +215,22 @@ export const servicesRoute: FastifyPluginAsync = async (fastify) => {
   /** PATCH /orgs/:orgId/services/:serviceId — update service */
   fastify.patch<{ Params: { orgId: string; serviceId: string } }>(
     '/orgs/:orgId/services/:serviceId',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Update a service',
+        params: serviceParamsSchema,
+        body: updateServiceBodySchema,
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, serviceId } = request.params
@@ -109,7 +254,20 @@ export const servicesRoute: FastifyPluginAsync = async (fastify) => {
   /** DELETE /orgs/:orgId/services/:serviceId — soft delete */
   fastify.delete<{ Params: { orgId: string; serviceId: string } }>(
     '/orgs/:orgId/services/:serviceId',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Soft-delete (deactivate) a service',
+        params: serviceParamsSchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, serviceId } = request.params
@@ -130,7 +288,39 @@ export const servicesRoute: FastifyPluginAsync = async (fastify) => {
   /** GET /marketplace/organizations/:orgId/specialists/:specialistId/services — public */
   fastify.get<{ Params: { orgId: string; specialistId: string } }>(
     '/marketplace/organizations/:orgId/specialists/:specialistId/services',
-    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    {
+      config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['Booking'],
+        summary: "List a specialist's active services (public marketplace)",
+        params: specialistServicesParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'services'],
+            properties: {
+              ok: { type: 'boolean' },
+              services: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['id', 'name', 'durationMinutes', 'price', 'currency'],
+                  properties: {
+                    id: { type: 'string' },
+                    name: { type: 'string' },
+                    description: { type: ['string', 'null'] },
+                    durationMinutes: { type: 'number' },
+                    price: { type: 'number' },
+                    currency: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, specialistId } = request.params
 

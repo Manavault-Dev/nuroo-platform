@@ -14,84 +14,159 @@ function adminTimestamp(date: Date) {
   return admin.firestore.Timestamp.fromDate(date)
 }
 
+const orgGroupParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'groupId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    groupId: { type: 'string', description: 'Group ID' },
+  },
+} as const
+
+const orgGroupParentParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'groupId', 'parentUserId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    groupId: { type: 'string', description: 'Group ID' },
+    parentUserId: { type: 'string', description: 'Parent user ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' }, details: {} },
+  additionalProperties: true,
+} as const
+
+const addParentToGroupBodySchema = {
+  type: 'object',
+  required: ['parentUserId'],
+  properties: {
+    parentUserId: { type: 'string', minLength: 1 },
+    childIds: { type: 'array', items: { type: 'string' } },
+  },
+  additionalProperties: true,
+} as const
+
+const messageResponseSchema = {
+  type: 'object',
+  required: ['ok', 'message'],
+  properties: {
+    ok: { type: 'boolean' },
+    message: { type: 'string' },
+  },
+} as const
+
 export const groupParentsRoute: import('fastify').FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: { orgId: string; groupId: string }
     Body: z.infer<typeof addParentToGroupSchema>
-  }>('/orgs/:orgId/groups/:groupId/parents', async (request, reply) => {
-    try {
-      const { orgId, groupId } = request.params
-      await requireOrgMember(request, reply, orgId)
-      const { uid } = request.user!
-      const body = addParentToGroupSchema.parse(request.body)
-      const now = new Date()
+  }>(
+    '/orgs/:orgId/groups/:groupId/parents',
+    {
+      schema: {
+        tags: ['Groups'],
+        summary: 'Add a parent (and their children) to a specialist group',
+        params: orgGroupParamsSchema,
+        body: addParentToGroupBodySchema,
+        response: {
+          200: messageResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, groupId } = request.params
+        await requireOrgMember(request, reply, orgId)
+        const { uid } = request.user!
+        const body = addParentToGroupSchema.parse(request.body)
+        const now = new Date()
 
-      const db = getFirestore()
+        const db = getFirestore()
 
-      const groupRef = db.doc(`${COLLECTIONS.SPECIALIST_GROUPS(uid)}/${groupId}`)
-      const groupSnap = await groupRef.get()
+        const groupRef = db.doc(`${COLLECTIONS.SPECIALIST_GROUPS(uid)}/${groupId}`)
+        const groupSnap = await groupRef.get()
 
-      if (!groupSnap.exists) {
-        return reply.code(404).send({ error: 'Group not found' })
-      }
+        if (!groupSnap.exists) {
+          return reply.code(404).send({ error: 'Group not found' })
+        }
 
-      const groupData = groupSnap.data()!
+        const groupData = groupSnap.data()!
 
-      if (!verifyGroupOwnership(groupData, orgId)) {
-        return reply.code(403).send({
-          error: 'Group does not belong to this organization',
+        if (!verifyGroupOwnership(groupData, orgId)) {
+          return reply.code(403).send({
+            error: 'Group does not belong to this organization',
+          })
+        }
+
+        const orgChildrenSnap = await db
+          .collection(COLLECTIONS.ORG_CHILDREN(orgId))
+          .where('parentUserId', '==', body.parentUserId)
+          .limit(1)
+          .get()
+
+        if (orgChildrenSnap.empty) {
+          return reply.code(404).send({
+            error: 'Parent is not linked to this organization',
+          })
+        }
+
+        let childIds = body.childIds || []
+        if (childIds.length === 0) {
+          childIds = await getChildIdsForParent(db, orgId, body.parentUserId)
+        }
+
+        const parentRef = db.doc(`${COLLECTIONS.GROUP_PARENTS(uid, groupId)}/${body.parentUserId}`)
+        const parentSnap = await parentRef.get()
+
+        const parentData = {
+          childIds,
+          updatedAt: adminTimestamp(now),
+        }
+
+        if (parentSnap.exists) {
+          await parentRef.update(parentData)
+        } else {
+          await parentRef.set({
+            ...parentData,
+            addedAt: adminTimestamp(now),
+          })
+        }
+
+        return {
+          ok: true,
+          message: 'Parent added to group successfully',
+        }
+      } catch (error: any) {
+        fastify.log.error({ err: error }, 'Route handler failed')
+        return reply.code(500).send({
+          error: 'Failed to add parent to group',
+          details: error.message,
         })
       }
-
-      const orgChildrenSnap = await db
-        .collection(COLLECTIONS.ORG_CHILDREN(orgId))
-        .where('parentUserId', '==', body.parentUserId)
-        .limit(1)
-        .get()
-
-      if (orgChildrenSnap.empty) {
-        return reply.code(404).send({
-          error: 'Parent is not linked to this organization',
-        })
-      }
-
-      let childIds = body.childIds || []
-      if (childIds.length === 0) {
-        childIds = await getChildIdsForParent(db, orgId, body.parentUserId)
-      }
-
-      const parentRef = db.doc(`${COLLECTIONS.GROUP_PARENTS(uid, groupId)}/${body.parentUserId}`)
-      const parentSnap = await parentRef.get()
-
-      const parentData = {
-        childIds,
-        updatedAt: adminTimestamp(now),
-      }
-
-      if (parentSnap.exists) {
-        await parentRef.update(parentData)
-      } else {
-        await parentRef.set({
-          ...parentData,
-          addedAt: adminTimestamp(now),
-        })
-      }
-
-      return {
-        ok: true,
-        message: 'Parent added to group successfully',
-      }
-    } catch (error: any) {
-      fastify.log.error({ err: error }, 'Route handler failed')
-      return reply.code(500).send({
-        error: 'Failed to add parent to group',
-        details: error.message,
-      })
     }
-  })
+  )
 
   fastify.delete<{ Params: { orgId: string; groupId: string; parentUserId: string } }>(
     '/orgs/:orgId/groups/:groupId/parents/:parentUserId',
+    {
+      schema: {
+        tags: ['Groups'],
+        summary: 'Remove a parent from a specialist group',
+        params: orgGroupParentParamsSchema,
+        response: {
+          200: messageResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId, groupId, parentUserId } = request.params

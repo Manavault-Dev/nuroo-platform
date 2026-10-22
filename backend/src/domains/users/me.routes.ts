@@ -20,6 +20,80 @@ const updateProfileSchema = z.object({
   name: z.string().min(1).max(100).optional(),
 })
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+  additionalProperties: true,
+} as const
+
+const avatarResponseSchema = {
+  type: 'object',
+  required: ['ok', 'avatarUrl'],
+  properties: {
+    ok: { type: 'boolean' },
+    avatarUrl: { type: 'string' },
+  },
+} as const
+
+const organizationSchema = {
+  type: 'object',
+  required: ['orgId', 'orgName', 'role'],
+  properties: {
+    orgId: { type: 'string' },
+    orgName: { type: 'string' },
+    country: { type: ['string', 'null'] },
+    city: { type: ['string', 'null'] },
+    categories: { type: 'array', items: { type: 'string' } },
+    description: { type: ['string', 'null'] },
+    address: { type: ['string', 'null'] },
+    contactPhone: { type: ['string', 'null'] },
+    whatsappNumber: { type: ['string', 'null'] },
+    websiteUrl: { type: ['string', 'null'] },
+    logoUrl: { type: ['string', 'null'] },
+    coverImageUrl: { type: ['string', 'null'] },
+    logoPositionX: { type: ['number', 'null'] },
+    logoPositionY: { type: ['number', 'null'] },
+    logoScale: { type: ['number', 'null'] },
+    coverPositionX: { type: ['number', 'null'] },
+    coverPositionY: { type: ['number', 'null'] },
+    coverScale: { type: ['number', 'null'] },
+    isPublicMarketplaceEnabled: { type: 'boolean' },
+    nurooPlan: { type: ['string', 'null'], enum: ['nuroo', 'nuroo_business', null] },
+    role: { type: 'string', enum: ['admin', 'specialist', 'independent_specialist'] },
+  },
+} as const
+
+const meProfileResponseSchema = {
+  type: 'object',
+  required: ['uid', 'email', 'name', 'organizations'],
+  properties: {
+    uid: { type: 'string' },
+    email: { type: 'string' },
+    name: { type: 'string' },
+    organizations: { type: 'array', items: organizationSchema },
+  },
+} as const
+
+const specialistSummarySchema = {
+  type: 'object',
+  required: ['uid', 'email', 'name'],
+  properties: {
+    uid: { type: 'string' },
+    email: { type: 'string' },
+    name: { type: 'string' },
+  },
+} as const
+
+const updateMeResponseSchema = {
+  type: 'object',
+  required: ['ok', 'specialist'],
+  properties: {
+    ok: { type: 'boolean' },
+    specialist: specialistSummarySchema,
+  },
+} as const
+
 function extractName(specialistData: admin.firestore.DocumentData | null | undefined): string {
   return specialistData?.fullName || specialistData?.name || ''
 }
@@ -300,137 +374,182 @@ export const meRoute: FastifyPluginAsync = async (fastify) => {
   fastify.register(async (sub) => {
     await sub.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } })
 
-    sub.post('/me/avatar', async (request, reply) => {
+    sub.post(
+      '/me/avatar',
+      {
+        schema: {
+          tags: ['Users'],
+          summary: 'Upload or replace the current user avatar image',
+          response: {
+            200: avatarResponseSchema,
+            400: errorResponseSchema,
+            401: errorResponseSchema,
+          },
+        },
+      },
+      async (request, reply) => {
+        if (!request.user) {
+          return reply.code(401).send({ error: 'Unauthorized' })
+        }
+
+        const { uid } = request.user
+
+        let fileBuffer: Buffer | null = null
+        let mimeType = 'image/jpeg'
+        let filename = 'avatar'
+
+        for await (const part of request.parts()) {
+          if (part.type === 'file') {
+            mimeType = part.mimetype
+            filename = part.filename || 'avatar'
+            const chunks: Buffer[] = []
+            for await (const chunk of part.file) chunks.push(chunk)
+            fileBuffer = Buffer.concat(chunks)
+          }
+        }
+
+        if (!fileBuffer) {
+          return reply.code(400).send({ error: 'No file uploaded' })
+        }
+        if (!mimeType.startsWith('image/')) {
+          return reply.code(400).send({ error: 'Only image files are allowed' })
+        }
+
+        const ext = path.extname(filename).replace('.', '') || 'jpg'
+        const storagePath = `specialists/${uid}/avatar.${ext}`
+
+        const bucket = await getStorageBucket()
+        const file = bucket.file(storagePath)
+        await file.save(fileBuffer, { contentType: mimeType, resumable: false })
+        await file.makePublic()
+
+        const avatarUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`
+
+        const db = getFirestore()
+        await db
+          .doc(`${COLLECTIONS.SPECIALISTS}/${uid}`)
+          .set({ avatarUrl, updatedAt: admin.firestore.Timestamp.now() }, { merge: true })
+
+        return { ok: true, avatarUrl }
+      }
+    )
+  })
+
+  fastify.get(
+    '/me',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: "Get the current user's profile and organization memberships",
+        response: {
+          200: meProfileResponseSchema,
+          401: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
       if (!request.user) {
         return reply.code(401).send({ error: 'Unauthorized' })
       }
 
-      const { uid } = request.user
+      const db = getFirestore()
+      const { uid, email } = request.user
 
-      let fileBuffer: Buffer | null = null
-      let mimeType = 'image/jpeg'
-      let filename = 'avatar'
+      const specialistRef = db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}`)
+      const isUserSuperAdmin = request.user?.claims?.superAdmin === true
 
-      for await (const part of request.parts()) {
-        if (part.type === 'file') {
-          mimeType = part.mimetype
-          filename = part.filename || 'avatar'
-          const chunks: Buffer[] = []
-          for await (const chunk of part.file) chunks.push(chunk)
-          fileBuffer = Buffer.concat(chunks)
+      const [specialistSnap, parentSnap] = await Promise.all([
+        specialistRef.get(),
+        db.doc(`${COLLECTIONS.PARENTS}/${uid}`).get(),
+      ])
+
+      const organizations = await findOrganizationsForUser(
+        db,
+        uid,
+        isUserSuperAdmin,
+        specialistSnap.exists
+      )
+
+      // Parent-only accounts return empty orgs — clients derive role from orgs.length === 0
+      const specialistData = specialistSnap.exists ? specialistSnap.data() : null
+      const name = extractName(specialistData)
+
+      // Welcome email on first login
+      const isNewUser = !specialistSnap.exists && !parentSnap.exists
+      if (isNewUser && email) {
+        eventDispatcher.dispatch({
+          type: 'welcome',
+          userId: uid,
+          name: name || email.split('@')[0],
+          email,
+        })
+      }
+
+      const profile: SpecialistProfile = {
+        uid,
+        email: email || '',
+        name,
+        organizations,
+      }
+
+      return profile
+    }
+  )
+
+  fastify.post<{ Body: z.infer<typeof updateProfileSchema> }>(
+    '/me',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: "Update the current user's profile (currently just display name)",
+        body: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          additionalProperties: true,
+        },
+        response: {
+          200: updateMeResponseSchema,
+          401: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.code(401).send({ error: 'Unauthorized' })
+      }
+
+      const db = getFirestore()
+      const { uid, email } = request.user
+      const body = updateProfileSchema.parse(request.body)
+      const now = new Date()
+
+      const specialistRef = db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}`)
+      const specialistSnap = await specialistRef.get()
+
+      if (specialistSnap.exists) {
+        if (body.name) {
+          await specialistRef.update(buildProfileUpdateData(body.name, now))
+        }
+
+        const data = (await specialistRef.get()).data()
+        return {
+          ok: true,
+          specialist: {
+            uid,
+            email: email || '',
+            name: extractName(data),
+          },
         }
       }
 
-      if (!fileBuffer) {
-        return reply.code(400).send({ error: 'No file uploaded' })
-      }
-      if (!mimeType.startsWith('image/')) {
-        return reply.code(400).send({ error: 'Only image files are allowed' })
-      }
+      const name = body.name || ''
+      const newData = buildNewProfileData(uid, email, name, now)
+      await specialistRef.set(newData)
 
-      const ext = path.extname(filename).replace('.', '') || 'jpg'
-      const storagePath = `specialists/${uid}/avatar.${ext}`
-
-      const bucket = await getStorageBucket()
-      const file = bucket.file(storagePath)
-      await file.save(fileBuffer, { contentType: mimeType, resumable: false })
-      await file.makePublic()
-
-      const avatarUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`
-
-      const db = getFirestore()
-      await db
-        .doc(`${COLLECTIONS.SPECIALISTS}/${uid}`)
-        .set({ avatarUrl, updatedAt: admin.firestore.Timestamp.now() }, { merge: true })
-
-      return { ok: true, avatarUrl }
-    })
-  })
-
-  fastify.get('/me', async (request, reply) => {
-    if (!request.user) {
-      return reply.code(401).send({ error: 'Unauthorized' })
-    }
-
-    const db = getFirestore()
-    const { uid, email } = request.user
-
-    const specialistRef = db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}`)
-    const isUserSuperAdmin = request.user?.claims?.superAdmin === true
-
-    const [specialistSnap, parentSnap] = await Promise.all([
-      specialistRef.get(),
-      db.doc(`${COLLECTIONS.PARENTS}/${uid}`).get(),
-    ])
-
-    const organizations = await findOrganizationsForUser(
-      db,
-      uid,
-      isUserSuperAdmin,
-      specialistSnap.exists
-    )
-
-    // Parent-only accounts return empty orgs — clients derive role from orgs.length === 0
-    const specialistData = specialistSnap.exists ? specialistSnap.data() : null
-    const name = extractName(specialistData)
-
-    // Welcome email on first login
-    const isNewUser = !specialistSnap.exists && !parentSnap.exists
-    if (isNewUser && email) {
-      eventDispatcher.dispatch({
-        type: 'welcome',
-        userId: uid,
-        name: name || email.split('@')[0],
-        email,
-      })
-    }
-
-    const profile: SpecialistProfile = {
-      uid,
-      email: email || '',
-      name,
-      organizations,
-    }
-
-    return profile
-  })
-
-  fastify.post<{ Body: z.infer<typeof updateProfileSchema> }>('/me', async (request, reply) => {
-    if (!request.user) {
-      return reply.code(401).send({ error: 'Unauthorized' })
-    }
-
-    const db = getFirestore()
-    const { uid, email } = request.user
-    const body = updateProfileSchema.parse(request.body)
-    const now = new Date()
-
-    const specialistRef = db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}`)
-    const specialistSnap = await specialistRef.get()
-
-    if (specialistSnap.exists) {
-      if (body.name) {
-        await specialistRef.update(buildProfileUpdateData(body.name, now))
-      }
-
-      const data = (await specialistRef.get()).data()
       return {
         ok: true,
-        specialist: {
-          uid,
-          email: email || '',
-          name: extractName(data),
-        },
+        specialist: { uid, email: email || '', name: newData.fullName },
       }
     }
-
-    const name = body.name || ''
-    const newData = buildNewProfileData(uid, email, name, now)
-    await specialistRef.set(newData)
-
-    return {
-      ok: true,
-      specialist: { uid, email: email || '', name: newData.fullName },
-    }
-  })
+  )
 }

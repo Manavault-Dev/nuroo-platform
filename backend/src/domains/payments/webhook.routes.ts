@@ -13,12 +13,41 @@ import {
 } from '../../domains/courses/courseAccess.service.js'
 import type { CourseDoc } from '../../domains/courses/courses.types.js'
 
+const webhookOkResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: {
+    ok: { type: 'boolean' },
+    skipped: { type: 'string' },
+    idempotent: { type: 'boolean' },
+  },
+} as const
+
+const webhookErrorResponseSchema = {
+  type: 'object',
+  required: ['error', 'code'],
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
 export const webhookRoutes: FastifyPluginAsync = async (fastify) => {
-  // POST /webhooks/finik — NO Firebase auth, called by Finik servers
+  // POST /webhooks/finik — NO Firebase auth, called by Finik servers (whitelisted
+  // in src/index.ts via `urlPath.startsWith('/webhooks/')`); authenticity is
+  // verified by HMAC signature below rather than a Firebase bearer token. The
+  // body shape is external/untyped (Finik's payload), so no `body` schema is
+  // declared here to avoid rejecting a currently-valid webhook payload.
   fastify.post(
     '/webhooks/finik',
     {
       config: { rawBody: true },
+      schema: {
+        tags: ['Payments'],
+        summary: 'Finik payment provider webhook (signature-verified, no Firebase auth)',
+        response: {
+          200: webhookOkResponseSchema,
+          400: webhookErrorResponseSchema,
+          500: webhookErrorResponseSchema,
+        },
+      },
     },
     async (request, reply) => {
       const rawBody = (request as unknown as { rawBody?: Buffer }).rawBody

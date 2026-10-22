@@ -15,6 +15,30 @@ const querySchema = z.object({
   serviceId: z.string().optional(),
 })
 
+const slotsParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'specialistId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    specialistId: { type: 'string', description: 'Specialist user ID' },
+  },
+} as const
+
+const slotsQuerystringSchema = {
+  type: 'object',
+  properties: {
+    date: { type: 'string', description: 'YYYY-MM-DD, defaults to today' },
+    days: { type: 'string', description: 'Number of days to generate, max 30, default 7' },
+    serviceId: { type: 'string' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
 export const slotsRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
@@ -27,7 +51,54 @@ export const slotsRoute: FastifyPluginAsync = async (fastify) => {
     Querystring: { date?: string; days?: string; serviceId?: string }
   }>(
     '/marketplace/organizations/:orgId/specialists/:specialistId/slots',
-    { config: { rateLimit: RATE_PUBLIC } },
+    {
+      config: { rateLimit: RATE_PUBLIC },
+      schema: {
+        tags: ['Booking'],
+        summary: 'List available bookable slots for a specialist over a date range',
+        params: slotsParamsSchema,
+        querystring: slotsQuerystringSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'slots'],
+            properties: {
+              ok: { type: 'boolean' },
+              slots: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: [
+                    'id',
+                    'orgId',
+                    'specialistId',
+                    'serviceId',
+                    'date',
+                    'startTime',
+                    'endTime',
+                    'status',
+                    'createdAt',
+                  ],
+                  properties: {
+                    id: { type: 'string' },
+                    orgId: { type: 'string' },
+                    specialistId: { type: 'string' },
+                    serviceId: { type: ['string', 'null'] },
+                    date: { type: 'string' },
+                    startTime: { type: 'string' },
+                    endTime: { type: 'string' },
+                    status: { type: 'string', enum: ['available'] },
+                    createdAt: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          400: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, specialistId } = request.params
 

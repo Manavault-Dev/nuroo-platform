@@ -49,6 +49,78 @@ const brandingSchema = z.object({
 
 type BrandingData = z.infer<typeof brandingSchema>
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const forbiddenResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' }, upgradeRequired: { type: 'boolean' } },
+} as const
+
+const publicBrandingFieldsSchema = {
+  type: 'object',
+  properties: {
+    logo: { type: ['string', 'null'] },
+    logoPositionX: { type: ['number', 'null'] },
+    logoPositionY: { type: ['number', 'null'] },
+    logoScale: { type: ['number', 'null'] },
+    name: { type: ['string', 'null'] },
+    description: { type: ['string', 'null'] },
+    primaryColor: { type: ['string', 'null'] },
+    presetId: { type: ['string', 'null'] },
+    generatedThemeTokens: { type: ['object', 'null'], additionalProperties: { type: 'string' } },
+    welcomeMessage: { type: ['string', 'null'] },
+    coverImage: { type: ['string', 'null'] },
+    coverPositionX: { type: ['number', 'null'] },
+    coverPositionY: { type: ['number', 'null'] },
+    coverScale: { type: ['number', 'null'] },
+  },
+} as const
+
+const fullBrandingFieldsSchema = {
+  type: 'object',
+  properties: {
+    ...publicBrandingFieldsSchema.properties,
+    phone: { type: ['string', 'null'] },
+    address: { type: ['string', 'null'] },
+    website: { type: ['string', 'null'] },
+  },
+} as const
+
+const brandingBodySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    logo: { type: ['string', 'null'] },
+    logoPositionX: { type: ['number', 'null'] },
+    logoPositionY: { type: ['number', 'null'] },
+    logoScale: { type: ['number', 'null'] },
+    name: { type: ['string', 'null'] },
+    description: { type: ['string', 'null'] },
+    primaryColor: { type: ['string', 'null'] },
+    presetId: { type: ['string', 'null'] },
+    generatedThemeTokens: { type: ['object', 'null'], additionalProperties: { type: 'string' } },
+    welcomeMessage: { type: ['string', 'null'] },
+    coverImage: { type: ['string', 'null'] },
+    coverPositionX: { type: ['number', 'null'] },
+    coverPositionY: { type: ['number', 'null'] },
+    coverScale: { type: ['number', 'null'] },
+    phone: { type: ['string', 'null'] },
+    address: { type: ['string', 'null'] },
+    website: { type: ['string', 'null'] },
+  },
+} as const
+
 function cleanBranding(data: BrandingData): Record<string, unknown> {
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(data)) {
@@ -61,6 +133,26 @@ export const brandingRoute: FastifyPluginAsync = async (fastify) => {
   // GET /public/orgs/:orgId/branding — no auth required (used by parent connect page)
   fastify.get<{ Params: { orgId: string } }>(
     '/public/orgs/:orgId/branding',
+    {
+      schema: {
+        tags: ['Organizations'],
+        summary: "Get an organization's public branding (no auth required)",
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'orgName', 'branding'],
+            properties: {
+              ok: { type: 'boolean' },
+              orgName: { type: 'string' },
+              branding: { anyOf: [publicBrandingFieldsSchema, { type: 'null' }] },
+            },
+          },
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params
@@ -104,30 +196,69 @@ export const brandingRoute: FastifyPluginAsync = async (fastify) => {
   )
 
   // GET /orgs/:orgId/branding — any org member can read
-  fastify.get<{ Params: { orgId: string } }>('/orgs/:orgId/branding', async (request, reply) => {
-    try {
-      const { orgId } = request.params
-      await requireOrgMember(request, reply, orgId)
-      if (reply.sent) return
+  fastify.get<{ Params: { orgId: string } }>(
+    '/orgs/:orgId/branding',
+    {
+      schema: {
+        tags: ['Organizations'],
+        summary: "Get an organization's full branding settings",
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'branding'],
+            properties: {
+              ok: { type: 'boolean' },
+              branding: { anyOf: [fullBrandingFieldsSchema, { type: 'null' }] },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId } = request.params
+        await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
 
-      const db = getFirestore()
-      const orgSnap = await db.doc(`organizations/${orgId}`).get()
+        const db = getFirestore()
+        const orgSnap = await db.doc(`organizations/${orgId}`).get()
 
-      if (!orgSnap.exists) {
-        return reply.code(404).send({ error: 'Organization not found' })
+        if (!orgSnap.exists) {
+          return reply.code(404).send({ error: 'Organization not found' })
+        }
+
+        const branding = (orgSnap.data()?.branding as BrandingData) || null
+        return { ok: true, branding }
+      } catch (error: any) {
+        fastify.log.error(error, '[BRANDING] GET error')
+        return reply.code(500).send({ error: 'Failed to fetch branding' })
       }
-
-      const branding = (orgSnap.data()?.branding as BrandingData) || null
-      return { ok: true, branding }
-    } catch (error: any) {
-      fastify.log.error(error, '[BRANDING] GET error')
-      return reply.code(500).send({ error: 'Failed to fetch branding' })
     }
-  })
+  )
 
   // PUT /orgs/:orgId/branding — org admin only
   fastify.put<{ Params: { orgId: string }; Body: BrandingData }>(
     '/orgs/:orgId/branding',
+    {
+      schema: {
+        tags: ['Organizations'],
+        summary: "Update an organization's branding settings",
+        params: orgIdParamsSchema,
+        body: brandingBodySchema,
+        response: {
+          400: { type: 'object', required: ['error'], properties: { error: { type: 'string' } } },
+          401: errorResponseSchema,
+          403: forbiddenResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params

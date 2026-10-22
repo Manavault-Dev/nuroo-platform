@@ -81,6 +81,197 @@ const COURSE_MEDIA_RATE_LIMIT = {
   timeWindow: '1 minute',
 }
 
+// ─── Fastify/OpenAPI schemas ────────────────────────────────────────────────
+
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const courseParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'courseId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    courseId: { type: 'string', description: 'Course ID' },
+  },
+} as const
+
+const moduleParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'courseId', 'moduleId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    courseId: { type: 'string', description: 'Course ID' },
+    moduleId: { type: 'string', description: 'Module ID' },
+  },
+} as const
+
+const lessonParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'courseId', 'moduleId', 'lessonId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    courseId: { type: 'string', description: 'Course ID' },
+    moduleId: { type: 'string', description: 'Module ID' },
+    lessonId: { type: 'string', description: 'Lesson ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const courseSchema = {
+  type: 'object',
+  required: ['id', 'orgId', 'title', 'description', 'status', 'visibility', 'accessPolicy'],
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    orgId: { type: 'string' },
+    ownerOrgId: { type: 'string' },
+    ownerOrgName: { type: 'string' },
+    ownerOrgLogo: { type: 'string' },
+    title: { type: 'string' },
+    description: { type: 'string' },
+    coverImageUrl: { type: 'string' },
+    coverUrl: { type: 'string' },
+    targetAudience: { type: ['string', 'null'] },
+    ageRange: { type: ['string', 'null'] },
+    category: { type: ['string', 'null'] },
+    difficulty: { type: 'string', enum: ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'] },
+    tags: { type: 'array', items: { type: 'string' } },
+    status: { type: 'string' },
+    visibility: { type: 'string' },
+    accessPolicy: { type: 'string' },
+    price: { type: 'number' },
+    currency: { type: 'string' },
+    moduleCount: { type: 'integer' },
+    lessonCount: { type: 'integer' },
+    enrollmentCount: { type: 'integer' },
+    createdBy: { type: 'string' },
+    createdAt: { type: 'string' },
+    updatedAt: { type: 'string' },
+    publishedAt: { type: 'string' },
+  },
+} as const
+
+const courseBodySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    title: { type: 'string', maxLength: 200 },
+    description: { type: 'string', maxLength: 2000 },
+    coverImageUrl: { type: ['string', 'null'] },
+    coverUrl: { type: ['string', 'null'] },
+    targetAudience: { type: ['string', 'null'], maxLength: 500 },
+    ageRange: { type: ['string', 'null'], maxLength: 50 },
+    category: { type: ['string', 'null'], maxLength: 100 },
+    difficulty: { type: ['string', 'null'], enum: ['BEGINNER', 'INTERMEDIATE', 'ADVANCED', null] },
+    tags: { type: 'array', items: { type: 'string', maxLength: 50 }, maxItems: 10 },
+    visibility: { type: 'string', enum: ['PRIVATE', 'PUBLIC', 'org_only', 'marketplace'] },
+    accessPolicy: {
+      type: 'string',
+      enum: ['FREE', 'PAID', 'VERIFIED_SPECIAL_NEEDS', 'INVITATION_ONLY'],
+    },
+    price: { type: 'number', minimum: 0 },
+    currency: { type: 'string' },
+  },
+} as const
+
+const updateCourseBodySchema = {
+  ...courseBodySchema,
+  properties: {
+    ...courseBodySchema.properties,
+    status: {
+      type: 'string',
+      enum: ['DRAFT', 'PUBLISHED', 'ARCHIVED', 'draft', 'published', 'archived'],
+    },
+  },
+} as const
+
+const moduleSchema = {
+  type: 'object',
+  required: ['id', 'courseId', 'orgId', 'title', 'order'],
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    courseId: { type: 'string' },
+    orgId: { type: 'string' },
+    title: { type: 'string' },
+    description: { type: ['string', 'null'] },
+    order: { type: 'integer' },
+    lessonCount: { type: 'integer' },
+    createdAt: { type: 'string' },
+    updatedAt: { type: 'string' },
+  },
+} as const
+
+const moduleBodySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    title: { type: 'string', maxLength: 200 },
+    description: { type: ['string', 'null'], maxLength: 1000 },
+    order: { type: 'integer', minimum: 0 },
+  },
+} as const
+
+const lessonSchema = {
+  type: 'object',
+  required: ['id', 'moduleId', 'courseId', 'orgId', 'title', 'type', 'order'],
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    moduleId: { type: 'string' },
+    courseId: { type: 'string' },
+    orgId: { type: 'string' },
+    title: { type: 'string' },
+    type: { type: 'string', enum: ['text', 'video', 'task', 'pdf'] },
+    order: { type: 'integer' },
+    body: { type: 'string' },
+    imageUrl: { type: 'string' },
+    imageName: { type: 'string' },
+    videoUrl: { type: 'string' },
+    videoDurationMin: { type: 'number' },
+    taskDescription: { type: 'string' },
+    taskExample: { type: 'string' },
+    pdfUrl: { type: 'string' },
+    pdfName: { type: 'string' },
+    createdAt: { type: 'string' },
+    updatedAt: { type: 'string' },
+  },
+} as const
+
+const lessonBodySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    title: { type: 'string', maxLength: 200 },
+    type: { type: 'string', enum: ['text', 'video', 'task', 'pdf'] },
+    order: { type: 'integer', minimum: 0 },
+    body: { type: ['string', 'null'], maxLength: 50000 },
+    imageUrl: { type: ['string', 'null'] },
+    imageName: { type: ['string', 'null'], maxLength: 200 },
+    videoUrl: { type: ['string', 'null'] },
+    videoDurationMin: { type: ['number', 'null'] },
+    taskDescription: { type: ['string', 'null'], maxLength: 5000 },
+    taskExample: { type: ['string', 'null'], maxLength: 2000 },
+    pdfUrl: { type: ['string', 'null'] },
+    pdfName: { type: ['string', 'null'], maxLength: 200 },
+  },
+} as const
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function now(): string {
@@ -216,7 +407,30 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/courses/media',
-    { config: { rateLimit: COURSE_MEDIA_RATE_LIMIT } },
+    {
+      config: { rateLimit: COURSE_MEDIA_RATE_LIMIT },
+      schema: {
+        tags: ['Courses'],
+        summary: 'Upload course media (cover image, lesson video/image/pdf) as multipart/form-data',
+        params: orgIdParamsSchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'url', 'path'],
+            additionalProperties: true,
+            properties: {
+              ok: { type: 'boolean' },
+              url: { type: 'string' },
+              path: { type: 'string' },
+            },
+          },
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          413: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -275,22 +489,57 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
   )
 
   // List org courses
-  fastify.get<{ Params: { orgId: string } }>('/orgs/:orgId/courses', async (request, reply) => {
-    await requireOrgMember(request, reply, request.params.orgId)
-    if (reply.sent) return
-    const snap = await db
-      .collection(`organizations/${request.params.orgId}/courses`)
-      .orderBy('createdAt', 'desc')
-      .get()
-    return {
-      ok: true,
-      courses: snap.docs.map((d) => publicCoursePayload({ id: d.id, ...d.data() } as CourseDoc)),
+  fastify.get<{ Params: { orgId: string } }>(
+    '/orgs/:orgId/courses',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: "List an organization's courses",
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'courses'],
+            properties: {
+              ok: { type: 'boolean' },
+              courses: { type: 'array', items: courseSchema },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      await requireOrgMember(request, reply, request.params.orgId)
+      if (reply.sent) return
+      const snap = await db
+        .collection(`organizations/${request.params.orgId}/courses`)
+        .orderBy('createdAt', 'desc')
+        .get()
+      return {
+        ok: true,
+        courses: snap.docs.map((d) => publicCoursePayload({ id: d.id, ...d.data() } as CourseDoc)),
+      }
     }
-  })
+  )
 
   // Get single course
   fastify.get<{ Params: { orgId: string; courseId: string } }>(
     '/orgs/:orgId/courses/:courseId',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: 'Get a single course by ID',
+        params: courseParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'course'],
+            properties: { ok: { type: 'boolean' }, course: courseSchema },
+          },
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId } = request.params
       await requireOrgMember(request, reply, orgId)
@@ -302,51 +551,85 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
   )
 
   // Create course
-  fastify.post<{ Params: { orgId: string } }>('/orgs/:orgId/courses', async (request, reply) => {
-    const { orgId } = request.params
-    const member = await requireOrgMember(request, reply, orgId)
-    if (member.role !== 'org_admin') {
-      return reply.code(403).send({ error: 'Only admins can create courses' })
+  fastify.post<{ Params: { orgId: string } }>(
+    '/orgs/:orgId/courses',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: 'Create a new course for an organization',
+        params: orgIdParamsSchema,
+        body: { ...courseBodySchema, required: ['title', 'description'] },
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'course'],
+            properties: { ok: { type: 'boolean' }, course: courseSchema },
+          },
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { orgId } = request.params
+      const member = await requireOrgMember(request, reply, orgId)
+      if (member.role !== 'org_admin') {
+        return reply.code(403).send({ error: 'Only admins can create courses' })
+      }
+
+      const parse = createCourseSchema.safeParse(request.body)
+      if (!parse.success) {
+        return reply.code(400).send({ error: 'Invalid input', details: parse.error.issues })
+      }
+
+      const id = newId(db, `organizations/${orgId}/courses`)
+      const ts = now()
+      const orgSnap = await db.doc(`organizations/${orgId}`).get()
+      const orgData = orgSnap.exists ? orgSnap.data() : null
+      const accessPolicy = resolveAccessPolicy(parse.data)
+      const price = accessPolicy === 'FREE' ? 0 : parse.data.price
+      const course = {
+        id,
+        orgId,
+        ownerOrgId: orgId,
+        ownerOrgName: orgData?.name || orgData?.displayName || orgData?.title || undefined,
+        ownerOrgLogo: orgData?.logo || orgData?.logoUrl || undefined,
+        ...parse.data,
+        coverUrl: parse.data.coverUrl || parse.data.coverImageUrl || undefined,
+        accessPolicy,
+        price,
+        status: 'DRAFT' as const,
+        moduleCount: 0,
+        lessonCount: 0,
+        enrollmentCount: 0,
+        createdBy: request.user!.uid,
+        createdAt: ts,
+        updatedAt: ts,
+      } as CourseDoc
+
+      const courseData = stripUndefined(course)
+      await db.doc(`organizations/${orgId}/courses/${id}`).set(courseData)
+      return reply.code(201).send({ ok: true, course: courseData })
     }
-
-    const parse = createCourseSchema.safeParse(request.body)
-    if (!parse.success) {
-      return reply.code(400).send({ error: 'Invalid input', details: parse.error.issues })
-    }
-
-    const id = newId(db, `organizations/${orgId}/courses`)
-    const ts = now()
-    const orgSnap = await db.doc(`organizations/${orgId}`).get()
-    const orgData = orgSnap.exists ? orgSnap.data() : null
-    const accessPolicy = resolveAccessPolicy(parse.data)
-    const price = accessPolicy === 'FREE' ? 0 : parse.data.price
-    const course = {
-      id,
-      orgId,
-      ownerOrgId: orgId,
-      ownerOrgName: orgData?.name || orgData?.displayName || orgData?.title || undefined,
-      ownerOrgLogo: orgData?.logo || orgData?.logoUrl || undefined,
-      ...parse.data,
-      coverUrl: parse.data.coverUrl || parse.data.coverImageUrl || undefined,
-      accessPolicy,
-      price,
-      status: 'DRAFT' as const,
-      moduleCount: 0,
-      lessonCount: 0,
-      enrollmentCount: 0,
-      createdBy: request.user!.uid,
-      createdAt: ts,
-      updatedAt: ts,
-    } as CourseDoc
-
-    const courseData = stripUndefined(course)
-    await db.doc(`organizations/${orgId}/courses/${id}`).set(courseData)
-    return reply.code(201).send({ ok: true, course: courseData })
-  })
+  )
 
   // Update course
   fastify.patch<{ Params: { orgId: string; courseId: string } }>(
     '/orgs/:orgId/courses/:courseId',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: 'Update a course (fields, publish/archive status)',
+        params: courseParamsSchema,
+        body: updateCourseBodySchema,
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -429,6 +712,17 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
   // Delete course
   fastify.delete<{ Params: { orgId: string; courseId: string } }>(
     '/orgs/:orgId/courses/:courseId',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: 'Delete a course',
+        params: courseParamsSchema,
+        response: {
+          200: okResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -448,6 +742,23 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
   // List modules
   fastify.get<{ Params: { orgId: string; courseId: string } }>(
     '/orgs/:orgId/courses/:courseId/modules',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: 'List modules in a course',
+        params: courseParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'modules'],
+            properties: {
+              ok: { type: 'boolean' },
+              modules: { type: 'array', items: moduleSchema },
+            },
+          },
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId } = request.params
       await requireOrgMember(request, reply, orgId)
@@ -463,6 +774,24 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
   // Create module
   fastify.post<{ Params: { orgId: string; courseId: string } }>(
     '/orgs/:orgId/courses/:courseId/modules',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: 'Create a new module in a course',
+        params: courseParamsSchema,
+        body: { ...moduleBodySchema, required: ['title', 'order'] },
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'module'],
+            properties: { ok: { type: 'boolean' }, module: moduleSchema },
+          },
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -504,6 +833,20 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
   // Update module
   fastify.patch<{ Params: { orgId: string; courseId: string; moduleId: string } }>(
     '/orgs/:orgId/courses/:courseId/modules/:moduleId',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: 'Update a module',
+        params: moduleParamsSchema,
+        body: moduleBodySchema,
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId, moduleId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -527,6 +870,18 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
   // Delete module
   fastify.delete<{ Params: { orgId: string; courseId: string; moduleId: string } }>(
     '/orgs/:orgId/courses/:courseId/modules/:moduleId',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: 'Delete a module from a course',
+        params: moduleParamsSchema,
+        response: {
+          200: okResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId, moduleId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -548,6 +903,23 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
   // Reorder modules
   fastify.patch<{ Params: { orgId: string; courseId: string } }>(
     '/orgs/:orgId/courses/:courseId/modules/reorder',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: "Reorder a course's modules",
+        params: courseParamsSchema,
+        body: {
+          type: 'object',
+          required: ['order'],
+          properties: { order: { type: 'array', items: { type: 'string' } } },
+        },
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -576,6 +948,23 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
   // List lessons in module
   fastify.get<{ Params: { orgId: string; courseId: string; moduleId: string } }>(
     '/orgs/:orgId/courses/:courseId/modules/:moduleId/lessons',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: 'List lessons in a module',
+        params: moduleParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'lessons'],
+            properties: {
+              ok: { type: 'boolean' },
+              lessons: { type: 'array', items: lessonSchema },
+            },
+          },
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId, moduleId } = request.params
       await requireOrgMember(request, reply, orgId)
@@ -591,6 +980,24 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
   // Create lesson
   fastify.post<{ Params: { orgId: string; courseId: string; moduleId: string } }>(
     '/orgs/:orgId/courses/:courseId/modules/:moduleId/lessons',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: 'Create a new lesson in a module',
+        params: moduleParamsSchema,
+        body: { ...lessonBodySchema, required: ['title', 'type', 'order'] },
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'lesson'],
+            properties: { ok: { type: 'boolean' }, lesson: lessonSchema },
+          },
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId, moduleId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -647,6 +1054,20 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
     Params: { orgId: string; courseId: string; moduleId: string; lessonId: string }
   }>(
     '/orgs/:orgId/courses/:courseId/modules/:moduleId/lessons/:lessonId',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: 'Update a lesson',
+        params: lessonParamsSchema,
+        body: lessonBodySchema,
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId, moduleId, lessonId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -674,6 +1095,17 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
     Params: { orgId: string; courseId: string; moduleId: string; lessonId: string }
   }>(
     '/orgs/:orgId/courses/:courseId/modules/:moduleId/lessons/:lessonId',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: 'Delete a lesson from a module',
+        params: lessonParamsSchema,
+        response: {
+          200: okResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId, moduleId, lessonId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -715,6 +1147,23 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
   // Reorder lessons
   fastify.patch<{ Params: { orgId: string; courseId: string; moduleId: string } }>(
     '/orgs/:orgId/courses/:courseId/modules/:moduleId/lessons/reorder',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: "Reorder a module's lessons",
+        params: moduleParamsSchema,
+        body: {
+          type: 'object',
+          required: ['order'],
+          properties: { order: { type: 'array', items: { type: 'string' } } },
+        },
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId, moduleId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -744,6 +1193,46 @@ export const coursesRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string; courseId: string } }>(
     '/orgs/:orgId/courses/:courseId/enrollments',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: 'List enrollments for a course (org view)',
+        params: courseParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'enrollments', 'total'],
+            properties: {
+              ok: { type: 'boolean' },
+              enrollments: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['id', 'courseId', 'orgId', 'userId', 'status'],
+                  additionalProperties: true,
+                  properties: {
+                    id: { type: 'string' },
+                    courseId: { type: 'string' },
+                    orgId: { type: 'string' },
+                    userId: { type: 'string' },
+                    childId: { type: ['string', 'null'] },
+                    entitlementId: { type: 'string' },
+                    status: { type: 'string' },
+                    pricePaid: { type: 'number' },
+                    currency: { type: 'string' },
+                    accessSource: { type: 'string' },
+                    enrolledAt: { type: 'string' },
+                    completedAt: { type: 'string' },
+                    lastAccessedAt: { type: 'string' },
+                  },
+                },
+              },
+              total: { type: 'integer' },
+            },
+          },
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId } = request.params
       await requireOrgMember(request, reply, orgId)
