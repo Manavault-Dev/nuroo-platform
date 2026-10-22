@@ -1207,6 +1207,32 @@
           "pendingReviewHint": "The phone number didn't match the one on file. Confirm this is the right parent.",
           "approveBtn": "Approve",
           "rejectBtn": "Reject"
+        },
+        "childImport": {
+          "title": "Import children from Excel",
+          "instructions": "Upload a spreadsheet of children — a profile and a personal invite link for the parent will be created for each one.",
+          "columnsTitle": "File columns:",
+          "columnRequired": "Required: First name",
+          "columnsOptional": "Optional: Last name, Date of birth, Gender, Group, Parent name, Parent phone, Parent email",
+          "chooseFile": "Choose a file or drag it here",
+          "validCount": "{count, plural, one {# row ready} other {# rows ready}}",
+          "invalidCount": "{count, plural, one {# row with an error} other {# rows with errors}}",
+          "ok": "OK",
+          "colRow": "#",
+          "colName": "Name",
+          "colStatus": "Status",
+          "createdCount": "{count, plural, one {# child created} other {# children created}}",
+          "skippedCount": "{count, plural, one {# row skipped} other {# rows skipped}}",
+          "downloadLinks": "Download links (CSV)",
+          "copyAll": "Copy all",
+          "back": "Back",
+          "confirmImport": "{count, plural, one {Import # child} other {Import # children}}",
+          "done": "Done",
+          "cancel": "Cancel",
+          "importFromExcel": "Import from Excel",
+          "planLimitGeneric": "This exceeds your plan's child limit.",
+          "previewFailed": "Failed to read the file",
+          "commitFailed": "Failed to import"
         }
       },
       "onboarding": {

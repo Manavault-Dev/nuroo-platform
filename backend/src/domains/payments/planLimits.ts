@@ -419,6 +419,32 @@ export async function checkOrgCanAddChild(orgId: string): Promise<{ ok: boolean;
   return { ok: true }
 }
 
+/** Bulk variant of checkOrgCanAddChild — checks headroom for adding `count`
+ * children at once (e.g. a spreadsheet import), not just one. */
+export async function checkOrgCanAddChildren(
+  orgId: string,
+  count: number
+): Promise<{ ok: boolean; error?: string; maxImportable?: number }> {
+  const status = await getSubscriptionStatus(orgId)
+  if (!status.active) {
+    return { ok: false, error: status.error ?? 'Subscription required.' }
+  }
+  const planId = normalizePlanId(status.planId ?? 'starter') ?? 'starter'
+  const { maxChildren } = PLAN_CONFIG[planId]
+  if (maxChildren === null) return { ok: true }
+  const db = getFirestore()
+  const snap = await db.collection('organizations').doc(orgId).collection('children').get()
+  const remaining = maxChildren - snap.size
+  if (count > remaining) {
+    return {
+      ok: false,
+      error: `This would exceed your plan's limit of ${maxChildren} children (${remaining} slots left). Upgrade to continue.`,
+      maxImportable: Math.max(0, remaining),
+    }
+  }
+  return { ok: true }
+}
+
 export async function checkOrgCanAddSpecialist(
   orgId: string
 ): Promise<{ ok: boolean; error?: string }> {
