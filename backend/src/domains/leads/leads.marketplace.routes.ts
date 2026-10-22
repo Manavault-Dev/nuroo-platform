@@ -17,6 +17,37 @@ const publicLeadSchema = z.object({
   message: z.string().max(1000).optional().nullable(),
 })
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const createMarketplaceLeadBodySchema = {
+  type: 'object',
+  required: ['parentName', 'phone'],
+  additionalProperties: true,
+  properties: {
+    branchId: {
+      type: ['string', 'null'],
+      description: 'Branch ID, if the lead is for a specific branch',
+    },
+    parentName: { type: 'string', minLength: 1, maxLength: 200 },
+    phone: { type: 'string', minLength: 5, maxLength: 30 },
+    email: { type: ['string', 'null'] },
+    childName: { type: ['string', 'null'] },
+    childAge: { type: ['string', 'null'] },
+    programInterest: { type: ['string', 'null'] },
+    message: { type: ['string', 'null'] },
+  },
+} as const
+
 /**
  * Public "admission request" form — no auth required.
  * Used from an org's marketplace profile (and its branch cards) so a parent
@@ -27,7 +58,29 @@ export const leadsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string } }>(
     '/marketplace/orgs/:orgId/leads',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Leads'],
+        summary: 'Submit a public admission-request lead for an organization (no auth required)',
+        params: orgIdParamsSchema,
+        body: createMarketplaceLeadBodySchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'leadId'],
+            properties: { ok: { type: 'boolean' }, leadId: { type: 'string' } },
+          },
+          400: {
+            type: 'object',
+            required: ['error'],
+            additionalProperties: true,
+            properties: { error: { type: 'string' }, details: { type: 'array' } },
+          },
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId } = request.params
       const orgSnap = await db.doc(`organizations/${orgId}`).get()

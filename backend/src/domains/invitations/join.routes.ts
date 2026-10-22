@@ -16,6 +16,12 @@ const joinSchema = z.object({
   inviteCode: z.string().min(1).max(100),
 })
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
 function validateInviteExpiration(expiresAt: admin.firestore.Timestamp | undefined): boolean {
   if (!expiresAt) return true
   return new Date() <= expiresAt.toDate()
@@ -48,101 +54,128 @@ function buildSpecialistData(uid: string, email: string | undefined, orgId: stri
 }
 
 export const joinRoute: FastifyPluginAsync = async (fastify) => {
-  fastify.post<{ Body: z.infer<typeof joinSchema> }>('/join', async (request, reply) => {
-    if (!request.user) {
-      return reply.code(401).send({ error: 'Unauthorized' })
-    }
-
-    const db = getFirestore()
-    const { uid, email } = request.user
-    const body = joinSchema.parse(request.body)
-    const inviteCode = body.inviteCode.trim()
-
-    const inviteRef = db.doc(`${COLLECTIONS.ORG_INVITES}/${inviteCode}`)
-    const inviteSnap = await inviteRef.get()
-
-    if (!inviteSnap.exists) {
-      return reply.code(404).send({ error: 'Invalid invite code' })
-    }
-
-    const inviteData = inviteSnap.data()!
-    const orgId = inviteData.orgId as string
-    const role = (inviteData.role as 'specialist' | 'admin') || 'specialist'
-
-    if (!validateInviteExpiration(inviteData.expiresAt)) {
-      return reply.code(400).send({ error: 'Invite code has expired' })
-    }
-
-    const maxUses = inviteData.maxUses as number | undefined
-    const usedCount = (inviteData.usedCount as number) || 0
-
-    if (!validateInviteUsage(usedCount, maxUses)) {
-      return reply.code(400).send({
-        error: 'Invite code has reached maximum usage',
-      })
-    }
-
-    const orgRef = db.doc(`${COLLECTIONS.ORGANIZATIONS}/${orgId}`)
-    const orgSnap = await orgRef.get()
-
-    if (!orgSnap.exists) {
-      return reply.code(404).send({ error: 'Organization not found' })
-    }
-
-    const memberRef = db.doc(`${COLLECTIONS.ORG_MEMBERS(orgId)}/${uid}`)
-    const memberSnap = await memberRef.get()
-
-    if (memberSnap.exists) {
-      const memberData = memberSnap.data()!
-      if (memberData.status === 'active') {
-        await db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}/organizations/${orgId}`).set(
-          {
-            orgId,
-            orgName: orgSnap.data()?.name || orgId,
-            country: orgSnap.data()?.country ?? null,
-            role: memberData.role || role,
-            status: 'active',
-            updatedAt: admin.firestore.Timestamp.now(),
+  fastify.post<{ Body: z.infer<typeof joinSchema> }>(
+    '/join',
+    {
+      schema: {
+        tags: ['Invitations'],
+        summary:
+          'Join an organization by invite code (org-level invite, not the staff invite codes)',
+        body: {
+          type: 'object',
+          required: ['inviteCode'],
+          additionalProperties: true,
+          properties: { inviteCode: { type: 'string', minLength: 1, maxLength: 100 } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'orgId'],
+            properties: { ok: { type: 'boolean' }, orgId: { type: 'string' } },
           },
-          { merge: true }
-        )
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.code(401).send({ error: 'Unauthorized' })
       }
-      return { ok: true, orgId }
-    }
 
-    const canAdd = await checkOrgCanAddSpecialist(orgId)
-    if (!canAdd.ok) {
-      return reply.code(403).send({ error: canAdd.error ?? 'Cannot add specialist.' })
-    }
+      const db = getFirestore()
+      const { uid, email } = request.user
+      const body = joinSchema.parse(request.body)
+      const inviteCode = body.inviteCode.trim()
 
-    const now = new Date()
-    await memberRef.set(buildMemberData(uid, role, now))
+      const inviteRef = db.doc(`${COLLECTIONS.ORG_INVITES}/${inviteCode}`)
+      const inviteSnap = await inviteRef.get()
 
-    await db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}/organizations/${orgId}`).set({
-      orgId,
-      orgName: orgSnap.data()?.name || orgId,
-      country: orgSnap.data()?.country ?? null,
-      role,
-      status: 'active',
-      updatedAt: admin.firestore.Timestamp.fromDate(now),
-    })
+      if (!inviteSnap.exists) {
+        return reply.code(404).send({ error: 'Invalid invite code' })
+      }
 
-    const specialistRef = db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}`)
-    const specialistSnap = await specialistRef.get()
+      const inviteData = inviteSnap.data()!
+      const orgId = inviteData.orgId as string
+      const role = (inviteData.role as 'specialist' | 'admin') || 'specialist'
 
-    if (specialistSnap.exists) {
-      await specialistRef.update({
+      if (!validateInviteExpiration(inviteData.expiresAt)) {
+        return reply.code(400).send({ error: 'Invite code has expired' })
+      }
+
+      const maxUses = inviteData.maxUses as number | undefined
+      const usedCount = (inviteData.usedCount as number) || 0
+
+      if (!validateInviteUsage(usedCount, maxUses)) {
+        return reply.code(400).send({
+          error: 'Invite code has reached maximum usage',
+        })
+      }
+
+      const orgRef = db.doc(`${COLLECTIONS.ORGANIZATIONS}/${orgId}`)
+      const orgSnap = await orgRef.get()
+
+      if (!orgSnap.exists) {
+        return reply.code(404).send({ error: 'Organization not found' })
+      }
+
+      const memberRef = db.doc(`${COLLECTIONS.ORG_MEMBERS(orgId)}/${uid}`)
+      const memberSnap = await memberRef.get()
+
+      if (memberSnap.exists) {
+        const memberData = memberSnap.data()!
+        if (memberData.status === 'active') {
+          await db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}/organizations/${orgId}`).set(
+            {
+              orgId,
+              orgName: orgSnap.data()?.name || orgId,
+              country: orgSnap.data()?.country ?? null,
+              role: memberData.role || role,
+              status: 'active',
+              updatedAt: admin.firestore.Timestamp.now(),
+            },
+            { merge: true }
+          )
+        }
+        return { ok: true, orgId }
+      }
+
+      const canAdd = await checkOrgCanAddSpecialist(orgId)
+      if (!canAdd.ok) {
+        return reply.code(403).send({ error: canAdd.error ?? 'Cannot add specialist.' })
+      }
+
+      const now = new Date()
+      await memberRef.set(buildMemberData(uid, role, now))
+
+      await db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}/organizations/${orgId}`).set({
         orgId,
+        orgName: orgSnap.data()?.name || orgId,
+        country: orgSnap.data()?.country ?? null,
+        role,
+        status: 'active',
         updatedAt: admin.firestore.Timestamp.fromDate(now),
       })
-    } else {
-      await specialistRef.set(buildSpecialistData(uid, email, orgId, now))
+
+      const specialistRef = db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}`)
+      const specialistSnap = await specialistRef.get()
+
+      if (specialistSnap.exists) {
+        await specialistRef.update({
+          orgId,
+          updatedAt: admin.firestore.Timestamp.fromDate(now),
+        })
+      } else {
+        await specialistRef.set(buildSpecialistData(uid, email, orgId, now))
+      }
+
+      try {
+        await inviteRef.update({ usedCount: usedCount + 1 })
+      } catch {}
+
+      return { ok: true, orgId }
     }
-
-    try {
-      await inviteRef.update({ usedCount: usedCount + 1 })
-    } catch {}
-
-    return { ok: true, orgId }
-  })
+  )
 }

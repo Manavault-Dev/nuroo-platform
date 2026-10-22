@@ -8,6 +8,24 @@ const API_BASE_URL =
   ).replace(/\/+$/, '') + '/v1'
 
 // Types
+export interface ImportChildRowData {
+  firstName: string
+  lastName?: string
+  dateOfBirth?: string
+  gender?: string
+  groupLabel?: string
+  expectedParentName?: string
+  contactPhone?: string
+  contactEmail?: string
+}
+
+export interface ImportChildRow {
+  row: number
+  data: ImportChildRowData
+  valid: boolean
+  error?: string
+}
+
 export interface SpecialistProfile {
   uid: string
   email: string
@@ -1131,7 +1149,8 @@ export class ApiClient {
     name: string,
     country?: string,
     plan?: 'nuroo' | 'nuroo_business',
-    specializations?: string[]
+    specializations?: string[],
+    type?: 'kindergarten' | 'development_center' | 'school' | 'specialist' | 'other'
   ) {
     cache.invalidate('profile')
     cache.invalidate('organizations')
@@ -1139,7 +1158,7 @@ export class ApiClient {
       '/orgs',
       {
         method: 'POST',
-        body: JSON.stringify({ name, country, plan, specializations }),
+        body: JSON.stringify({ name, country, plan, specializations, type }),
       }
     )
   }
@@ -1199,6 +1218,14 @@ export class ApiClient {
     }>(`/orgs/${orgId}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
+    })
+  }
+
+  async deleteOrganization(orgId: string) {
+    cache.invalidate('profile')
+    cache.invalidate('organizations')
+    return this.request<{ ok: boolean }>(`/orgs/${orgId}`, {
+      method: 'DELETE',
     })
   }
 
@@ -1282,6 +1309,16 @@ export class ApiClient {
     )
   }
 
+  async reviewChildInviteClaim(orgId: string, childId: string, approve: boolean) {
+    return this.request<{ ok: boolean; status: 'pending' | 'claimed' }>(
+      `/orgs/${orgId}/children/${childId}/invite/review`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ approve }),
+      }
+    )
+  }
+
   async createChildInvite(
     orgId: string,
     childId: string,
@@ -1302,13 +1339,55 @@ export class ApiClient {
     )
   }
 
+  async importChildrenPreview(orgId: string, file: File) {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const headers = new Headers()
+    if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
+
+    const response = await fetch(`${this.baseUrl}/orgs/${orgId}/children/import/preview`, {
+      method: 'POST',
+      body: formData,
+      headers,
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
+      throw new Error(error.error || error.message || 'Preview failed')
+    }
+
+    return response.json() as Promise<{
+      ok: boolean
+      totalRows: number
+      validCount: number
+      invalidCount: number
+      rows: ImportChildRow[]
+      planOk: boolean
+      planError?: string
+      maxImportable?: number
+    }>
+  }
+
+  async importChildrenCommit(orgId: string, rows: ImportChildRowData[]) {
+    cache.invalidate(`children:${orgId}`)
+    return this.request<{
+      ok: boolean
+      created: { row: number; childId: string; childName: string; token: string; link: string }[]
+      skipped: { row: number; error: string }[]
+    }>(`/orgs/${orgId}/children/import/commit`, {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    })
+  }
+
   async getChildInvite(orgId: string, childId: string) {
     return this.request<{
       ok: boolean
       invite: {
         token: string
         link: string
-        status: 'pending' | 'claimed'
+        status: 'pending' | 'claimed' | 'pending_review'
         groupLabel: string | null
         createdAt: unknown
         claimedAt: unknown
@@ -1515,10 +1594,14 @@ export class ApiClient {
           childId: string
           childName: string
           age?: number
-          taskId: string | null
+          tasks: Array<{
+            taskId: string
+            title: string
+            submissionText: string | null
+            fileUrl: string | null
+            submittedAt: string | null
+          }>
           status: 'pending' | 'submitted' | 'graded'
-          submissionText: string | null
-          fileUrl: string | null
           submittedAt: string | null
           grade: 'approved' | 'needs_revision' | null
           feedback: string | null

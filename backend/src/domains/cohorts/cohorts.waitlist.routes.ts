@@ -32,6 +32,67 @@ function col(orgId: string, cohortId: string) {
   return `organizations/${orgId}/cohorts/${cohortId}/waitlist`
 }
 
+const cohortParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'cohortId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    cohortId: { type: 'string', description: 'Cohort ID' },
+  },
+} as const
+
+const entryParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'cohortId', 'entryId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    cohortId: { type: 'string', description: 'Cohort ID' },
+    entryId: { type: 'string', description: 'Waitlist entry ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const joinBodySchema = {
+  type: 'object',
+  required: ['childName'],
+  additionalProperties: true,
+  properties: {
+    parentName: { type: 'string', maxLength: 200 },
+    childName: { type: 'string', maxLength: 200 },
+    phone: { type: ['string', 'null'], maxLength: 30 },
+  },
+} as const
+
+const waitlistEntrySchema = {
+  type: 'object',
+  required: ['id', 'cohortId', 'orgId', 'parentId', 'status'],
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    cohortId: { type: 'string' },
+    orgId: { type: 'string' },
+    parentId: { type: 'string' },
+    parentName: { type: 'string' },
+    childName: { type: 'string' },
+    phone: { type: ['string', 'null'] },
+    addedAt: { type: 'string' },
+    notifiedAt: { type: ['string', 'null'] },
+    status: { type: 'string', enum: ['waiting', 'notified', 'enrolled', 'expired'] },
+  },
+} as const
+
 export const cohortsWaitlistRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
@@ -41,7 +102,33 @@ export const cohortsWaitlistRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Params: { orgId: string; cohortId: string } }>(
     '/marketplace/orgs/:orgId/cohorts/:cohortId/waitlist/join',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Join the waitlist for a full cohort',
+        params: cohortParamsSchema,
+        body: joinBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'alreadyWaiting', 'entryId'],
+            properties: {
+              ok: { type: 'boolean' },
+              alreadyWaiting: { type: 'boolean' },
+              entryId: { type: 'string' },
+            },
+          },
+          201: {
+            type: 'object',
+            required: ['ok', 'entryId'],
+            properties: { ok: { type: 'boolean' }, entryId: { type: 'string' } },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, cohortId } = request.params
@@ -93,7 +180,22 @@ export const cohortsWaitlistRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{ Params: { orgId: string; cohortId: string } }>(
     '/marketplace/orgs/:orgId/cohorts/:cohortId/waitlist/check',
-    { config: { rateLimit: RATE_READ } },
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Check whether the current user is on a cohort waitlist',
+        params: cohortParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'waiting'],
+            properties: { ok: { type: 'boolean' }, waiting: { type: 'boolean' } },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { cohortId } = request.params
@@ -113,7 +215,18 @@ export const cohortsWaitlistRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.delete<{ Params: { orgId: string; cohortId: string } }>(
     '/marketplace/orgs/:orgId/cohorts/:cohortId/waitlist/leave',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Leave the waitlist for a cohort',
+        params: cohortParamsSchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, cohortId } = request.params
@@ -139,7 +252,27 @@ export const cohortsWaitlistRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{ Params: { orgId: string; cohortId: string } }>(
     '/orgs/:orgId/cohorts/:cohortId/waitlist',
-    { config: { rateLimit: RATE_READ } },
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Cohorts'],
+        summary: "Org admin views a cohort's full waitlist",
+        params: cohortParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'entries', 'count'],
+            properties: {
+              ok: { type: 'boolean' },
+              entries: { type: 'array', items: waitlistEntrySchema },
+              count: { type: 'integer' },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, cohortId } = request.params
@@ -164,7 +297,20 @@ export const cohortsWaitlistRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Params: { orgId: string; cohortId: string; entryId: string } }>(
     '/orgs/:orgId/cohorts/:cohortId/waitlist/:entryId/notify',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Notify a waiting parent that a spot has opened up',
+        params: entryParamsSchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, cohortId, entryId } = request.params
@@ -204,7 +350,20 @@ export const cohortsWaitlistRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.delete<{ Params: { orgId: string; cohortId: string; entryId: string } }>(
     '/orgs/:orgId/cohorts/:cohortId/waitlist/:entryId',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Org admin removes a waitlist entry',
+        params: entryParamsSchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, cohortId, entryId } = request.params

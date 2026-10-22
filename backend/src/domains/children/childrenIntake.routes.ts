@@ -193,6 +193,113 @@ async function resolveIntakeAccess(
   return null
 }
 
+// ── Fastify schemas ────────────────────────────────────────────────────────────
+
+const orgIdChildIdParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'childId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    childId: { type: 'string', description: 'Child ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+  additionalProperties: true,
+} as const
+
+const intakeBodySchema = {
+  type: 'object',
+  properties: {
+    childFullName: { type: 'string' },
+    dateOfBirth: { type: 'string' },
+    ageText: { type: 'string' },
+    homeAddress: { type: 'string' },
+    contactPhone: { type: 'string' },
+    filledBy: { type: 'string', enum: ['mother', 'father', 'guardian', 'other'] },
+    filledByOther: { type: 'string' },
+    mainConcerns: { type: 'string' },
+    firstNoticedAt: { type: 'string' },
+    previousSpecialists: { type: 'array', items: { type: 'string' } },
+    previousSpecialistsOther: { type: 'string' },
+    motherAgeAtPregnancy: { type: 'integer' },
+    pregnancyNumber: { type: 'string' },
+    pregnancyComplications: { type: 'boolean' },
+    pregnancyFactors: { type: 'array', items: { type: 'string' } },
+    pregnancyFactorsOther: { type: 'string' },
+    pregnancyHospitalizations: { type: 'string' },
+    gestationWeeks: { type: 'integer' },
+    birthTypes: { type: 'array', items: { type: 'string' } },
+    birthComplications: { type: 'boolean' },
+    birthFactors: { type: 'array', items: { type: 'string' } },
+    birthFactorsOther: { type: 'string' },
+    weightAtBirth: { type: 'string' },
+    heightAtBirth: { type: 'string' },
+    apgarScore: { type: 'string' },
+    criedImmediately: { type: 'boolean' },
+    neededResuscitation: { type: 'boolean' },
+    inIncubator: { type: 'boolean' },
+    daysInHospital: { type: 'integer' },
+    heldHeadAt: { type: 'string' },
+    rolledOverAt: { type: 'string' },
+    satAt: { type: 'string' },
+    crawledAt: { type: 'string' },
+    stoodAt: { type: 'string' },
+    walkedAt: { type: 'string' },
+    toneIssues: { type: 'boolean' },
+    neurologistBefore3: { type: 'boolean' },
+    cooingAt: { type: 'string' },
+    babblingAt: { type: 'string' },
+    firstWordsAt: { type: 'string' },
+    phraseSpeechAt: { type: 'string' },
+    speechRegression: { type: 'boolean' },
+    understandsSpeech: { type: 'string', enum: ['well', 'partially', 'poorly'] },
+    usesGestures: { type: 'boolean' },
+    hasEcholalia: { type: 'boolean' },
+    speechFeatures: { type: 'array', items: { type: 'string' } },
+    eyeContact: { type: 'string', enum: ['yes', 'rarely', 'no'] },
+    respondsToName: { type: 'string', enum: ['yes', 'sometimes', 'no'] },
+    likedCommunication: { type: 'boolean' },
+    playedRoleGames: { type: 'boolean' },
+    behaviorFeatures: { type: 'array', items: { type: 'string' } },
+    behaviorFeaturesOther: { type: 'string' },
+    healthConditions: { type: 'array', items: { type: 'string' } },
+    healthConditionsOther: { type: 'string' },
+    hospitalizations: { type: 'string' },
+    longTermMedications: { type: 'string' },
+    breastfed: { type: 'boolean' },
+    breastfedUntil: { type: 'string' },
+    feedingDifficulties: { type: 'boolean' },
+    selectiveEating: { type: 'boolean' },
+    sleepDisorders: { type: 'boolean' },
+    sleepDisordersDescription: { type: 'string' },
+    familyConditions: { type: 'array', items: { type: 'string' } },
+    familyConditionsOther: { type: 'string' },
+    familyConditionsWho: { type: 'string' },
+    attendedInstitutions: { type: 'array', items: { type: 'string' } },
+    adaptationDescription: { type: 'string' },
+    groupDifficulties: { type: 'string' },
+    selfCareSkills: { type: 'array', items: { type: 'string' } },
+    additionalInfo: { type: 'string' },
+    submitted: { type: 'boolean' },
+  },
+  additionalProperties: true,
+} as const
+
+const intakeDataSchema = {
+  type: 'object',
+  properties: {
+    ...intakeBodySchema.properties,
+    filledAt: { type: ['string', 'null'] },
+    updatedAt: { type: ['string', 'null'] },
+    filledByParentUid: { type: 'string' },
+  },
+  additionalProperties: true,
+} as const
+
 // ── Route ──────────────────────────────────────────────────────────────────────
 
 export const childrenIntakeRoute: import('fastify').FastifyPluginAsync = async (fastify) => {
@@ -202,6 +309,26 @@ export const childrenIntakeRoute: import('fastify').FastifyPluginAsync = async (
    */
   fastify.get<{ Params: { orgId: string; childId: string } }>(
     '/orgs/:orgId/children/:childId/intake',
+    {
+      schema: {
+        tags: ['Children'],
+        summary: "Get a child's intake form",
+        params: orgIdChildIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'intake'],
+            properties: {
+              ok: { type: 'boolean' },
+              intake: { anyOf: [{ type: 'null' }, intakeDataSchema] },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
@@ -242,54 +369,80 @@ export const childrenIntakeRoute: import('fastify').FastifyPluginAsync = async (
   fastify.put<{
     Params: { orgId: string; childId: string }
     Body: z.infer<typeof intakeSchema>
-  }>('/orgs/:orgId/children/:childId/intake', async (request, reply) => {
-    try {
-      if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
-      const { orgId, childId } = request.params
-      const db = getFirestore()
-
-      const access = await resolveIntakeAccess(db, request.user.uid, orgId, childId)
-      if (!access) {
-        return reply.code(403).send({ error: 'No access to this child intake' })
-      }
-
-      const parse = intakeSchema.safeParse(request.body)
-      if (!parse.success) {
-        fastify.log.warn(
-          { orgId, childId, issues: parse.error.errors },
-          '[intake] validation failed'
-        )
-        return reply.code(400).send({ error: 'Invalid intake data', details: parse.error.errors })
-      }
-
-      const now = new Date()
-      const ref = db.doc(`organizations/${orgId}/children/${access.resolvedChildId}/intake/main`)
-      const snap = await ref.get()
-      const isNew = !snap.exists
-
-      // Strip the `submitted` flag — it's a signal, not a stored field
-      const { submitted, ...formData } = parse.data
-
-      await ref.set(
-        {
-          ...formData,
-          updatedAt: now,
-          // Only set filledAt when the parent explicitly submits the completed form.
-          // Intermediate "Next step" saves must NOT mark the form as filled.
-          ...(submitted ? { filledAt: now, filledByParentUid: request.user.uid } : {}),
+  }>(
+    '/orgs/:orgId/children/:childId/intake',
+    {
+      schema: {
+        tags: ['Children'],
+        summary: "Save a child's intake form",
+        params: orgIdChildIdParamsSchema,
+        body: intakeBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'updatedAt', 'isNew'],
+            properties: {
+              ok: { type: 'boolean' },
+              updatedAt: { type: 'string' },
+              isNew: { type: 'boolean' },
+            },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
         },
-        { merge: true }
-      )
+      },
+    },
+    async (request, reply) => {
+      try {
+        if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
+        const { orgId, childId } = request.params
+        const db = getFirestore()
 
-      fastify.log.info(
-        { orgId, resolvedChildId: access.resolvedChildId, isParent: access.isParent, isNew },
-        '[intake] form saved'
-      )
+        const access = await resolveIntakeAccess(db, request.user.uid, orgId, childId)
+        if (!access) {
+          return reply.code(403).send({ error: 'No access to this child intake' })
+        }
 
-      return { ok: true, updatedAt: now.toISOString(), isNew }
-    } catch (err: unknown) {
-      fastify.log.error({ err }, 'Failed to save intake form')
-      return reply.code(500).send({ error: 'Failed to save intake form' })
+        const parse = intakeSchema.safeParse(request.body)
+        if (!parse.success) {
+          fastify.log.warn(
+            { orgId, childId, issues: parse.error.errors },
+            '[intake] validation failed'
+          )
+          return reply.code(400).send({ error: 'Invalid intake data', details: parse.error.errors })
+        }
+
+        const now = new Date()
+        const ref = db.doc(`organizations/${orgId}/children/${access.resolvedChildId}/intake/main`)
+        const snap = await ref.get()
+        const isNew = !snap.exists
+
+        // Strip the `submitted` flag — it's a signal, not a stored field
+        const { submitted, ...formData } = parse.data
+
+        await ref.set(
+          {
+            ...formData,
+            updatedAt: now,
+            // Only set filledAt when the parent explicitly submits the completed form.
+            // Intermediate "Next step" saves must NOT mark the form as filled.
+            ...(submitted ? { filledAt: now, filledByParentUid: request.user.uid } : {}),
+          },
+          { merge: true }
+        )
+
+        fastify.log.info(
+          { orgId, resolvedChildId: access.resolvedChildId, isParent: access.isParent, isNew },
+          '[intake] form saved'
+        )
+
+        return { ok: true, updatedAt: now.toISOString(), isNew }
+      } catch (err: unknown) {
+        fastify.log.error({ err }, 'Failed to save intake form')
+        return reply.code(500).send({ error: 'Failed to save intake form' })
+      }
     }
-  })
+  )
 }

@@ -16,6 +16,76 @@ import {
   deleteContentRoadmap,
 } from './orgContent.service.js'
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const orgTaskParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'taskId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    taskId: { type: 'string', description: 'Content task ID' },
+  },
+} as const
+
+const orgRoadmapParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'roadmapId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    roadmapId: { type: 'string', description: 'Content roadmap ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const contentItemSchema = {
+  type: 'object',
+  additionalProperties: true,
+} as const
+
+const taskBodySchema = {
+  type: 'object',
+  properties: {
+    title: { type: 'string' },
+    description: { type: 'string' },
+    category: { type: 'string' },
+    ageRange: {
+      type: 'object',
+      properties: { min: { type: 'number' }, max: { type: 'number' } },
+    },
+    difficulty: { type: 'string', enum: ['easy', 'medium', 'hard'] },
+    estimatedDuration: { type: 'number' },
+    instructions: { type: 'array', items: { type: 'string' } },
+    videoUrl: { type: 'string' },
+    imageUrl: { type: 'string' },
+    mediaType: { type: 'string', enum: ['video', 'image', 'none'] },
+  },
+  additionalProperties: true,
+} as const
+
+const roadmapBodySchema = {
+  type: 'object',
+  properties: {
+    name: { type: 'string' },
+    description: { type: 'string' },
+    category: { type: 'string' },
+    ageRange: {
+      type: 'object',
+      properties: { min: { type: 'number' }, max: { type: 'number' } },
+    },
+    taskIds: { type: 'array', items: { type: 'string' } },
+  },
+  additionalProperties: true,
+} as const
+
 const taskSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().optional(),
@@ -42,6 +112,26 @@ export const orgContentAdminRoute: import('fastify').FastifyPluginAsync = async 
 
   fastify.get<{ Params: { orgId: string } }>(
     '/orgs/:orgId/content/tasks',
+    {
+      schema: {
+        tags: ['Content'],
+        summary: "List an organization's content tasks",
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'tasks', 'count'],
+            properties: {
+              ok: { type: 'boolean' },
+              tasks: { type: 'array', items: contentItemSchema },
+              count: { type: 'integer' },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params
@@ -57,6 +147,23 @@ export const orgContentAdminRoute: import('fastify').FastifyPluginAsync = async 
 
   fastify.get<{ Params: { orgId: string; taskId: string } }>(
     '/orgs/:orgId/content/tasks/:taskId',
+    {
+      schema: {
+        tags: ['Content'],
+        summary: 'Get a single content task by ID',
+        params: orgTaskParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'task'],
+            properties: { ok: { type: 'boolean' }, task: contentItemSchema },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId, taskId } = request.params
@@ -77,6 +184,24 @@ export const orgContentAdminRoute: import('fastify').FastifyPluginAsync = async 
 
   fastify.post<{ Params: { orgId: string }; Body: z.infer<typeof taskSchema> }>(
     '/orgs/:orgId/content/tasks',
+    {
+      schema: {
+        tags: ['Content'],
+        summary: 'Create a content task for an organization',
+        params: orgIdParamsSchema,
+        body: taskBodySchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'task'],
+            properties: { ok: { type: 'boolean' }, task: contentItemSchema },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params
@@ -94,6 +219,23 @@ export const orgContentAdminRoute: import('fastify').FastifyPluginAsync = async 
 
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/content/tasks/upload',
+    {
+      schema: {
+        tags: ['Content'],
+        summary: 'Upload a media file and create a content task from it (multipart/form-data)',
+        params: orgIdParamsSchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'task'],
+            properties: { ok: { type: 'boolean' }, task: contentItemSchema },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params
@@ -140,26 +282,65 @@ export const orgContentAdminRoute: import('fastify').FastifyPluginAsync = async 
   fastify.patch<{
     Params: { orgId: string; taskId: string }
     Body: Partial<z.infer<typeof taskSchema>>
-  }>('/orgs/:orgId/content/tasks/:taskId', async (request, reply) => {
-    try {
-      const { orgId, taskId } = request.params
-      await requireOrgMember(request, reply, orgId)
-      const db = getFirestore()
-      const body = taskSchema.partial().parse(request.body)
+  }>(
+    '/orgs/:orgId/content/tasks/:taskId',
+    {
+      schema: {
+        tags: ['Content'],
+        summary: 'Update a content task',
+        params: orgTaskParamsSchema,
+        body: taskBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'task'],
+            properties: { ok: { type: 'boolean' }, task: contentItemSchema },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
       try {
-        const task = await updateContentTask(db, orgId, taskId, body)
-        return { ok: true, task }
+        const { orgId, taskId } = request.params
+        await requireOrgMember(request, reply, orgId)
+        const db = getFirestore()
+        const body = taskSchema.partial().parse(request.body)
+        try {
+          const task = await updateContentTask(db, orgId, taskId, body)
+          return { ok: true, task }
+        } catch (e: any) {
+          if (e.statusCode === 404) return reply.code(404).send({ error: e.message })
+          throw e
+        }
       } catch (e: any) {
-        if (e.statusCode === 404) return reply.code(404).send({ error: e.message })
-        throw e
+        return reply.code(400).send({ error: e?.message || 'Failed to update task' })
       }
-    } catch (e: any) {
-      return reply.code(400).send({ error: e?.message || 'Failed to update task' })
     }
-  })
+  )
 
   fastify.delete<{ Params: { orgId: string; taskId: string } }>(
     '/orgs/:orgId/content/tasks/:taskId',
+    {
+      schema: {
+        tags: ['Content'],
+        summary: 'Delete a content task',
+        params: orgTaskParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok'],
+            properties: { ok: { type: 'boolean' } },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId, taskId } = request.params
@@ -180,6 +361,26 @@ export const orgContentAdminRoute: import('fastify').FastifyPluginAsync = async 
 
   fastify.get<{ Params: { orgId: string } }>(
     '/orgs/:orgId/content/roadmaps',
+    {
+      schema: {
+        tags: ['Content'],
+        summary: "List an organization's content roadmaps",
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'roadmaps', 'count'],
+            properties: {
+              ok: { type: 'boolean' },
+              roadmaps: { type: 'array', items: contentItemSchema },
+              count: { type: 'integer' },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params
@@ -195,6 +396,24 @@ export const orgContentAdminRoute: import('fastify').FastifyPluginAsync = async 
 
   fastify.post<{ Params: { orgId: string }; Body: z.infer<typeof roadmapSchema> }>(
     '/orgs/:orgId/content/roadmaps',
+    {
+      schema: {
+        tags: ['Content'],
+        summary: 'Create a content roadmap for an organization',
+        params: orgIdParamsSchema,
+        body: roadmapBodySchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'roadmap'],
+            properties: { ok: { type: 'boolean' }, roadmap: contentItemSchema },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params
@@ -213,27 +432,66 @@ export const orgContentAdminRoute: import('fastify').FastifyPluginAsync = async 
   fastify.patch<{
     Params: { orgId: string; roadmapId: string }
     Body: Partial<z.infer<typeof roadmapSchema>>
-  }>('/orgs/:orgId/content/roadmaps/:roadmapId', async (request, reply) => {
-    try {
-      const { orgId, roadmapId } = request.params
-      await requireOrgMember(request, reply, orgId)
-      if (!request.user) return
-      const db = getFirestore()
-      const body = roadmapSchema.partial().parse(request.body)
+  }>(
+    '/orgs/:orgId/content/roadmaps/:roadmapId',
+    {
+      schema: {
+        tags: ['Content'],
+        summary: 'Update a content roadmap',
+        params: orgRoadmapParamsSchema,
+        body: roadmapBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'roadmap'],
+            properties: { ok: { type: 'boolean' }, roadmap: contentItemSchema },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
       try {
-        const roadmap = await updateContentRoadmap(db, orgId, roadmapId, body, request.user.uid)
-        return { ok: true, roadmap }
+        const { orgId, roadmapId } = request.params
+        await requireOrgMember(request, reply, orgId)
+        if (!request.user) return
+        const db = getFirestore()
+        const body = roadmapSchema.partial().parse(request.body)
+        try {
+          const roadmap = await updateContentRoadmap(db, orgId, roadmapId, body, request.user.uid)
+          return { ok: true, roadmap }
+        } catch (e: any) {
+          if (e.statusCode === 404) return reply.code(404).send({ error: e.message })
+          throw e
+        }
       } catch (e: any) {
-        if (e.statusCode === 404) return reply.code(404).send({ error: e.message })
-        throw e
+        return reply.code(400).send({ error: e?.message || 'Failed to update roadmap' })
       }
-    } catch (e: any) {
-      return reply.code(400).send({ error: e?.message || 'Failed to update roadmap' })
     }
-  })
+  )
 
   fastify.delete<{ Params: { orgId: string; roadmapId: string } }>(
     '/orgs/:orgId/content/roadmaps/:roadmapId',
+    {
+      schema: {
+        tags: ['Content'],
+        summary: 'Delete a content roadmap',
+        params: orgRoadmapParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok'],
+            properties: { ok: { type: 'boolean' } },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId, roadmapId } = request.params

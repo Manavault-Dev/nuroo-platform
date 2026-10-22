@@ -5,10 +5,21 @@ import { useRouter } from '@/i18n/navigation'
 import { useTranslations } from 'next-intl'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
 import { apiClient } from '@/lib/b2b/api'
-import { Key, Plus, Copy, Check, Loader2, ExternalLink, Smartphone, RefreshCw } from 'lucide-react'
+import {
+  Key,
+  Plus,
+  Copy,
+  Check,
+  Loader2,
+  ExternalLink,
+  Smartphone,
+  RefreshCw,
+  FileSpreadsheet,
+} from 'lucide-react'
 import { useBranding } from '@/lib/b2b/brandingContext'
 import { resolveBrandingAccent } from '@/lib/b2b/themePresets'
 import { useAlert } from '@/components/ui/AlertDialog'
+import { ChildrenImportModal } from '@/components/b2b/ChildrenImportModal'
 import QRCode from 'qrcode'
 
 interface ChildInvite {
@@ -17,7 +28,7 @@ interface ChildInvite {
   groupLabel: string | null
   token: string
   link: string
-  status: 'pending' | 'claimed'
+  status: 'pending' | 'claimed' | 'pending_review'
 }
 
 function ChildInviteQr({ link }: { link: string }) {
@@ -75,6 +86,8 @@ export default function InvitesPage() {
   const [childGroupLabel, setChildGroupLabel] = useState('')
   const [creatingChildInvite, setCreatingChildInvite] = useState(false)
   const [regeneratingChildId, setRegeneratingChildId] = useState<string | null>(null)
+  const [reviewingChildId, setReviewingChildId] = useState<string | null>(null)
+  const [showImportModal, setShowImportModal] = useState(false)
   const { alert } = useAlert()
   const currentOrg =
     profile?.organizations.find((org) => org.orgId === currentOrgId) ?? profile?.organizations[0]
@@ -137,6 +150,7 @@ export default function InvitesPage() {
   }
 
   const tChild = useTranslations('b2b.pages.invites.childInvites')
+  const tChildImport = useTranslations('b2b.pages.invites.childImport')
 
   const handleCreateChildInvite = async () => {
     if (!currentOrgId || !childName.trim()) return
@@ -186,6 +200,20 @@ export default function InvitesPage() {
       alert(errorMessage, { type: 'error' })
     } finally {
       setRegeneratingChildId(null)
+    }
+  }
+
+  const handleReviewClaim = async (childId: string, approve: boolean) => {
+    if (!currentOrgId) return
+    setReviewingChildId(childId)
+    try {
+      const { status } = await apiClient.reviewChildInviteClaim(currentOrgId, childId, approve)
+      setChildInvites(childInvites.map((ci) => (ci.childId === childId ? { ...ci, status } : ci)))
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : tChild('failedCreateInvite')
+      alert(errorMessage, { type: 'error' })
+    } finally {
+      setReviewingChildId(null)
     }
   }
 
@@ -533,7 +561,16 @@ export default function InvitesPage() {
 
         {activeTab === 'child' && (
           <div>
-            <p className="text-sm text-gray-500 mb-4">{tChild('subtitle')}</p>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <p className="text-sm text-gray-500">{tChild('subtitle')}</p>
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary-700 bg-primary-50 rounded-lg hover:bg-primary-100 whitespace-nowrap"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                {tChildImport('importFromExcel')}
+              </button>
+            </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">
               <div className="flex flex-col sm:flex-row gap-3">
@@ -589,13 +626,42 @@ export default function InvitesPage() {
                       className={`px-2.5 py-1 text-xs font-semibold rounded-full mb-3 ${
                         invite.status === 'claimed'
                           ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-100 text-gray-600'
+                          : invite.status === 'pending_review'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-gray-100 text-gray-600'
                       }`}
                     >
                       {invite.status === 'claimed'
                         ? tChild('statusClaimed')
-                        : tChild('statusPending')}
+                        : invite.status === 'pending_review'
+                          ? tChild('statusPendingReview')
+                          : tChild('statusPending')}
                     </span>
+                    {invite.status === 'pending_review' && (
+                      <div className="w-full mb-2">
+                        <p className="text-xs text-amber-600 mb-2">{tChild('pendingReviewHint')}</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleReviewClaim(invite.childId, true)}
+                            disabled={reviewingChildId === invite.childId}
+                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                          >
+                            {reviewingChildId === invite.childId ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              tChild('approveBtn')
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleReviewClaim(invite.childId, false)}
+                            disabled={reviewingChildId === invite.childId}
+                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-red-50 text-red-600 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors"
+                          >
+                            {tChild('rejectBtn')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex gap-2 w-full">
                       <button
                         onClick={() => handleCopy(invite.link)}
@@ -614,7 +680,9 @@ export default function InvitesPage() {
                       <button
                         onClick={() => handleRegenerateChildInvite(invite)}
                         disabled={
-                          regeneratingChildId === invite.childId || invite.status === 'claimed'
+                          regeneratingChildId === invite.childId ||
+                          invite.status === 'claimed' ||
+                          invite.status === 'pending_review'
                         }
                         className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
@@ -633,6 +701,27 @@ export default function InvitesPage() {
           </div>
         )}
       </div>
+
+      {currentOrgId && (
+        <ChildrenImportModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          orgId={currentOrgId}
+          onImported={(createdRows) => {
+            setChildInvites([
+              ...createdRows.map((c) => ({
+                childId: c.childId,
+                childName: c.childName,
+                groupLabel: null,
+                token: c.token,
+                link: c.link,
+                status: 'pending' as const,
+              })),
+              ...childInvites,
+            ])
+          }}
+        />
+      )}
     </div>
   )
 }

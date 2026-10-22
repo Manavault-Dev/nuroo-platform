@@ -10,6 +10,60 @@ const sendMessageSchema = z.object({
   text: z.string().min(1).max(4000),
 })
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
+const convIdParamsSchema = {
+  type: 'object',
+  required: ['convId'],
+  properties: { convId: { type: 'string', description: 'Conversation ID' } },
+} as const
+
+const sendMessageBodySchema = {
+  type: 'object',
+  required: ['text'],
+  additionalProperties: true,
+  properties: { text: { type: 'string', minLength: 1, maxLength: 4000 } },
+} as const
+
+const conversationSchema = {
+  type: 'object',
+  required: ['id', 'unreadCount'],
+  properties: {
+    id: { type: 'string' },
+    orgId: { type: 'string' },
+    childId: { type: 'string' },
+    childName: { type: 'string' },
+    specialistId: { type: 'string' },
+    specialistName: { type: 'string' },
+    parentId: { type: ['string', 'null'] },
+    parentName: { type: 'string' },
+    lastMessageAt: { type: ['string', 'null'], format: 'date-time' },
+    lastMessageText: { type: 'string' },
+    lastMessageSenderId: { type: ['string', 'null'] },
+    unreadCount: { type: 'number' },
+    createdAt: { type: ['string', 'null'], format: 'date-time' },
+  },
+} as const
+
+const messageSchema = {
+  type: 'object',
+  required: ['id', 'isNote'],
+  properties: {
+    id: { type: 'string' },
+    senderId: { type: 'string' },
+    senderRole: { type: 'string' },
+    senderName: { type: 'string' },
+    text: { type: 'string' },
+    sentAt: { type: ['string', 'null'], format: 'date-time' },
+    isNote: { type: 'boolean' },
+  },
+} as const
+
 async function resolvePartyNames(
   db: admin.firestore.Firestore,
   uid: string,
@@ -40,111 +94,158 @@ async function resolvePartyNames(
 }
 
 export const messagesRoute: FastifyPluginAsync = async (fastify) => {
-  fastify.get('/api/conversations', async (request, reply) => {
-    try {
-      if (!request.user) {
-        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
-      }
-
-      const { uid } = request.user
-      const db = getFirestore()
-
-      const [asSpecialist, asParent] = await Promise.all([
-        db.collection('conversations').where('specialistId', '==', uid).get(),
-        db.collection('conversations').where('parentId', '==', uid).get(),
-      ])
-
-      const seenIds = new Set<string>()
-      const allDocs: admin.firestore.QueryDocumentSnapshot[] = []
-
-      for (const doc of [...asSpecialist.docs, ...asParent.docs]) {
-        if (!seenIds.has(doc.id)) {
-          seenIds.add(doc.id)
-          allDocs.push(doc)
-        }
-      }
-
-      // Fallback: find conversations via children collection group for old docs
-      // that were created before parentId was reliably written (fire-and-forget bug).
-      // Also self-heals old docs by writing parentId back.
+  fastify.get(
+    '/api/conversations',
+    {
+      schema: {
+        tags: ['Messaging'],
+        summary: "List the authenticated user's conversations",
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'conversations'],
+            properties: {
+              ok: { type: 'boolean' },
+              conversations: { type: 'array', items: conversationSchema },
+            },
+          },
+          401: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
       try {
-        const childrenSnap = await db
-          .collectionGroup('children')
-          .where('parentUserId', '==', uid)
-          .get()
+        if (!request.user) {
+          return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
+        }
 
-        const convFetches = childrenSnap.docs
-          .map((childDoc) => {
-            const parts = childDoc.ref.path.split('/')
-            // path: organizations/{orgId}/children/{childId}
-            if (parts.length < 4) return null
-            const orgId = parts[1]
-            const childId = parts[3]
-            const convId = `${orgId}_${childId}`
-            if (seenIds.has(convId)) return null
-            return db
-              .doc(`conversations/${convId}`)
-              .get()
-              .then((snap) => ({ snap, convId }))
-          })
-          .filter(Boolean) as Promise<{ snap: admin.firestore.DocumentSnapshot; convId: string }>[]
+        const { uid } = request.user
+        const db = getFirestore()
 
-        const results = await Promise.all(convFetches)
-        for (const { snap, convId } of results) {
-          if (snap.exists && !seenIds.has(convId)) {
-            seenIds.add(convId)
-            allDocs.push(snap as admin.firestore.QueryDocumentSnapshot)
-            // Self-heal: write parentId so future queries work without the fallback
-            if (!snap.data()?.parentId) {
-              snap.ref.update({ parentId: uid }).catch(() => {})
-            }
+        const [asSpecialist, asParent] = await Promise.all([
+          db.collection('conversations').where('specialistId', '==', uid).get(),
+          db.collection('conversations').where('parentId', '==', uid).get(),
+        ])
+
+        const seenIds = new Set<string>()
+        const allDocs: admin.firestore.QueryDocumentSnapshot[] = []
+
+        for (const doc of [...asSpecialist.docs, ...asParent.docs]) {
+          if (!seenIds.has(doc.id)) {
+            seenIds.add(doc.id)
+            allDocs.push(doc)
           }
         }
-      } catch {
-        // Collection group query may fail if index not yet created — safe to ignore
-      }
 
-      allDocs.sort((a, b) => {
-        const aTs: admin.firestore.Timestamp | undefined = a.data().lastMessageAt
-        const bTs: admin.firestore.Timestamp | undefined = b.data().lastMessageAt
-        const aMs = aTs ? aTs.toMillis() : 0
-        const bMs = bTs ? bTs.toMillis() : 0
-        return bMs - aMs
-      })
+        // Fallback: find conversations via children collection group for old docs
+        // that were created before parentId was reliably written (fire-and-forget bug).
+        // Also self-heals old docs by writing parentId back.
+        try {
+          const childrenSnap = await db
+            .collectionGroup('children')
+            .where('parentUserId', '==', uid)
+            .get()
 
-      const conversations = allDocs.map((doc) => {
-        const d = doc.data()
-        const unreadMap: Record<string, number> = d.unread || {}
-        return {
-          id: doc.id,
-          orgId: d.orgId,
-          childId: d.childId,
-          childName: d.childName || '',
-          specialistId: d.specialistId,
-          specialistName: d.specialistName || '',
-          parentId: d.parentId || null,
-          parentName: d.parentName || '',
-          lastMessageAt: d.lastMessageAt
-            ? (d.lastMessageAt as admin.firestore.Timestamp).toDate().toISOString()
-            : null,
-          lastMessageText: d.lastMessageText || '',
-          lastMessageSenderId: d.lastMessageSenderId || null,
-          unreadCount: unreadMap[uid] || 0,
-          createdAt: d.createdAt
-            ? (d.createdAt as admin.firestore.Timestamp).toDate().toISOString()
-            : null,
+          const convFetches = childrenSnap.docs
+            .map((childDoc) => {
+              const parts = childDoc.ref.path.split('/')
+              // path: organizations/{orgId}/children/{childId}
+              if (parts.length < 4) return null
+              const orgId = parts[1]
+              const childId = parts[3]
+              const convId = `${orgId}_${childId}`
+              if (seenIds.has(convId)) return null
+              return db
+                .doc(`conversations/${convId}`)
+                .get()
+                .then((snap) => ({ snap, convId }))
+            })
+            .filter(Boolean) as Promise<{
+            snap: admin.firestore.DocumentSnapshot
+            convId: string
+          }>[]
+
+          const results = await Promise.all(convFetches)
+          for (const { snap, convId } of results) {
+            if (snap.exists && !seenIds.has(convId)) {
+              seenIds.add(convId)
+              allDocs.push(snap as admin.firestore.QueryDocumentSnapshot)
+              // Self-heal: write parentId so future queries work without the fallback
+              if (!snap.data()?.parentId) {
+                snap.ref.update({ parentId: uid }).catch(() => {})
+              }
+            }
+          }
+        } catch {
+          // Collection group query may fail if index not yet created — safe to ignore
         }
-      })
 
-      return { ok: true, conversations }
-    } catch (error: any) {
-      console.error('[MESSAGES] Error listing conversations:', error)
-      return reply.code(500).send({ error: 'Failed to list conversations', code: 'INTERNAL_ERROR' })
+        allDocs.sort((a, b) => {
+          const aTs: admin.firestore.Timestamp | undefined = a.data().lastMessageAt
+          const bTs: admin.firestore.Timestamp | undefined = b.data().lastMessageAt
+          const aMs = aTs ? aTs.toMillis() : 0
+          const bMs = bTs ? bTs.toMillis() : 0
+          return bMs - aMs
+        })
+
+        const conversations = allDocs.map((doc) => {
+          const d = doc.data()
+          const unreadMap: Record<string, number> = d.unread || {}
+          return {
+            id: doc.id,
+            orgId: d.orgId,
+            childId: d.childId,
+            childName: d.childName || '',
+            specialistId: d.specialistId,
+            specialistName: d.specialistName || '',
+            parentId: d.parentId || null,
+            parentName: d.parentName || '',
+            lastMessageAt: d.lastMessageAt
+              ? (d.lastMessageAt as admin.firestore.Timestamp).toDate().toISOString()
+              : null,
+            lastMessageText: d.lastMessageText || '',
+            lastMessageSenderId: d.lastMessageSenderId || null,
+            unreadCount: unreadMap[uid] || 0,
+            createdAt: d.createdAt
+              ? (d.createdAt as admin.firestore.Timestamp).toDate().toISOString()
+              : null,
+          }
+        })
+
+        return { ok: true, conversations }
+      } catch (error: any) {
+        console.error('[MESSAGES] Error listing conversations:', error)
+        return reply
+          .code(500)
+          .send({ error: 'Failed to list conversations', code: 'INTERNAL_ERROR' })
+      }
     }
-  })
+  )
 
   fastify.get<{ Params: { convId: string } }>(
     '/api/conversations/:convId/messages',
+    {
+      schema: {
+        tags: ['Messaging'],
+        summary: 'List the messages in a conversation',
+        params: convIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'messages'],
+            properties: {
+              ok: { type: 'boolean' },
+              messages: { type: 'array', items: messageSchema },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         if (!request.user) {
@@ -214,6 +315,26 @@ export const messagesRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { convId: string }; Body: z.infer<typeof sendMessageSchema> }>(
     '/api/conversations/:convId/messages',
+    {
+      schema: {
+        tags: ['Messaging'],
+        summary: 'Send a message in a conversation',
+        params: convIdParamsSchema,
+        body: sendMessageBodySchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'messageId'],
+            properties: { ok: { type: 'boolean' }, messageId: { type: 'string' } },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         if (!request.user) {
@@ -410,6 +531,24 @@ export const messagesRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.patch<{ Params: { convId: string } }>(
     '/api/conversations/:convId/read',
+    {
+      schema: {
+        tags: ['Messaging'],
+        summary: 'Mark a conversation as read for the authenticated user',
+        params: convIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok'],
+            properties: { ok: { type: 'boolean' } },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         if (!request.user) {

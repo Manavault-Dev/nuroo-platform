@@ -558,7 +558,7 @@ export function SubmissionCard({
               {t('submittedAt', { time: relativeTime(submission.submittedAt, t, locale) })}
             </p>
           )}
-          {(submission.submissionText || submission.fileUrl) && (
+          {submission.tasks.some((task) => task.submissionText || task.fileUrl) && (
             <button
               onClick={() => setExpanded(!expanded)}
               className="flex items-center gap-1 mt-1.5 text-xs text-blue-600 hover:text-blue-700"
@@ -581,28 +581,37 @@ export function SubmissionCard({
           </button>
         )}
       </div>
-      {expanded && (submission.submissionText || submission.fileUrl) && (
-        <div className="px-4 pb-4 space-y-2">
-          {submission.submissionText && (
-            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-900 leading-relaxed">
-              {submission.submissionText}
-            </div>
-          )}
-          {submission.fileUrl && (
-            <div className="rounded-xl border border-gray-200 bg-gray-50/80 overflow-hidden">
-              <SubmissionImagePreview
-                key={submission.fileUrl}
-                fileUrl={submission.fileUrl}
-                onViewFullSize={
-                  onViewImage ? () => onViewImage(submission.fileUrl!) : () => undefined
-                }
-                className="max-h-72"
-                showLabel={!!onViewImage}
-                labelViewFullSize={t('viewFullSize')}
-                labelPreviewUnavailable={t('previewUnavailable')}
-              />
-            </div>
-          )}
+      {expanded && submission.tasks.some((task) => task.submissionText || task.fileUrl) && (
+        <div className="px-4 pb-4 space-y-3">
+          {submission.tasks
+            .filter((task) => task.submissionText || task.fileUrl)
+            .map((task) => (
+              <div key={task.taskId} className="space-y-2">
+                {submission.tasks.length > 1 && (
+                  <p className="text-xs font-semibold text-gray-500">{task.title}</p>
+                )}
+                {task.submissionText && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-900 leading-relaxed">
+                    {task.submissionText}
+                  </div>
+                )}
+                {task.fileUrl && (
+                  <div className="rounded-xl border border-gray-200 bg-gray-50/80 overflow-hidden">
+                    <SubmissionImagePreview
+                      key={task.fileUrl}
+                      fileUrl={task.fileUrl}
+                      onViewFullSize={
+                        onViewImage ? () => onViewImage(task.fileUrl!) : () => undefined
+                      }
+                      className="max-h-72"
+                      showLabel={!!onViewImage}
+                      labelViewFullSize={t('viewFullSize')}
+                      labelPreviewUnavailable={t('previewUnavailable')}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
         </div>
       )}
       {submission.feedback && (
