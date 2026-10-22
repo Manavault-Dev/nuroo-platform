@@ -43,6 +43,7 @@ import { calendarRoutes } from './domains/calendar/calendar.routes.js'
 import { legalRoutes } from './domains/legal/legal.routes.js'
 import { passwordResetRoutes } from './domains/auth/password-reset.routes.js'
 import { phoneAuthRoutes } from './domains/auth/phoneAuth.routes.js'
+import { buildErrorHandler } from './shared/errors/index.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -73,6 +74,11 @@ async function buildServer() {
   })
 
   Sentry.setupFastifyErrorHandler(fastify)
+
+  // Centralized error contract — see shared/errors/errorHandler.ts. Sentry
+  // still captures the exception via the hook above; this handler only
+  // controls the response shape and adds server-side logging.
+  fastify.setErrorHandler(buildErrorHandler(fastify))
 
   try {
     initializeFirebaseAdmin()
