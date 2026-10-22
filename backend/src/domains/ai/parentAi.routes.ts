@@ -77,7 +77,8 @@ const SEARCH_PROVIDERS_TOOL = {
         },
         childAge: {
           type: 'number',
-          description: "The child's age in years, if known, to match providers serving that age range.",
+          description:
+            "The child's age in years, if known, to match providers serving that age range.",
         },
         query: {
           type: 'string',
@@ -120,8 +121,11 @@ async function searchProviders(args: {
   const named = all.filter((o) => o.name)
 
   const byAge = (list: ProviderCard[], childAge?: number) => {
-    if (childAge == null) return list
-    return list.filter((o) => (o.ageMin == null || o.ageMin <= childAge) && (o.ageMax == null || o.ageMax >= childAge))
+    if (childAge === undefined) return list
+    return list.filter(
+      (o) =>
+        (o.ageMin === null || o.ageMin <= childAge) && (o.ageMax === null || o.ageMax >= childAge)
+    )
   }
   // Broad match: checks the structured `categories` tag AND the free-text
   // fields. Category tags are stored in English only, so a parent's Russian/
@@ -137,10 +141,14 @@ async function searchProviders(args: {
       (o.city ?? '').toLowerCase().includes(t)
     )
   }
-  const dedupe = (list: ProviderCard[]): ProviderCard[] => [...new Map(list.map((o) => [o.id, o])).values()]
+  const dedupe = (list: ProviderCard[]): ProviderCard[] => [
+    ...new Map(list.map((o) => [o.id, o])).values(),
+  ]
 
   const ageFiltered = byAge(named, args.childAge)
-  const categoryMatches = args.category ? ageFiltered.filter((o) => matches(o, args.category!)) : null
+  const categoryMatches = args.category
+    ? ageFiltered.filter((o) => matches(o, args.category!))
+    : null
   const queryMatches = args.query ? ageFiltered.filter((o) => matches(o, args.query!)) : null
 
   let result: ProviderCard[]
@@ -198,9 +206,7 @@ async function loadChatHistory(
     .limit(limit)
     .get()
 
-  return snap.docs
-    .map((doc) => ({ id: doc.id, ...(doc.data() as StoredChatMessage) }))
-    .reverse()
+  return snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as StoredChatMessage) })).reverse()
 }
 
 /** Persists one exchange (the parent's message + Nuri's reply) so the next
@@ -337,9 +343,9 @@ function buildChildContext(childData?: ChildData) {
 
 export function buildSystemMessages(language: string, childData?: ChildData): ChatMessage[] {
   const roles: Record<string, string> = {
-    en: 'You are Nuri, Nuroo\'s specialized AI assistant helping parents support child development. Be concise, specific, and practical. Never add conversational preambles — respond directly in the requested format. When the parent asks for a specialist, center, or program recommendation, ALWAYS use the search_providers tool first — never invent or name a provider from general knowledge. Search broadly: use the service category the parent is literally asking for, and never add the child\'s diagnosis/condition as a search filter — the marketplace is not tagged by diagnosis, so that would hide real matches. If the first search comes back empty, do not immediately tell the parent nothing exists — the tool already retries with a broader search automatically, so trust its results. After the tool returns results, recommend only from those real results (by name) and briefly say why each fits, using the child\'s context to explain relevance in your words, not as a search filter; if truly none fit, say so honestly.',
+    en: "You are Nuri, Nuroo's specialized AI assistant helping parents support child development. Be concise, specific, and practical. Never add conversational preambles — respond directly in the requested format. When the parent asks for a specialist, center, or program recommendation, ALWAYS use the search_providers tool first — never invent or name a provider from general knowledge. Search broadly: use the service category the parent is literally asking for, and never add the child's diagnosis/condition as a search filter — the marketplace is not tagged by diagnosis, so that would hide real matches. If the first search comes back empty, do not immediately tell the parent nothing exists — the tool already retries with a broader search automatically, so trust its results. After the tool returns results, recommend only from those real results (by name) and briefly say why each fits, using the child's context to explain relevance in your words, not as a search filter; if truly none fit, say so honestly.",
     ru: 'Вы — Нури, специализированный ИИ-помощник Nuroo для поддержки родителей в развитии ребёнка. Будьте краткими, конкретными и практичными. Никогда не добавляйте вводных фраз — отвечайте сразу в нужном формате без слов "Конечно!", "Вот!", "Отлично!". Когда родитель просит порекомендовать специалиста, центр или программу — ОБЯЗАТЕЛЬНО сначала вызовите инструмент search_providers, никогда не придумывайте названия организаций из общих знаний. Ищите широко: используйте ту категорию услуги, о которой буквально просит родитель, и никогда не добавляйте диагноз/особенность ребёнка как фильтр поиска — в маркетплейсе организации не помечены по диагнозу, и это скроет реальные совпадения. Диагноз используйте только в тексте ответа, чтобы объяснить, почему вариант подходит, а не как критерий поиска. После получения результатов рекомендуйте только реальные найденные варианты (по имени), кратко объясняя, почему каждый подходит; если подходящих действительно нет — честно скажите об этом.',
-    kg: 'Сиз — Нури, Nuroo\'нун ата-энелерге баланын өнүгүүсүн колдоого жардам берген адистешкен ИИ-жардамчысы. Конкреттүү жана практикалык болуңуз. Кириш сөздөрсүз жооп бериңиз. Ата-эне адисти, борборду же программаны сунуштоону сураганда — ЗАРЫЛ түрдө алгач search_providers куралын чакырыңыз, жалпы билимден ойдон чыгарылган атты эч качан колдонбоңуз. Кеңири издеңиз: баланын диагнозун эч качан издөө чыйрагы катары колдонбоңуз — ал жөн гана жообуңузда түшүндүрмө үчүн колдонулат.',
+    kg: "Сиз — Нури, Nuroo'нун ата-энелерге баланын өнүгүүсүн колдоого жардам берген адистешкен ИИ-жардамчысы. Конкреттүү жана практикалык болуңуз. Кириш сөздөрсүз жооп бериңиз. Ата-эне адисти, борборду же программаны сунуштоону сураганда — ЗАРЫЛ түрдө алгач search_providers куралын чакырыңыз, жалпы билимден ойдон чыгарылган атты эч качан колдонбоңуз. Кеңири издеңиз: баланын диагнозун эч качан издөө чыйрагы катары колдонбоңуз — ал жөн гана жообуңузда түшүндүрмө үчүн колдонулат.",
   }
 
   const messages: ChatMessage[] = [{ role: 'system', content: roles[language] ?? roles.en }]
@@ -391,13 +397,17 @@ export const parentAiRoute: FastifyPluginAsync = async (fastify) => {
         let priorTurns: ChatMessage[] = []
         try {
           const history = await loadChatHistory(uid, CHAT_CONTEXT_TURNS)
-          priorTurns = history.map((h): ChatMessage =>
-            h.role === 'assistant'
-              ? { role: 'assistant', content: h.content }
-              : { role: 'user', content: h.content }
+          priorTurns = history.map(
+            (h): ChatMessage =>
+              h.role === 'assistant'
+                ? { role: 'assistant', content: h.content }
+                : { role: 'user', content: h.content }
           )
         } catch (err) {
-          fastify.log.warn({ err }, 'parentAi /ask: failed to load chat history, continuing without it')
+          fastify.log.warn(
+            { err },
+            'parentAi /ask: failed to load chat history, continuing without it'
+          )
         }
 
         const messages: ChatMessage[] = [

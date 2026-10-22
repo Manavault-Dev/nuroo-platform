@@ -58,7 +58,10 @@ const TEST_UID = 'test-parent-uid'
 /** uid -> persisted chat message docs, so loadChatHistory/appendChatTurn can
  * be exercised end-to-end (seed history in, read it back via GET /history or
  * as conversation memory on the next /ask call). */
-let chatStore: Record<string, { id: string; role: string; content: string; recommendations?: unknown[]; createdAt: Date }[]>
+let chatStore: Record<
+  string,
+  { id: string; role: string; content: string; recommendations?: unknown[]; createdAt: Date }[]
+>
 let docCounter = 0
 
 function resetChatStore() {
@@ -409,11 +412,16 @@ describe('POST /api/parent/ai/ask', () => {
   it('sends prior turns back to the model as conversation memory', async () => {
     const now = new Date()
     chatStore[TEST_UID] = [
-      { id: 'seed_1', role: 'user', content: 'My son is 4 and has a speech delay.', createdAt: now },
+      {
+        id: 'seed_1',
+        role: 'user',
+        content: 'My son is 4 and has a speech delay.',
+        createdAt: now,
+      },
       {
         id: 'seed_2',
         role: 'assistant',
-        content: 'Got it, I\'ll keep that in mind.',
+        content: "Got it, I'll keep that in mind.",
         createdAt: new Date(now.getTime() + 1),
       },
     ]
@@ -436,7 +444,7 @@ describe('POST /api/parent/ai/ask', () => {
     expect(firstCallBody.messages).toEqual(
       expect.arrayContaining([
         { role: 'user', content: 'My son is 4 and has a speech delay.' },
-        { role: 'assistant', content: 'Got it, I\'ll keep that in mind.' },
+        { role: 'assistant', content: "Got it, I'll keep that in mind." },
         { role: 'user', content: 'What should I do next?' },
       ])
     )
