@@ -5,10 +5,21 @@ import { useRouter } from '@/i18n/navigation'
 import { useTranslations } from 'next-intl'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
 import { apiClient } from '@/lib/b2b/api'
-import { Key, Plus, Copy, Check, Loader2, ExternalLink, Smartphone, RefreshCw } from 'lucide-react'
+import {
+  Key,
+  Plus,
+  Copy,
+  Check,
+  Loader2,
+  ExternalLink,
+  Smartphone,
+  RefreshCw,
+  FileSpreadsheet,
+} from 'lucide-react'
 import { useBranding } from '@/lib/b2b/brandingContext'
 import { resolveBrandingAccent } from '@/lib/b2b/themePresets'
 import { useAlert } from '@/components/ui/AlertDialog'
+import { ChildrenImportModal } from '@/components/b2b/ChildrenImportModal'
 import QRCode from 'qrcode'
 
 interface ChildInvite {
@@ -76,6 +87,7 @@ export default function InvitesPage() {
   const [creatingChildInvite, setCreatingChildInvite] = useState(false)
   const [regeneratingChildId, setRegeneratingChildId] = useState<string | null>(null)
   const [reviewingChildId, setReviewingChildId] = useState<string | null>(null)
+  const [showImportModal, setShowImportModal] = useState(false)
   const { alert } = useAlert()
   const currentOrg =
     profile?.organizations.find((org) => org.orgId === currentOrgId) ?? profile?.organizations[0]
@@ -138,6 +150,7 @@ export default function InvitesPage() {
   }
 
   const tChild = useTranslations('b2b.pages.invites.childInvites')
+  const tChildImport = useTranslations('b2b.pages.invites.childImport')
 
   const handleCreateChildInvite = async () => {
     if (!currentOrgId || !childName.trim()) return
@@ -548,7 +561,16 @@ export default function InvitesPage() {
 
         {activeTab === 'child' && (
           <div>
-            <p className="text-sm text-gray-500 mb-4">{tChild('subtitle')}</p>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <p className="text-sm text-gray-500">{tChild('subtitle')}</p>
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary-700 bg-primary-50 rounded-lg hover:bg-primary-100 whitespace-nowrap"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                {tChildImport('importFromExcel')}
+              </button>
+            </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">
               <div className="flex flex-col sm:flex-row gap-3">
@@ -679,6 +701,27 @@ export default function InvitesPage() {
           </div>
         )}
       </div>
+
+      {currentOrgId && (
+        <ChildrenImportModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          orgId={currentOrgId}
+          onImported={(createdRows) => {
+            setChildInvites([
+              ...createdRows.map((c) => ({
+                childId: c.childId,
+                childName: c.childName,
+                groupLabel: null,
+                token: c.token,
+                link: c.link,
+                status: 'pending' as const,
+              })),
+              ...childInvites,
+            ])
+          }}
+        />
+      )}
     </div>
   )
 }

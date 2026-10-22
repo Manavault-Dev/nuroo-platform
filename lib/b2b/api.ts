@@ -8,6 +8,24 @@ const API_BASE_URL =
   ).replace(/\/+$/, '') + '/v1'
 
 // Types
+export interface ImportChildRowData {
+  firstName: string
+  lastName?: string
+  dateOfBirth?: string
+  gender?: string
+  groupLabel?: string
+  expectedParentName?: string
+  contactPhone?: string
+  contactEmail?: string
+}
+
+export interface ImportChildRow {
+  row: number
+  data: ImportChildRowData
+  valid: boolean
+  error?: string
+}
+
 export interface SpecialistProfile {
   uid: string
   email: string
@@ -1311,6 +1329,48 @@ export class ApiClient {
         body: JSON.stringify(data || {}),
       }
     )
+  }
+
+  async importChildrenPreview(orgId: string, file: File) {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const headers = new Headers()
+    if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
+
+    const response = await fetch(`${this.baseUrl}/orgs/${orgId}/children/import/preview`, {
+      method: 'POST',
+      body: formData,
+      headers,
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
+      throw new Error(error.error || error.message || 'Preview failed')
+    }
+
+    return response.json() as Promise<{
+      ok: boolean
+      totalRows: number
+      validCount: number
+      invalidCount: number
+      rows: ImportChildRow[]
+      planOk: boolean
+      planError?: string
+      maxImportable?: number
+    }>
+  }
+
+  async importChildrenCommit(orgId: string, rows: ImportChildRowData[]) {
+    cache.invalidate(`children:${orgId}`)
+    return this.request<{
+      ok: boolean
+      created: { row: number; childId: string; childName: string; token: string; link: string }[]
+      skipped: { row: number; error: string }[]
+    }>(`/orgs/${orgId}/children/import/commit`, {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    })
   }
 
   async getChildInvite(orgId: string, childId: string) {
