@@ -51,7 +51,39 @@ function extractFields(body: SentryWebhookBody) {
 export const sentryAlertRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Querystring: { secret?: string } }>(
     '/webhooks/sentry-alert',
-    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    {
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['System'],
+        summary: 'Relay a Sentry issue-alert webhook to Slack',
+        description:
+          'Internal webhook target for a Sentry "Issue Alert" rule. Authenticated with a shared secret query param instead of Firebase.',
+        security: [],
+        querystring: {
+          type: 'object',
+          required: ['secret'],
+          properties: { secret: { type: 'string', description: 'Sentry webhook shared secret' } },
+        },
+        body: { additionalProperties: true },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok'],
+            properties: { ok: { type: 'boolean' } },
+          },
+          401: {
+            type: 'object',
+            required: ['error'],
+            properties: { error: { type: 'string' } },
+          },
+          503: {
+            type: 'object',
+            required: ['error'],
+            properties: { error: { type: 'string' } },
+          },
+        },
+      },
+    },
     async (request, reply) => {
       const expected = process.env.SENTRY_WEBHOOK_SECRET
       if (!expected) {

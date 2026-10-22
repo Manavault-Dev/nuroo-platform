@@ -21,6 +21,68 @@ const COLLECTIONS = {
   ORG_CHILDREN: (orgId: string) => `organizations/${orgId}/children`,
 } as const
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+  additionalProperties: true,
+} as const
+
+const linkedOrgSchema = {
+  type: 'object',
+  required: ['orgId', 'orgName'],
+  properties: {
+    orgId: { type: 'string' },
+    orgName: { type: 'string' },
+    specialistId: { type: ['string', 'null'] },
+    specialistName: { type: ['string', 'null'] },
+    joinedAt: { type: ['string', 'null'] },
+  },
+} as const
+
+const parentOrganizationsResponseSchema = {
+  type: 'object',
+  required: ['ok', 'organizations', 'count'],
+  properties: {
+    ok: { type: 'boolean' },
+    organizations: { type: 'array', items: linkedOrgSchema },
+    count: { type: 'number' },
+  },
+} as const
+
+const disconnectResponseSchema = {
+  type: 'object',
+  required: ['ok', 'standalone'],
+  properties: {
+    ok: { type: 'boolean' },
+    standalone: { type: 'boolean' },
+  },
+} as const
+
+const parentContactProfileSchema = {
+  type: 'object',
+  required: ['ok', 'profile'],
+  properties: {
+    ok: { type: 'boolean' },
+    profile: {
+      type: ['object', 'null'],
+      properties: {
+        fullName: { type: ['string', 'null'] },
+        phone: { type: ['string', 'null'] },
+        whatsapp: { type: ['string', 'null'] },
+        address: { type: ['string', 'null'] },
+        notes: { type: ['string', 'null'] },
+      },
+    },
+  },
+} as const
+
 async function fetchParentAuthData(parentUid: string) {
   try {
     const auth = admin.auth()
@@ -105,60 +167,86 @@ function mergeParents(realParents: ParentRow[], legacyParents: ParentRow[]) {
 
 export const parentsRoute: FastifyPluginAsync = async (fastify) => {
   // ── GET /parent/organizations — returns parent's linked orgs with fresh names ──
-  fastify.get('/parent/organizations', async (request, reply) => {
-    if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
+  fastify.get(
+    '/parent/organizations',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: "Get the parent's linked organizations with freshly resolved names",
+        response: {
+          200: parentOrganizationsResponseSchema,
+          401: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
-    try {
-      const { uid } = request.user
-      const db = getFirestore()
+      try {
+        const { uid } = request.user
+        const db = getFirestore()
 
-      const userSnap = await db.doc(`users/${uid}`).get()
-      const byId = ((userSnap.data() as any)?.linkedOrganizationsById || {}) as Record<
-        string,
-        {
-          orgId?: string
-          orgName?: string | null
-          specialistId?: string | null
-          specialistName?: string | null
-          joinedAt?: string | null
-          linkedAt?: string | null
-        }
-      >
-
-      const entries = Object.entries(byId)
-      if (entries.length === 0) {
-        return { ok: true, organizations: [], count: 0 }
-      }
-
-      const organizations = await Promise.all(
-        entries.map(async ([keyId, org]) => {
-          const resolvedOrgId = org.orgId || keyId
-          const orgSnap = await db.doc(`organizations/${resolvedOrgId}`).get()
-          const orgData = orgSnap.exists ? (orgSnap.data() as any) : null
-          const freshOrgName = orgData?.name?.trim() || org.orgName || 'Organization'
-          return {
-            orgId: resolvedOrgId,
-            orgName: freshOrgName,
-            specialistId: org.specialistId ?? null,
-            specialistName: org.specialistName ?? null,
-            joinedAt: org.joinedAt || org.linkedAt || null,
+        const userSnap = await db.doc(`users/${uid}`).get()
+        const byId = ((userSnap.data() as any)?.linkedOrganizationsById || {}) as Record<
+          string,
+          {
+            orgId?: string
+            orgName?: string | null
+            specialistId?: string | null
+            specialistName?: string | null
+            joinedAt?: string | null
+            linkedAt?: string | null
           }
-        })
-      )
+        >
 
-      return { ok: true, organizations, count: organizations.length }
-    } catch (err: unknown) {
-      console.error('[PARENTS] Error fetching parent organizations:', err)
-      return reply.code(500).send({
-        error: 'Failed to fetch organizations',
-        details: err instanceof Error ? err.message : '',
-      })
+        const entries = Object.entries(byId)
+        if (entries.length === 0) {
+          return { ok: true, organizations: [], count: 0 }
+        }
+
+        const organizations = await Promise.all(
+          entries.map(async ([keyId, org]) => {
+            const resolvedOrgId = org.orgId || keyId
+            const orgSnap = await db.doc(`organizations/${resolvedOrgId}`).get()
+            const orgData = orgSnap.exists ? (orgSnap.data() as any) : null
+            const freshOrgName = orgData?.name?.trim() || org.orgName || 'Organization'
+            return {
+              orgId: resolvedOrgId,
+              orgName: freshOrgName,
+              specialistId: org.specialistId ?? null,
+              specialistName: org.specialistName ?? null,
+              joinedAt: org.joinedAt || org.linkedAt || null,
+            }
+          })
+        )
+
+        return { ok: true, organizations, count: organizations.length }
+      } catch (err: unknown) {
+        console.error('[PARENTS] Error fetching parent organizations:', err)
+        return reply.code(500).send({
+          error: 'Failed to fetch organizations',
+          details: err instanceof Error ? err.message : '',
+        })
+      }
     }
-  })
+  )
 
   // ── POST /parent/organizations/:orgId/disconnect — parent leaves an org ──────
   fastify.post<{ Params: { orgId: string } }>(
     '/parent/organizations/:orgId/disconnect',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: 'Disconnect the current parent from an organization',
+        params: orgIdParamsSchema,
+        response: {
+          200: disconnectResponseSchema,
+          401: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -205,43 +293,99 @@ export const parentsRoute: FastifyPluginAsync = async (fastify) => {
     }
   )
 
-  fastify.get<{ Params: { orgId: string } }>('/orgs/:orgId/parents', async (request, reply) => {
-    try {
-      const { orgId } = request.params
-      await requireOrgMember(request, reply, orgId)
-
-      const db = getFirestore()
-
-      const legacyParentsSnap = await db.collection(COLLECTIONS.ORG_PARENTS(orgId)).get()
-
-      const legacyParents = legacyParentsSnap.docs.map(transformLegacyParent)
-
-      let realParentsSnap
+  fastify.get<{ Params: { orgId: string } }>(
+    '/orgs/:orgId/parents',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: 'List parent contacts for an organization (merged legacy + real records)',
+        params: orgIdParamsSchema,
+        response: {
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
       try {
-        realParentsSnap = await db.collection(COLLECTIONS.ORG_PARENTS_REAL(orgId)).get()
-      } catch {
-        realParentsSnap = { docs: [] }
+        const { orgId } = request.params
+        await requireOrgMember(request, reply, orgId)
+
+        const db = getFirestore()
+
+        const legacyParentsSnap = await db.collection(COLLECTIONS.ORG_PARENTS(orgId)).get()
+
+        const legacyParents = legacyParentsSnap.docs.map(transformLegacyParent)
+
+        let realParentsSnap
+        try {
+          realParentsSnap = await db.collection(COLLECTIONS.ORG_PARENTS_REAL(orgId)).get()
+        } catch {
+          realParentsSnap = { docs: [] }
+        }
+
+        const realParents = await Promise.all(
+          realParentsSnap.docs.map((doc) => transformRealParent(db, orgId, doc))
+        )
+
+        const allParents = mergeParents(realParents, legacyParents)
+
+        return { ok: true, parents: allParents }
+      } catch (err: unknown) {
+        console.error('[PARENTS] Error fetching parents:', err)
+        return reply.code(500).send({
+          error: 'Failed to fetch parent contacts',
+          details: err instanceof Error ? err.message : '',
+        })
       }
-
-      const realParents = await Promise.all(
-        realParentsSnap.docs.map((doc) => transformRealParent(db, orgId, doc))
-      )
-
-      const allParents = mergeParents(realParents, legacyParents)
-
-      return { ok: true, parents: allParents }
-    } catch (err: unknown) {
-      console.error('[PARENTS] Error fetching parents:', err)
-      return reply.code(500).send({
-        error: 'Failed to fetch parent contacts',
-        details: err instanceof Error ? err.message : '',
-      })
     }
-  })
+  )
 
   // ── PATCH /api/parent/profile — parent updates own info from mobile app ────
   fastify.patch<{ Body: z.infer<typeof parentProfileUpdateSchema> }>(
     '/api/parent/profile',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: "Update the current parent's own contact profile from the mobile app",
+        body: {
+          type: 'object',
+          properties: {
+            fullName: { type: 'string' },
+            phone: { type: 'string' },
+            whatsapp: { type: 'string' },
+            address: { type: 'string' },
+            notes: { type: 'string' },
+            orgId: { type: 'string', description: 'Organization to upsert into, if known' },
+          },
+          additionalProperties: true,
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'profile'],
+            properties: {
+              ok: { type: 'boolean' },
+              profile: {
+                type: 'object',
+                properties: {
+                  fullName: { type: 'string' },
+                  phone: { type: 'string' },
+                  whatsapp: { type: 'string' },
+                  address: { type: 'string' },
+                  notes: { type: 'string' },
+                },
+                additionalProperties: true,
+              },
+            },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
@@ -307,6 +451,23 @@ export const parentsRoute: FastifyPluginAsync = async (fastify) => {
   // ── GET /api/parent/profile — parent reads own contact info from mobile app ─
   fastify.get<{ Querystring: { orgId?: string } }>(
     '/api/parent/profile',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: "Get the current parent's own contact profile for an organization",
+        querystring: {
+          type: 'object',
+          properties: {
+            orgId: { type: 'string', description: 'Organization ID; auto-resolved if omitted' },
+          },
+        },
+        response: {
+          200: parentContactProfileSchema,
+          401: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })

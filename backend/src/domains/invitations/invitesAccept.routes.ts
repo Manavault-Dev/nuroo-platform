@@ -17,6 +17,12 @@ const acceptInviteSchema = z.object({
   code: z.string().min(1).max(20),
 })
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
 function normalizeInviteCode(code: string): string {
   return code.trim().toUpperCase()
 }
@@ -69,6 +75,35 @@ function buildSpecialistData(
 export const invitesAcceptRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Body: z.infer<typeof acceptInviteSchema> }>(
     '/invites/accept',
+    {
+      schema: {
+        tags: ['Invitations'],
+        summary: 'Accept a staff invite code and join the organization as a specialist/org_admin',
+        body: {
+          type: 'object',
+          required: ['code'],
+          additionalProperties: true,
+          properties: { code: { type: 'string', minLength: 1, maxLength: 20 } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'orgId', 'role'],
+            properties: {
+              ok: { type: 'boolean' },
+              orgId: { type: 'string' },
+              role: { type: 'string' },
+              message: { type: 'string' },
+              orgName: { type: 'string' },
+            },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) {
         return reply.code(401).send({ error: 'Unauthorized' })

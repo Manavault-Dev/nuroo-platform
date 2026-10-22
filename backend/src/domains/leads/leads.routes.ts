@@ -24,6 +24,83 @@ const updateLeadSchema = z.object({
   notes: z.string().max(2000).nullable().optional(),
 })
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const leadIdParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'leadId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    leadId: { type: 'string', description: 'Lead ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const leadResponseSchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    orgId: { type: 'string' },
+    branchId: { type: ['string', 'null'] },
+    parentName: { type: 'string' },
+    phone: { type: 'string' },
+    email: { type: ['string', 'null'] },
+    childName: { type: ['string', 'null'] },
+    childAge: { type: ['string', 'null'] },
+    programInterest: { type: ['string', 'null'] },
+    message: { type: ['string', 'null'] },
+    source: { type: 'string' },
+    status: { type: 'string' },
+    assignedTo: { type: ['string', 'null'] },
+    notes: { type: ['string', 'null'] },
+    createdAt: { type: ['string', 'null'] },
+    updatedAt: { type: ['string', 'null'] },
+  },
+} as const
+
+const createLeadBodySchema = {
+  type: 'object',
+  required: ['parentName', 'phone'],
+  additionalProperties: true,
+  properties: {
+    branchId: { type: ['string', 'null'] },
+    parentName: { type: 'string', minLength: 1, maxLength: 200 },
+    phone: { type: 'string', minLength: 5, maxLength: 30 },
+    email: { type: ['string', 'null'] },
+    childName: { type: ['string', 'null'] },
+    programInterest: { type: ['string', 'null'] },
+    notes: { type: ['string', 'null'] },
+  },
+} as const
+
+const updateLeadBodySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    status: { type: 'string', enum: [...LEAD_STATUSES] },
+    branchId: { type: ['string', 'null'] },
+    assignedTo: { type: ['string', 'null'] },
+    notes: { type: ['string', 'null'] },
+  },
+} as const
+
 function transformLead(
   doc: admin.firestore.QueryDocumentSnapshot | admin.firestore.DocumentSnapshot
 ) {
@@ -55,35 +132,103 @@ export const leadsRoute: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { orgId: string }
     Querystring: { branchId?: string; status?: string }
-  }>('/orgs/:orgId/leads', async (request, reply) => {
-    const { orgId } = request.params
-    const member = await requireOrgMember(request, reply, orgId)
-    if (reply.sent) return
+  }>(
+    '/orgs/:orgId/leads',
+    {
+      schema: {
+        tags: ['Leads'],
+        summary: "List an organization's leads, optionally filtered by branch or status",
+        params: orgIdParamsSchema,
+        querystring: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            branchId: {
+              type: 'string',
+              description: 'Branch ID (ignored for branch-scoped members)',
+            },
+            status: { type: 'string', enum: [...LEAD_STATUSES] },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'leads', 'count'],
+            properties: {
+              ok: { type: 'boolean' },
+              leads: { type: 'array', items: leadResponseSchema },
+              count: { type: 'number' },
+            },
+          },
+          403: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { orgId } = request.params
+      const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
 
-    const featureCheck = await checkOrgHasFeature(orgId, 'crm')
-    if (!featureCheck.ok) {
-      return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
+      const featureCheck = await checkOrgHasFeature(orgId, 'crm')
+      if (!featureCheck.ok) {
+        return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
+      }
+
+      // A branch-scoped member (Branch Admin / Admissions Manager) always sees only their
+      // own branch, regardless of what the query string asks for. HQ members (no branch
+      // scope) may optionally filter by branchId via the query string.
+      const scope = memberBranchScope(member)
+      const effectiveBranchId = scope ?? request.query.branchId
+
+      let query: FirebaseFirestore.Query = db.collection(`organizations/${orgId}/leads`)
+      if (effectiveBranchId) query = query.where('branchId', '==', effectiveBranchId)
+      if (request.query.status) query = query.where('status', '==', request.query.status)
+
+      const snap = await query.orderBy('createdAt', 'desc').get()
+      const leads = snap.docs.map(transformLead)
+      return { ok: true, leads, count: leads.length }
     }
-
-    // A branch-scoped member (Branch Admin / Admissions Manager) always sees only their
-    // own branch, regardless of what the query string asks for. HQ members (no branch
-    // scope) may optionally filter by branchId via the query string.
-    const scope = memberBranchScope(member)
-    const effectiveBranchId = scope ?? request.query.branchId
-
-    let query: FirebaseFirestore.Query = db.collection(`organizations/${orgId}/leads`)
-    if (effectiveBranchId) query = query.where('branchId', '==', effectiveBranchId)
-    if (request.query.status) query = query.where('status', '==', request.query.status)
-
-    const snap = await query.orderBy('createdAt', 'desc').get()
-    const leads = snap.docs.map(transformLead)
-    return { ok: true, leads, count: leads.length }
-  })
+  )
 
   // ── GET /orgs/:orgId/leads/analytics ───────────────────────────────────────
   // Registered before the :leadId routes so Fastify doesn't treat "analytics" as an id.
   fastify.get<{ Params: { orgId: string } }>(
     '/orgs/:orgId/leads/analytics',
+    {
+      schema: {
+        tags: ['Leads'],
+        summary:
+          'Get aggregated lead conversion analytics for an organization, broken down by branch',
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'total', 'totalByStatus', 'conversionRate', 'byBranch'],
+            properties: {
+              ok: { type: 'boolean' },
+              total: { type: 'number' },
+              totalByStatus: { type: 'object', additionalProperties: { type: 'number' } },
+              conversionRate: { type: 'number' },
+              byBranch: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['branchId', 'branchName', 'total', 'byStatus', 'conversionRate'],
+                  properties: {
+                    branchId: { type: ['string', 'null'] },
+                    branchName: { type: 'string' },
+                    total: { type: 'number' },
+                    byStatus: { type: 'object', additionalProperties: { type: 'number' } },
+                    conversionRate: { type: 'number' },
+                  },
+                },
+              },
+            },
+          },
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -159,59 +304,94 @@ export const leadsRoute: FastifyPluginAsync = async (fastify) => {
 
   // ── POST /orgs/:orgId/leads ─────────────────────────────────────────────────
   // Staff creates a lead manually (phone call, walk-in, referral, etc.)
-  fastify.post<{ Params: { orgId: string } }>('/orgs/:orgId/leads', async (request, reply) => {
-    const { orgId } = request.params
-    const member = await requireOrgMember(request, reply, orgId)
-    if (reply.sent) return
+  fastify.post<{ Params: { orgId: string } }>(
+    '/orgs/:orgId/leads',
+    {
+      schema: {
+        tags: ['Leads'],
+        summary: 'Manually create a lead for an organization (phone call, walk-in, referral, etc.)',
+        params: orgIdParamsSchema,
+        body: createLeadBodySchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'lead'],
+            properties: { ok: { type: 'boolean' }, lead: leadResponseSchema },
+          },
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { orgId } = request.params
+      const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
 
-    const featureCheck = await checkOrgHasFeature(orgId, 'crm')
-    if (!featureCheck.ok) {
-      return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
+      const featureCheck = await checkOrgHasFeature(orgId, 'crm')
+      if (!featureCheck.ok) {
+        return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
+      }
+
+      const parse = manualLeadSchema.safeParse(request.body)
+      if (!parse.success) {
+        return reply.code(400).send({ error: 'Invalid input', details: parse.error.issues })
+      }
+      const body = parse.data
+
+      // A branch-scoped member can only create leads for their own branch.
+      const scope = memberBranchScope(member)
+      const branchId = scope ?? body.branchId ?? null
+
+      if (branchId) {
+        const branchSnap = await db.doc(`organizations/${orgId}/branches/${branchId}`).get()
+        if (!branchSnap.exists) return reply.code(404).send({ error: 'Branch not found' })
+      }
+
+      const now = admin.firestore.Timestamp.fromDate(new Date())
+      const ref = db.collection(`organizations/${orgId}/leads`).doc()
+      const lead = {
+        orgId,
+        branchId,
+        parentName: body.parentName.trim(),
+        phone: body.phone.trim(),
+        email: body.email?.trim() || null,
+        childName: body.childName?.trim() || null,
+        childAge: null,
+        programInterest: body.programInterest?.trim() || null,
+        message: null,
+        source: 'manual' as const,
+        status: 'new' as const,
+        assignedTo: null,
+        notes: body.notes?.trim() || null,
+        createdAt: now,
+        updatedAt: now,
+      }
+      await ref.set(lead)
+
+      const snap = await ref.get()
+      return reply.code(201).send({ ok: true, lead: transformLead(snap) })
     }
-
-    const parse = manualLeadSchema.safeParse(request.body)
-    if (!parse.success) {
-      return reply.code(400).send({ error: 'Invalid input', details: parse.error.issues })
-    }
-    const body = parse.data
-
-    // A branch-scoped member can only create leads for their own branch.
-    const scope = memberBranchScope(member)
-    const branchId = scope ?? body.branchId ?? null
-
-    if (branchId) {
-      const branchSnap = await db.doc(`organizations/${orgId}/branches/${branchId}`).get()
-      if (!branchSnap.exists) return reply.code(404).send({ error: 'Branch not found' })
-    }
-
-    const now = admin.firestore.Timestamp.fromDate(new Date())
-    const ref = db.collection(`organizations/${orgId}/leads`).doc()
-    const lead = {
-      orgId,
-      branchId,
-      parentName: body.parentName.trim(),
-      phone: body.phone.trim(),
-      email: body.email?.trim() || null,
-      childName: body.childName?.trim() || null,
-      childAge: null,
-      programInterest: body.programInterest?.trim() || null,
-      message: null,
-      source: 'manual' as const,
-      status: 'new' as const,
-      assignedTo: null,
-      notes: body.notes?.trim() || null,
-      createdAt: now,
-      updatedAt: now,
-    }
-    await ref.set(lead)
-
-    const snap = await ref.get()
-    return reply.code(201).send({ ok: true, lead: transformLead(snap) })
-  })
+  )
 
   // ── PATCH /orgs/:orgId/leads/:leadId ───────────────────────────────────────
   fastify.patch<{ Params: { orgId: string; leadId: string } }>(
     '/orgs/:orgId/leads/:leadId',
+    {
+      schema: {
+        tags: ['Leads'],
+        summary: 'Update a lead (status, branch, assignment, or notes)',
+        params: leadIdParamsSchema,
+        body: updateLeadBodySchema,
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, leadId } = request.params
       const member = await requireOrgMember(request, reply, orgId)
@@ -254,6 +434,18 @@ export const leadsRoute: FastifyPluginAsync = async (fastify) => {
   // ── DELETE /orgs/:orgId/leads/:leadId ──────────────────────────────────────
   fastify.delete<{ Params: { orgId: string; leadId: string } }>(
     '/orgs/:orgId/leads/:leadId',
+    {
+      schema: {
+        tags: ['Leads'],
+        summary: 'Delete a lead (org admins only)',
+        params: leadIdParamsSchema,
+        response: {
+          200: okResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, leadId } = request.params
       const member = await requireOrgMember(request, reply, orgId)

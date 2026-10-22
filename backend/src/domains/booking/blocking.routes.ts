@@ -23,6 +23,53 @@ const blockSchema = z.object({
   reason: z.string().max(200).nullable().optional(),
 })
 
+const orgSpecialistParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'specialistId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    specialistId: { type: 'string', description: 'Specialist user ID' },
+  },
+} as const
+
+const blockParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'specialistId', 'blockId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    specialistId: { type: 'string', description: 'Specialist user ID' },
+    blockId: { type: 'string', description: 'Blocked period ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const blockedPeriodResponseSchema = {
+  type: 'object',
+  required: ['id', 'specialistId', 'orgId', 'startDate', 'endDate', 'createdAt'],
+  properties: {
+    id: { type: 'string' },
+    specialistId: { type: 'string' },
+    orgId: { type: 'string' },
+    startDate: { type: 'string' },
+    endDate: { type: 'string' },
+    startTime: { type: ['string', 'null'] },
+    endTime: { type: ['string', 'null'] },
+    reason: { type: ['string', 'null'] },
+    createdAt: { type: 'string' },
+  },
+} as const
+
 export const blockingRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
@@ -34,7 +81,25 @@ export const blockingRoute: FastifyPluginAsync = async (fastify) => {
   /** GET /orgs/:orgId/specialists/:specialistId/blocking */
   fastify.get<{ Params: { orgId: string; specialistId: string } }>(
     '/orgs/:orgId/specialists/:specialistId/blocking',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: "List a specialist's blocked (unavailable) periods",
+        params: orgSpecialistParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'blocks'],
+            properties: {
+              ok: { type: 'boolean' },
+              blocks: { type: 'array', items: blockedPeriodResponseSchema },
+            },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, specialistId } = request.params
@@ -50,7 +115,35 @@ export const blockingRoute: FastifyPluginAsync = async (fastify) => {
   /** POST /orgs/:orgId/specialists/:specialistId/blocking */
   fastify.post<{ Params: { orgId: string; specialistId: string } }>(
     '/orgs/:orgId/specialists/:specialistId/blocking',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Create a blocked (unavailable) period for a specialist',
+        params: orgSpecialistParamsSchema,
+        body: {
+          type: 'object',
+          required: ['startDate', 'endDate'],
+          additionalProperties: true,
+          properties: {
+            startDate: { type: 'string', description: 'YYYY-MM-DD' },
+            endDate: { type: 'string', description: 'YYYY-MM-DD, inclusive' },
+            startTime: { type: ['string', 'null'], description: 'HH:MM, omit for full-day block' },
+            endTime: { type: ['string', 'null'], description: 'HH:MM, omit for full-day block' },
+            reason: { type: ['string', 'null'], maxLength: 200 },
+          },
+        },
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'block'],
+            properties: { ok: { type: 'boolean' }, block: blockedPeriodResponseSchema },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, specialistId } = request.params
@@ -96,7 +189,20 @@ export const blockingRoute: FastifyPluginAsync = async (fastify) => {
   /** DELETE /orgs/:orgId/specialists/:specialistId/blocking/:blockId */
   fastify.delete<{ Params: { orgId: string; specialistId: string; blockId: string } }>(
     '/orgs/:orgId/specialists/:specialistId/blocking/:blockId',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Delete a blocked period for a specialist',
+        params: blockParamsSchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, specialistId, blockId } = request.params

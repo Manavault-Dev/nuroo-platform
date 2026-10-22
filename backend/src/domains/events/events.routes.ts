@@ -26,12 +26,112 @@ const eventSchema = z.object({
   status: z.enum(['draft', 'published', 'cancelled']).default('draft'),
 })
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const eventParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'eventId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    eventId: { type: 'string', description: 'Event ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const eventSchemaResponse = {
+  type: 'object',
+  required: ['id', 'orgId', 'title', 'date', 'format', 'status'],
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    orgId: { type: 'string' },
+    orgName: { type: 'string' },
+    orgLogoUrl: { type: ['string', 'null'] },
+    title: { type: 'string' },
+    description: { type: 'string' },
+    coverUrl: { type: ['string', 'null'] },
+    date: { type: 'string' },
+    endDate: { type: ['string', 'null'] },
+    location: { type: 'string' },
+    address: { type: ['string', 'null'] },
+    city: { type: ['string', 'null'] },
+    format: { type: 'string', enum: ['online', 'offline', 'hybrid'] },
+    price: { type: 'integer' },
+    currency: { type: 'string' },
+    spotsTotal: { type: 'integer' },
+    registeredCount: { type: 'integer' },
+    category: { type: ['string', 'null'] },
+    ageMin: { type: ['integer', 'null'] },
+    ageMax: { type: ['integer', 'null'] },
+    status: { type: 'string', enum: ['draft', 'published', 'cancelled'] },
+    createdAt: { type: 'string' },
+    updatedAt: { type: 'string' },
+  },
+} as const
+
+const eventBodySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    title: { type: 'string', minLength: 2, maxLength: 200 },
+    description: { type: 'string', minLength: 2, maxLength: 5000 },
+    coverUrl: { type: ['string', 'null'] },
+    date: { type: 'string', description: 'ISO datetime' },
+    endDate: { type: ['string', 'null'], description: 'ISO datetime' },
+    location: { type: 'string', minLength: 1, maxLength: 300 },
+    address: { type: ['string', 'null'], maxLength: 300 },
+    city: { type: ['string', 'null'], maxLength: 100 },
+    format: { type: 'string', enum: ['online', 'offline', 'hybrid'] },
+    price: { type: 'integer', minimum: 0 },
+    currency: { type: 'string' },
+    spotsTotal: { type: 'integer', minimum: 0 },
+    category: { type: ['string', 'null'], maxLength: 100 },
+    ageMin: { type: ['integer', 'null'], minimum: 0 },
+    ageMax: { type: ['integer', 'null'], minimum: 0 },
+    status: { type: 'string', enum: ['draft', 'published', 'cancelled'] },
+  },
+} as const
+
 export const eventsRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
   fastify.get<{ Params: { orgId: string } }>(
     '/orgs/:orgId/events',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Events'],
+        summary: "List an organization's events",
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'events'],
+            properties: {
+              ok: { type: 'boolean' },
+              events: { type: 'array', items: eventSchemaResponse },
+            },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       await requireOrgMember(request, reply, request.params.orgId)
@@ -52,7 +152,31 @@ export const eventsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/events',
-    { config: { rateLimit: RATE }, bodyLimit: 10 * 1024 * 1024 },
+    {
+      config: { rateLimit: RATE },
+      bodyLimit: 10 * 1024 * 1024,
+      schema: {
+        tags: ['Events'],
+        summary: 'Create a new event for an organization',
+        params: orgIdParamsSchema,
+        body: {
+          ...eventBodySchema,
+          required: ['title', 'description', 'date', 'location', 'format'],
+        },
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'id', 'event'],
+            properties: {
+              ok: { type: 'boolean' },
+              id: { type: 'string' },
+              event: eventSchemaResponse,
+            },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       await requireOrgMember(request, reply, request.params.orgId)
@@ -99,7 +223,21 @@ export const eventsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.put<{ Params: { orgId: string; eventId: string } }>(
     '/orgs/:orgId/events/:eventId',
-    { config: { rateLimit: RATE }, bodyLimit: 10 * 1024 * 1024 },
+    {
+      config: { rateLimit: RATE },
+      bodyLimit: 10 * 1024 * 1024,
+      schema: {
+        tags: ['Events'],
+        summary: 'Replace/update an event',
+        params: eventParamsSchema,
+        body: eventBodySchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       await requireOrgMember(request, reply, request.params.orgId)
@@ -124,7 +262,19 @@ export const eventsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.delete<{ Params: { orgId: string; eventId: string } }>(
     '/orgs/:orgId/events/:eventId',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Events'],
+        summary: 'Delete an event',
+        params: eventParamsSchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       await requireOrgMember(request, reply, request.params.orgId)
@@ -144,7 +294,40 @@ export const eventsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string; eventId: string } }>(
     '/orgs/:orgId/events/:eventId/registrations',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Events'],
+        summary: 'List registrations for an event',
+        params: eventParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'registrations'],
+            properties: {
+              ok: { type: 'boolean' },
+              registrations: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['uid'],
+                  additionalProperties: true,
+                  properties: {
+                    uid: { type: 'string' },
+                    email: { type: ['string', 'null'] },
+                    displayName: { type: ['string', 'null'] },
+                    phone: { type: ['string', 'null'] },
+                    registeredAt: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          401: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       await requireOrgMember(request, reply, request.params.orgId)

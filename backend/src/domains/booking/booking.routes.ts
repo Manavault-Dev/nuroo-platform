@@ -91,13 +91,107 @@ async function listParentBookings(db: FirebaseFirestore.Firestore, parentId: str
   return sortBookingsByDateDesc(enriched)
 }
 
+const orgParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const bookingParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'bookingId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    bookingId: { type: 'string', description: 'Booking ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const createBookingBodySchema = {
+  type: 'object',
+  required: ['specialistId', 'slotId', 'date', 'startTime', 'endTime'],
+  additionalProperties: true,
+  properties: {
+    specialistId: { type: 'string', minLength: 1 },
+    serviceId: { type: ['string', 'null'] },
+    slotId: { type: 'string', minLength: 1 },
+    date: { type: 'string', description: 'YYYY-MM-DD' },
+    startTime: { type: 'string', description: 'HH:MM' },
+    endTime: { type: 'string', description: 'HH:MM' },
+    childId: { type: ['string', 'null'] },
+    notes: { type: ['string', 'null'], maxLength: 1000 },
+  },
+} as const
+
+const cancelBookingBodySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    reason: { type: 'string', maxLength: 500 },
+  },
+} as const
+
+const bookingsQuerystringSchema = {
+  type: 'object',
+  properties: {
+    status: { type: 'string' },
+    specialistId: { type: 'string' },
+    date: { type: 'string', description: 'YYYY-MM-DD' },
+    branchId: { type: 'string' },
+  },
+} as const
+
+const statusUpdateBodySchema = {
+  type: 'object',
+  required: ['status'],
+  additionalProperties: true,
+  properties: {
+    status: { type: 'string', enum: ['confirmed', 'completed', 'cancelled', 'no_show'] },
+    cancelReason: { type: 'string', maxLength: 500 },
+  },
+} as const
+
 export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
   // POST /marketplace/organizations/:orgId/bookings — parent creates a booking
   fastify.post<{ Params: { orgId: string } }>(
     '/marketplace/organizations/:orgId/bookings',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Create a new booking for a specialist slot',
+        params: orgParamsSchema,
+        body: createBookingBodySchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'bookingId', 'intakeStatus', 'intakeFormId'],
+            properties: {
+              ok: { type: 'boolean' },
+              bookingId: { type: 'string' },
+              intakeStatus: { type: 'string', enum: ['not_required', 'pending'] },
+              intakeFormId: { type: ['string', 'null'] },
+            },
+          },
+          401: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId } = request.params
@@ -291,7 +385,16 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   // GET /marketplace/bookings — parent's own bookings
   fastify.get(
     '/marketplace/bookings',
-    { config: { rateLimit: RATE_READ } },
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Booking'],
+        summary: "List the authenticated parent's own bookings",
+        response: {
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const bookings = await listParentBookings(db, request.user.uid)
@@ -302,7 +405,16 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   // GET /marketplace/my/bookings — backwards-compatible alias
   fastify.get(
     '/marketplace/my/bookings',
-    { config: { rateLimit: RATE_READ } },
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Booking'],
+        summary: "List the authenticated parent's own bookings (legacy alias)",
+        response: {
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const bookings = await listParentBookings(db, request.user.uid)
@@ -313,7 +425,19 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   // GET /marketplace/organizations/:orgId/bookings/:bookingId — parent views own booking
   fastify.get<{ Params: { orgId: string; bookingId: string } }>(
     '/marketplace/organizations/:orgId/bookings/:bookingId',
-    { config: { rateLimit: RATE_READ } },
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Get a single booking owned by the authenticated parent',
+        params: bookingParamsSchema,
+        response: {
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params
@@ -331,7 +455,22 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   // PUT /marketplace/organizations/:orgId/bookings/:bookingId/cancel — parent cancels
   fastify.put<{ Params: { orgId: string; bookingId: string } }>(
     '/marketplace/organizations/:orgId/bookings/:bookingId/cancel',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Cancel a booking owned by the authenticated parent',
+        params: bookingParamsSchema,
+        body: cancelBookingBodySchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params
@@ -431,34 +570,69 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { orgId: string }
     Querystring: { status?: string; specialistId?: string; date?: string; branchId?: string }
-  }>('/orgs/:orgId/bookings', { config: { rateLimit: RATE_READ } }, async (request, reply) => {
-    if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
-    const { orgId } = request.params
-    const member = await requireOrgMember(request, reply, orgId)
-    if (reply.sent) return
-    if (member.role !== 'org_admin') return reply.code(403).send({ error: 'Forbidden' })
+  }>(
+    '/orgs/:orgId/bookings',
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Booking'],
+        summary: 'List bookings for an organization (admin), with optional filters',
+        params: orgParamsSchema,
+        querystring: bookingsQuerystringSchema,
+        response: {
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
+      const { orgId } = request.params
+      const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
+      if (member.role !== 'org_admin') return reply.code(403).send({ error: 'Forbidden' })
 
-    const { status, specialistId, date, branchId } = request.query as Record<string, string>
-    const scope = memberBranchScope(member)
-    const effectiveBranchId = scope ?? branchId
+      const { status, specialistId, date, branchId } = request.query as Record<string, string>
+      const scope = memberBranchScope(member)
+      const effectiveBranchId = scope ?? branchId
 
-    let bookingsQuery = db.collection(`organizations/${orgId}/bookings`) as FirebaseFirestore.Query
-    if (effectiveBranchId) bookingsQuery = bookingsQuery.where('branchId', '==', effectiveBranchId)
-    const snap = await bookingsQuery.limit(250).get()
+      let bookingsQuery = db.collection(
+        `organizations/${orgId}/bookings`
+      ) as FirebaseFirestore.Query
+      if (effectiveBranchId)
+        bookingsQuery = bookingsQuery.where('branchId', '==', effectiveBranchId)
+      const snap = await bookingsQuery.limit(250).get()
 
-    let bookings = snap.docs.map((d) => ({ id: d.id, ...(d.data() as BookingDoc) }))
-    if (specialistId) bookings = bookings.filter((b) => b.specialistId === specialistId)
-    if (date) bookings = bookings.filter((b) => b.date === date)
-    if (status) bookings = bookings.filter((b) => b.status === status)
-    bookings = sortBookingsByDateDesc(bookings).slice(0, 100)
+      let bookings = snap.docs.map((d) => ({ id: d.id, ...(d.data() as BookingDoc) }))
+      if (specialistId) bookings = bookings.filter((b) => b.specialistId === specialistId)
+      if (date) bookings = bookings.filter((b) => b.date === date)
+      if (status) bookings = bookings.filter((b) => b.status === status)
+      bookings = sortBookingsByDateDesc(bookings).slice(0, 100)
 
-    return { ok: true, bookings }
-  })
+      return { ok: true, bookings }
+    }
+  )
 
   // PUT /orgs/:orgId/bookings/:bookingId/status — org admin updates booking status
   fastify.put<{ Params: { orgId: string; bookingId: string } }>(
     '/orgs/:orgId/bookings/:bookingId/status',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Update the status of a booking (admin)',
+        params: bookingParamsSchema,
+        body: statusUpdateBodySchema,
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params

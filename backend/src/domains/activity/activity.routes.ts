@@ -65,6 +65,111 @@ const markReadSchema = z.object({
   feedItemIds: z.array(z.string()).min(1).max(100),
 })
 
+// ── Fastify JSON schemas ───────────────────────────────────────────────────────
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error', 'code'],
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
+const orgChildParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'childId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    childId: { type: 'string', description: 'Child ID (or resolvable parent uid)' },
+  },
+} as const
+
+const feedItemParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'childId', 'feedItemId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    childId: { type: 'string', description: 'Child ID (or resolvable parent uid)' },
+    feedItemId: { type: 'string', description: 'Activity feed item ID' },
+  },
+} as const
+
+// Response payloads for feed items/comments are produced by activity.service.ts
+// and vary by branch (specialist note vs. parent comment vs. merged legacy
+// conversation message), so we only assert the fields that are always present
+// and keep additionalProperties: true everywhere else to avoid stripping
+// fields from the real response.
+const feedItemResponseSchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    type: { type: 'string', enum: [...FEED_ITEM_TYPES] },
+    body: { type: 'string' },
+    visibility: { type: 'string', enum: [...VISIBILITY_VALUES] },
+    authorId: { type: 'string' },
+    organizationId: { type: 'string' },
+    createdAt: { type: 'string' },
+  },
+} as const
+
+const commentResponseSchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    body: { type: 'string' },
+    visibility: { type: 'string', enum: [...VISIBILITY_VALUES] },
+    authorId: { type: 'string' },
+    createdAt: { type: 'string' },
+  },
+} as const
+
+const createFeedItemBodySchema = {
+  type: 'object',
+  required: ['type', 'body', 'visibility'],
+  additionalProperties: true,
+  properties: {
+    type: { type: 'string', enum: [...FEED_ITEM_TYPES] },
+    body: { type: 'string', minLength: 1, maxLength: 10000 },
+    title: { type: 'string', maxLength: 500 },
+    visibility: { type: 'string', enum: [...VISIBILITY_VALUES] },
+    relatedEntityType: {
+      type: 'string',
+      enum: ['assignment', 'progress', 'note', 'intake_form', 'child'],
+    },
+    relatedEntityId: { type: 'string', maxLength: 128 },
+    metadata: { type: 'object', additionalProperties: true },
+  },
+} as const
+
+const updateFeedItemBodySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    body: { type: 'string', minLength: 1, maxLength: 10000 },
+    title: { type: 'string', maxLength: 500 },
+    visibility: { type: 'string', enum: [...VISIBILITY_VALUES] },
+  },
+} as const
+
+const createCommentBodySchema = {
+  type: 'object',
+  required: ['body', 'visibility'],
+  additionalProperties: true,
+  properties: {
+    body: { type: 'string', minLength: 1, maxLength: 5000 },
+    visibility: { type: 'string', enum: [...VISIBILITY_VALUES] },
+  },
+} as const
+
+const markReadBodySchema = {
+  type: 'object',
+  required: ['feedItemIds'],
+  additionalProperties: true,
+  properties: {
+    feedItemIds: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 100 },
+  },
+} as const
+
 // ── Route plugin ──────────────────────────────────────────────────────────────
 
 export const activityRoute: FastifyPluginAsync = async (fastify) => {
@@ -72,572 +177,762 @@ export const activityRoute: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { orgId: string; childId: string }
     Querystring: { type?: string; visibility?: string; limit?: string; cursor?: string }
-  }>('/orgs/:orgId/children/:childId/feed', async (request, reply) => {
-    try {
-      const { orgId, childId } = request.params
+  }>(
+    '/orgs/:orgId/children/:childId/feed',
+    {
+      schema: {
+        tags: ['Activity'],
+        summary:
+          "List a child's activity feed (specialist notes, parent comments, progress updates, etc.)",
+        params: orgChildParamsSchema,
+        querystring: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            type: { type: 'string', enum: [...FEED_ITEM_TYPES] },
+            visibility: { type: 'string', enum: [...VISIBILITY_VALUES] },
+            limit: { type: 'string', description: 'Page size, defaults to 50' },
+            cursor: { type: 'string', description: 'Pagination cursor from a previous response' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['items'],
+            properties: {
+              items: { type: 'array', items: feedItemResponseSchema },
+              nextCursor: { type: ['string', 'null'] },
+            },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, childId } = request.params
 
-      if (!request.user)
-        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
+        if (!request.user)
+          return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
 
-      const db = getFirestore()
-      const memberDoc = await db.doc(`organizations/${orgId}/members/${request.user.uid}`).get()
-      const memberRole: string = memberDoc.exists
-        ? (memberDoc.data()?.role ?? 'specialist')
-        : 'parent'
+        const db = getFirestore()
+        const memberDoc = await db.doc(`organizations/${orgId}/members/${request.user.uid}`).get()
+        const memberRole: string = memberDoc.exists
+          ? (memberDoc.data()?.role ?? 'specialist')
+          : 'parent'
 
-      let resolvedChildId: string
-      if (memberDoc.exists) {
-        resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
-      } else {
-        // Parent user — resolve childId by direct lookup first, then by parentUserId fallback
-        const resolved = await getResolvedChildId(db, orgId, childId)
-        if (!resolved) {
-          // Also try resolving by the parent's own UID (app sends user.uid as childId)
-          const byUid = await getResolvedChildId(db, orgId, request.user.uid)
-          if (!byUid) {
-            return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
-          }
-          // Verify the resolved child belongs to this parent
-          const childDoc = await db.doc(`organizations/${orgId}/children/${byUid}`).get()
-          if (!childDoc.exists || childDoc.data()?.parentUserId !== request.user.uid) {
-            return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
-          }
-          resolvedChildId = byUid
+        let resolvedChildId: string
+        if (memberDoc.exists) {
+          resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
         } else {
-          const childDoc = await db.doc(`organizations/${orgId}/children/${resolved}`).get()
-          if (!childDoc.exists || childDoc.data()?.parentUserId !== request.user.uid) {
-            return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
+          // Parent user — resolve childId by direct lookup first, then by parentUserId fallback
+          const resolved = await getResolvedChildId(db, orgId, childId)
+          if (!resolved) {
+            // Also try resolving by the parent's own UID (app sends user.uid as childId)
+            const byUid = await getResolvedChildId(db, orgId, request.user.uid)
+            if (!byUid) {
+              return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
+            }
+            // Verify the resolved child belongs to this parent
+            const childDoc = await db.doc(`organizations/${orgId}/children/${byUid}`).get()
+            if (!childDoc.exists || childDoc.data()?.parentUserId !== request.user.uid) {
+              return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
+            }
+            resolvedChildId = byUid
+          } else {
+            const childDoc = await db.doc(`organizations/${orgId}/children/${resolved}`).get()
+            if (!childDoc.exists || childDoc.data()?.parentUserId !== request.user.uid) {
+              return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
+            }
+            resolvedChildId = resolved
           }
-          resolvedChildId = resolved
         }
-      }
 
-      const effectiveRole: ActivityAuthorRole | 'parent' =
-        memberRole === 'org_admin'
-          ? 'org_admin'
-          : memberRole === 'specialist'
-            ? 'specialist'
-            : 'parent'
+        const effectiveRole: ActivityAuthorRole | 'parent' =
+          memberRole === 'org_admin'
+            ? 'org_admin'
+            : memberRole === 'specialist'
+              ? 'specialist'
+              : 'parent'
 
-      const { type, visibility, limit: limitStr, cursor } = request.query
-      const limit = limitStr ? parseInt(limitStr, 10) : 50
+        const { type, visibility, limit: limitStr, cursor } = request.query
+        const limit = limitStr ? parseInt(limitStr, 10) : 50
 
-      if (isNaN(limit) || limit < 1) {
-        return reply.code(400).send({ error: 'Invalid limit parameter', code: 'INVALID_PARAM' })
-      }
+        if (isNaN(limit) || limit < 1) {
+          return reply.code(400).send({ error: 'Invalid limit parameter', code: 'INVALID_PARAM' })
+        }
 
-      const result = await listFeedItems(db, resolvedChildId, orgId, effectiveRole, {
-        type: type as ActivityFeedItemType | undefined,
-        visibility: visibility as ActivityVisibility | undefined,
-        limit,
-        cursor,
-      })
+        const result = await listFeedItems(db, resolvedChildId, orgId, effectiveRole, {
+          type: type as ActivityFeedItemType | undefined,
+          visibility: visibility as ActivityVisibility | undefined,
+          limit,
+          cursor,
+        })
 
-      // For specialists / admins: also pull parent messages from the legacy
-      // conversations collection and merge them into the feed response.
-      // This ensures parents' mobile-app messages are always visible on the platform,
-      // regardless of whether the bridge in messages.routes.ts succeeded.
-      let mergedItems = result.items
+        // For specialists / admins: also pull parent messages from the legacy
+        // conversations collection and merge them into the feed response.
+        // This ensures parents' mobile-app messages are always visible on the platform,
+        // regardless of whether the bridge in messages.routes.ts succeeded.
+        let mergedItems = result.items
 
-      if (effectiveRole !== 'parent' && !type) {
-        // Only merge when no specific type filter is active (keep filtered views clean)
-        try {
-          const convMessages = await listParentConversationMessages(db, orgId, resolvedChildId)
+        if (effectiveRole !== 'parent' && !type) {
+          // Only merge when no specific type filter is active (keep filtered views clean)
+          try {
+            const convMessages = await listParentConversationMessages(db, orgId, resolvedChildId)
 
-          if (convMessages.length > 0) {
-            // Deduplicate: skip conversation messages that are already represented
-            // in the feed collection (e.g. created by the bridge in messages.routes.ts).
-            // The bridge stores the conversation messageId in both metadata.messageId
-            // and relatedEntityId, so we check both.
-            const bridgedMsgIds = new Set<string>(
-              result.items.flatMap((i) => {
-                const ids: string[] = []
-                const mid = i.metadata?.messageId as string | undefined
-                if (mid) ids.push(mid)
-                if (i.relatedEntityId) ids.push(i.relatedEntityId)
-                return ids
+            if (convMessages.length > 0) {
+              // Deduplicate: skip conversation messages that are already represented
+              // in the feed collection (e.g. created by the bridge in messages.routes.ts).
+              // The bridge stores the conversation messageId in both metadata.messageId
+              // and relatedEntityId, so we check both.
+              const bridgedMsgIds = new Set<string>(
+                result.items.flatMap((i) => {
+                  const ids: string[] = []
+                  const mid = i.metadata?.messageId as string | undefined
+                  if (mid) ids.push(mid)
+                  if (i.relatedEntityId) ids.push(i.relatedEntityId)
+                  return ids
+                })
+              )
+              // Also skip if the synthetic conv_ id is already present
+              const existingIds = new Set<string>(result.items.map((i) => i.id))
+
+              const deduped = convMessages.filter((m) => {
+                if (existingIds.has(m.id)) return false
+                const mid = m.metadata?.messageId as string | undefined
+                return !mid || !bridgedMsgIds.has(mid)
               })
-            )
-            // Also skip if the synthetic conv_ id is already present
-            const existingIds = new Set<string>(result.items.map((i) => i.id))
 
-            const deduped = convMessages.filter((m) => {
-              if (existingIds.has(m.id)) return false
-              const mid = m.metadata?.messageId as string | undefined
-              return !mid || !bridgedMsgIds.has(mid)
-            })
-
-            // Merge and sort by createdAt descending
-            mergedItems = [...result.items, ...deduped].sort(
-              (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              // Merge and sort by createdAt descending
+              mergedItems = [...result.items, ...deduped].sort(
+                (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              )
+            }
+          } catch (convErr) {
+            fastify.log.warn(
+              { err: convErr },
+              '[FEED] Failed to merge conversation messages — returning feed-only items'
             )
           }
-        } catch (convErr) {
-          fastify.log.warn(
-            { err: convErr },
-            '[FEED] Failed to merge conversation messages — returning feed-only items'
-          )
         }
+
+        const itemsForUser = mergedItems.map((item) => ({
+          ...item,
+          unreadBy: item.unreadBy?.includes(request.user!.uid) ? [request.user!.uid] : [],
+        }))
+
+        return reply.send({ items: itemsForUser, nextCursor: result.nextCursor })
+      } catch (err: unknown) {
+        fastify.log.error({ err }, '[FEED] listFeedItems failed')
+        return reply.code(500).send({ error: 'Failed to list feed items', code: 'INTERNAL_ERROR' })
       }
-
-      const itemsForUser = mergedItems.map((item) => ({
-        ...item,
-        unreadBy: item.unreadBy?.includes(request.user!.uid) ? [request.user!.uid] : [],
-      }))
-
-      return reply.send({ items: itemsForUser, nextCursor: result.nextCursor })
-    } catch (err: unknown) {
-      fastify.log.error({ err }, '[FEED] listFeedItems failed')
-      return reply.code(500).send({ error: 'Failed to list feed items', code: 'INTERNAL_ERROR' })
     }
-  })
+  )
 
   // ── POST /orgs/:orgId/children/:childId/feed ────────────────────────────────
   fastify.post<{
     Params: { orgId: string; childId: string }
     Body: z.infer<typeof createFeedItemSchema>
-  }>('/orgs/:orgId/children/:childId/feed', async (request, reply) => {
-    try {
-      const { orgId, childId } = request.params
-
-      if (!request.user)
-        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
-
-      const member = await requireOrgMember(request, reply, orgId)
-      const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
-
-      // Only specialists and admins can create feed items
-      if (member.role !== 'org_admin' && member.role !== 'specialist') {
-        return reply
-          .code(403)
-          .send({ error: 'Only specialists and admins can create feed items', code: 'FORBIDDEN' })
-      }
-
-      let parsedBody: {
-        type: ActivityFeedItemType
-        body: string
-        title?: string
-        visibility: ActivityVisibility
-        relatedEntityType?: 'assignment' | 'progress' | 'note' | 'intake_form' | 'child'
-        relatedEntityId?: string
-        metadata?: Record<string, unknown>
-      }
+  }>(
+    '/orgs/:orgId/children/:childId/feed',
+    {
+      schema: {
+        tags: ['Activity'],
+        summary: 'Create an activity feed item for a child (specialists and admins only)',
+        params: orgChildParamsSchema,
+        body: createFeedItemBodySchema,
+        response: {
+          201: feedItemResponseSchema,
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
       try {
-        parsedBody = createFeedItemSchema.parse(request.body) as typeof parsedBody
-      } catch (parseErr: unknown) {
-        const msg = parseErr instanceof z.ZodError ? parseErr.message : 'Invalid request body'
-        return reply.code(400).send({ error: msg, code: 'VALIDATION_ERROR' })
+        const { orgId, childId } = request.params
+
+        if (!request.user)
+          return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
+
+        const member = await requireOrgMember(request, reply, orgId)
+        const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+
+        // Only specialists and admins can create feed items
+        if (member.role !== 'org_admin' && member.role !== 'specialist') {
+          return reply
+            .code(403)
+            .send({ error: 'Only specialists and admins can create feed items', code: 'FORBIDDEN' })
+        }
+
+        let parsedBody: {
+          type: ActivityFeedItemType
+          body: string
+          title?: string
+          visibility: ActivityVisibility
+          relatedEntityType?: 'assignment' | 'progress' | 'note' | 'intake_form' | 'child'
+          relatedEntityId?: string
+          metadata?: Record<string, unknown>
+        }
+        try {
+          parsedBody = createFeedItemSchema.parse(request.body) as typeof parsedBody
+        } catch (parseErr: unknown) {
+          const msg = parseErr instanceof z.ZodError ? parseErr.message : 'Invalid request body'
+          return reply.code(400).send({ error: msg, code: 'VALIDATION_ERROR' })
+        }
+
+        const db = getFirestore()
+        const { uid, email } = request.user
+        const authorRole: ActivityAuthorRole =
+          member.role === 'org_admin' ? 'org_admin' : 'specialist'
+        const authorName = await getAuthorName(db, uid, email, authorRole)
+
+        const item = await createFeedItem(
+          db,
+          orgId,
+          resolvedChildId,
+          uid,
+          authorRole,
+          authorName,
+          parsedBody
+        )
+
+        // Notify parent when visibility is parent_visible
+        if (parsedBody.visibility === 'parent_visible') {
+          const orgChildSnap = await db
+            .doc(`organizations/${orgId}/children/${resolvedChildId}`)
+            .get()
+          const parentUserId = orgChildSnap.data()?.parentUserId as string | undefined
+          const childName: string = orgChildSnap.data()?.name ?? 'your child'
+
+          if (parentUserId) {
+            // Use note_added for specialist notes; progress_update for actual progress reports
+            const notifType =
+              parsedBody.type === 'progress_update' ? 'progress_update' : 'note_added'
+            dispatch({
+              userId: parentUserId,
+              orgId,
+              role: 'parent',
+              type: notifType,
+              category: 'progressUpdates',
+              title: `New update for ${childName}`,
+              body: parsedBody.title
+                ? `${parsedBody.title}: ${parsedBody.body.slice(0, 80)}`
+                : parsedBody.body.slice(0, 120),
+              metadata: { childId: resolvedChildId, orgId, specialistId: uid },
+              dedupKey: `feed_item_created:${item.id}`,
+              channel: 'both',
+            }).catch(() => undefined)
+          }
+        }
+
+        return reply.code(201).send(item)
+      } catch (err: unknown) {
+        fastify.log.error({ err }, '[FEED] createFeedItem failed')
+        return reply.code(500).send({ error: 'Failed to create feed item', code: 'INTERNAL_ERROR' })
       }
+    }
+  )
 
-      const db = getFirestore()
-      const { uid, email } = request.user
-      const authorRole: ActivityAuthorRole =
-        member.role === 'org_admin' ? 'org_admin' : 'specialist'
-      const authorName = await getAuthorName(db, uid, email, authorRole)
+  // ── GET /orgs/:orgId/children/:childId/feed/:feedItemId ─────────────────────
+  fastify.get<{
+    Params: { orgId: string; childId: string; feedItemId: string }
+  }>(
+    '/orgs/:orgId/children/:childId/feed/:feedItemId',
+    {
+      schema: {
+        tags: ['Activity'],
+        summary: 'Get a single activity feed item for a child',
+        params: feedItemParamsSchema,
+        response: {
+          200: feedItemResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, childId, feedItemId } = request.params
 
-      const item = await createFeedItem(
-        db,
-        orgId,
-        resolvedChildId,
-        uid,
-        authorRole,
-        authorName,
-        parsedBody
-      )
+        if (!request.user)
+          return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
 
-      // Notify parent when visibility is parent_visible
-      if (parsedBody.visibility === 'parent_visible') {
+        const db = getFirestore()
+        const memberDoc = await db.doc(`organizations/${orgId}/members/${request.user.uid}`).get()
+        const memberRole: string = memberDoc.exists
+          ? (memberDoc.data()?.role ?? 'specialist')
+          : 'parent'
+
+        let resolvedChildId: string
+        if (memberDoc.exists) {
+          resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        } else {
+          const childDoc = await db.doc(`organizations/${orgId}/children/${childId}`).get()
+          if (!childDoc.exists || childDoc.data()?.parentUserId !== request.user.uid) {
+            return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
+          }
+          resolvedChildId = childId
+        }
+
+        const item = await getFeedItem(db, resolvedChildId, feedItemId)
+
+        if (!item || item.organizationId !== orgId) {
+          return reply.code(404).send({ error: 'Feed item not found', code: 'NOT_FOUND' })
+        }
+
+        // Parents can only see parent_visible items
+        if (memberRole !== 'org_admin' && memberRole !== 'specialist') {
+          if (item.visibility !== 'parent_visible') {
+            return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
+          }
+        }
+
+        return reply.send(item)
+      } catch (err: unknown) {
+        fastify.log.error({ err }, '[FEED] getFeedItem failed')
+        return reply.code(500).send({ error: 'Failed to get feed item', code: 'INTERNAL_ERROR' })
+      }
+    }
+  )
+
+  // ── PATCH /orgs/:orgId/children/:childId/feed/:feedItemId ───────────────────
+  fastify.patch<{
+    Params: { orgId: string; childId: string; feedItemId: string }
+    Body: z.infer<typeof updateFeedItemSchema>
+  }>(
+    '/orgs/:orgId/children/:childId/feed/:feedItemId',
+    {
+      schema: {
+        tags: ['Activity'],
+        summary: 'Update an activity feed item (author only)',
+        params: feedItemParamsSchema,
+        body: updateFeedItemBodySchema,
+        response: {
+          200: feedItemResponseSchema,
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, childId, feedItemId } = request.params
+
+        if (!request.user)
+          return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
+
+        await requireOrgMember(request, reply, orgId)
+        const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+
+        const body = updateFeedItemSchema.safeParse(request.body)
+        if (!body.success) {
+          return reply.code(400).send({ error: body.error.message, code: 'VALIDATION_ERROR' })
+        }
+
+        const db = getFirestore()
+        const existing = await getFeedItem(db, resolvedChildId, feedItemId)
+
+        if (!existing || existing.organizationId !== orgId) {
+          return reply.code(404).send({ error: 'Feed item not found', code: 'NOT_FOUND' })
+        }
+
+        // Only the author can edit
+        if (existing.authorId !== request.user.uid) {
+          return reply
+            .code(403)
+            .send({ error: 'Only the author can edit this item', code: 'FORBIDDEN' })
+        }
+
+        const updated = await updateFeedItem(db, resolvedChildId, feedItemId, body.data)
+        return reply.send(updated)
+      } catch (err: unknown) {
+        fastify.log.error({ err }, '[FEED] updateFeedItem failed')
+        return reply.code(500).send({ error: 'Failed to update feed item', code: 'INTERNAL_ERROR' })
+      }
+    }
+  )
+
+  // ── DELETE /orgs/:orgId/children/:childId/feed/:feedItemId ──────────────────
+  fastify.delete<{
+    Params: { orgId: string; childId: string; feedItemId: string }
+  }>(
+    '/orgs/:orgId/children/:childId/feed/:feedItemId',
+    {
+      schema: {
+        tags: ['Activity'],
+        summary: 'Delete an activity feed item (author or org admin)',
+        params: feedItemParamsSchema,
+        response: {
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, childId, feedItemId } = request.params
+
+        if (!request.user)
+          return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
+
+        const member = await requireOrgMember(request, reply, orgId)
+        const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+
+        const db = getFirestore()
+        const existing = await getFeedItem(db, resolvedChildId, feedItemId)
+
+        if (!existing || existing.organizationId !== orgId) {
+          return reply.code(404).send({ error: 'Feed item not found', code: 'NOT_FOUND' })
+        }
+
+        // Author or admin can delete
+        const isAdmin = member.role === 'org_admin'
+        const isAuthor = existing.authorId === request.user.uid
+
+        if (!isAdmin && !isAuthor) {
+          return reply
+            .code(403)
+            .send({ error: 'Only the author or an admin can delete this item', code: 'FORBIDDEN' })
+        }
+
+        await deleteFeedItem(db, resolvedChildId, feedItemId)
+        return reply.code(204).send()
+      } catch (err: unknown) {
+        fastify.log.error({ err }, '[FEED] deleteFeedItem failed')
+        return reply.code(500).send({ error: 'Failed to delete feed item', code: 'INTERNAL_ERROR' })
+      }
+    }
+  )
+
+  // ── GET /orgs/:orgId/children/:childId/feed/:feedItemId/comments ─────────────
+  fastify.get<{
+    Params: { orgId: string; childId: string; feedItemId: string }
+  }>(
+    '/orgs/:orgId/children/:childId/feed/:feedItemId/comments',
+    {
+      schema: {
+        tags: ['Activity'],
+        summary: 'List comments on an activity feed item',
+        params: feedItemParamsSchema,
+        response: {
+          200: { type: 'array', items: commentResponseSchema },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, childId, feedItemId } = request.params
+
+        if (!request.user)
+          return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
+
+        const db = getFirestore()
+        const memberDoc = await db.doc(`organizations/${orgId}/members/${request.user.uid}`).get()
+        const memberRole: string = memberDoc.exists
+          ? (memberDoc.data()?.role ?? 'specialist')
+          : 'parent'
+
+        let resolvedChildId: string
+        if (memberDoc.exists) {
+          resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        } else {
+          const childDoc = await db.doc(`organizations/${orgId}/children/${childId}`).get()
+          if (!childDoc.exists || childDoc.data()?.parentUserId !== request.user.uid) {
+            return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
+          }
+          resolvedChildId = childId
+        }
+
+        const feedItem = await getFeedItem(db, resolvedChildId, feedItemId)
+        if (!feedItem || feedItem.organizationId !== orgId) {
+          return reply.code(404).send({ error: 'Feed item not found', code: 'NOT_FOUND' })
+        }
+
+        const effectiveRole: ActivityAuthorRole | 'parent' =
+          memberRole === 'org_admin'
+            ? 'org_admin'
+            : memberRole === 'specialist'
+              ? 'specialist'
+              : 'parent'
+
+        const comments = await listComments(db, resolvedChildId, feedItemId, effectiveRole)
+        return reply.send(comments)
+      } catch (err: unknown) {
+        fastify.log.error({ err }, '[FEED] listComments failed')
+        return reply.code(500).send({ error: 'Failed to list comments', code: 'INTERNAL_ERROR' })
+      }
+    }
+  )
+
+  // ── POST /orgs/:orgId/children/:childId/feed/:feedItemId/comments ────────────
+  fastify.post<{
+    Params: { orgId: string; childId: string; feedItemId: string }
+    Body: z.infer<typeof createCommentSchema>
+  }>(
+    '/orgs/:orgId/children/:childId/feed/:feedItemId/comments',
+    {
+      schema: {
+        tags: ['Activity'],
+        summary: 'Add a comment to an activity feed item',
+        params: feedItemParamsSchema,
+        body: createCommentBodySchema,
+        response: {
+          201: commentResponseSchema,
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, childId, feedItemId } = request.params
+
+        if (!request.user)
+          return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
+
+        const body = createCommentSchema.safeParse(request.body)
+        if (!body.success) {
+          return reply.code(400).send({ error: body.error.message, code: 'VALIDATION_ERROR' })
+        }
+
+        const db = getFirestore()
+        const memberDoc = await db.doc(`organizations/${orgId}/members/${request.user.uid}`).get()
+        const memberRole: string | undefined = memberDoc.exists ? memberDoc.data()?.role : undefined
+        let resolvedChildId: string
+        let authorRole: ActivityAuthorRole | 'parent'
+
+        if (memberDoc.exists) {
+          resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+          authorRole = memberRole === 'org_admin' ? 'org_admin' : 'specialist'
+        } else {
+          const resolved = await getResolvedChildId(db, orgId, childId)
+          if (!resolved) {
+            return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
+          }
+
+          const childDoc = await db.doc(`organizations/${orgId}/children/${resolved}`).get()
+          if (!childDoc.exists || childDoc.data()?.parentUserId !== request.user.uid) {
+            return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
+          }
+
+          resolvedChildId = resolved
+          authorRole = 'parent'
+        }
+
+        const feedItem = await getFeedItem(db, resolvedChildId, feedItemId)
+        if (!feedItem || feedItem.organizationId !== orgId) {
+          return reply.code(404).send({ error: 'Feed item not found', code: 'NOT_FOUND' })
+        }
+
+        const { uid, email } = request.user
+        const authorName = await getAuthorName(db, uid, email, authorRole)
+        const visibility = authorRole === 'parent' ? 'parent_visible' : body.data.visibility
+
+        const comment = await createComment(
+          db,
+          resolvedChildId,
+          feedItemId,
+          orgId,
+          uid,
+          authorRole,
+          authorName,
+          body.data.body,
+          visibility
+        )
+
+        // Bridge: if specialist replies to a parent_comment, write reply back to the
+        // legacy conversation so the parent sees it in the mobile app.
+        if (
+          (authorRole === 'specialist' || authorRole === 'org_admin') &&
+          feedItem.type === 'parent_comment'
+        ) {
+          bridgeSpecialistReplyToConversation(db, feedItem, body.data.body, uid, authorName).catch(
+            (err) =>
+              fastify.log.warn({ err }, '[FEED] Failed to bridge specialist reply to conversation')
+          )
+        }
+
+        // Notify relevant parties
         const orgChildSnap = await db
           .doc(`organizations/${orgId}/children/${resolvedChildId}`)
           .get()
         const parentUserId = orgChildSnap.data()?.parentUserId as string | undefined
         const childName: string = orgChildSnap.data()?.name ?? 'your child'
 
-        if (parentUserId) {
-          // Use note_added for specialist notes; progress_update for actual progress reports
-          const notifType = parsedBody.type === 'progress_update' ? 'progress_update' : 'note_added'
+        if (
+          (authorRole === 'specialist' || authorRole === 'org_admin') &&
+          visibility === 'parent_visible' &&
+          parentUserId
+        ) {
+          // Specialist/admin commented, visible to parent — notify parent
           dispatch({
             userId: parentUserId,
             orgId,
             role: 'parent',
-            type: notifType,
+            type: 'note_added',
             category: 'progressUpdates',
-            title: `New update for ${childName}`,
-            body: parsedBody.title
-              ? `${parsedBody.title}: ${parsedBody.body.slice(0, 80)}`
-              : parsedBody.body.slice(0, 120),
+            title: `New comment about ${childName}`,
+            body: body.data.body.slice(0, 120),
             metadata: { childId: resolvedChildId, orgId, specialistId: uid },
-            dedupKey: `feed_item_created:${item.id}`,
+            dedupKey: `feed_comment_specialist:${comment.id}`,
             channel: 'both',
           }).catch(() => undefined)
         }
-      }
 
-      return reply.code(201).send(item)
-    } catch (err: unknown) {
-      fastify.log.error({ err }, '[FEED] createFeedItem failed')
-      return reply.code(500).send({ error: 'Failed to create feed item', code: 'INTERNAL_ERROR' })
-    }
-  })
-
-  // ── GET /orgs/:orgId/children/:childId/feed/:feedItemId ─────────────────────
-  fastify.get<{
-    Params: { orgId: string; childId: string; feedItemId: string }
-  }>('/orgs/:orgId/children/:childId/feed/:feedItemId', async (request, reply) => {
-    try {
-      const { orgId, childId, feedItemId } = request.params
-
-      if (!request.user)
-        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
-
-      const db = getFirestore()
-      const memberDoc = await db.doc(`organizations/${orgId}/members/${request.user.uid}`).get()
-      const memberRole: string = memberDoc.exists
-        ? (memberDoc.data()?.role ?? 'specialist')
-        : 'parent'
-
-      let resolvedChildId: string
-      if (memberDoc.exists) {
-        resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
-      } else {
-        const childDoc = await db.doc(`organizations/${orgId}/children/${childId}`).get()
-        if (!childDoc.exists || childDoc.data()?.parentUserId !== request.user.uid) {
-          return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
-        }
-        resolvedChildId = childId
-      }
-
-      const item = await getFeedItem(db, resolvedChildId, feedItemId)
-
-      if (!item || item.organizationId !== orgId) {
-        return reply.code(404).send({ error: 'Feed item not found', code: 'NOT_FOUND' })
-      }
-
-      // Parents can only see parent_visible items
-      if (memberRole !== 'org_admin' && memberRole !== 'specialist') {
-        if (item.visibility !== 'parent_visible') {
-          return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
-        }
-      }
-
-      return reply.send(item)
-    } catch (err: unknown) {
-      fastify.log.error({ err }, '[FEED] getFeedItem failed')
-      return reply.code(500).send({ error: 'Failed to get feed item', code: 'INTERNAL_ERROR' })
-    }
-  })
-
-  // ── PATCH /orgs/:orgId/children/:childId/feed/:feedItemId ───────────────────
-  fastify.patch<{
-    Params: { orgId: string; childId: string; feedItemId: string }
-    Body: z.infer<typeof updateFeedItemSchema>
-  }>('/orgs/:orgId/children/:childId/feed/:feedItemId', async (request, reply) => {
-    try {
-      const { orgId, childId, feedItemId } = request.params
-
-      if (!request.user)
-        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
-
-      await requireOrgMember(request, reply, orgId)
-      const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
-
-      const body = updateFeedItemSchema.safeParse(request.body)
-      if (!body.success) {
-        return reply.code(400).send({ error: body.error.message, code: 'VALIDATION_ERROR' })
-      }
-
-      const db = getFirestore()
-      const existing = await getFeedItem(db, resolvedChildId, feedItemId)
-
-      if (!existing || existing.organizationId !== orgId) {
-        return reply.code(404).send({ error: 'Feed item not found', code: 'NOT_FOUND' })
-      }
-
-      // Only the author can edit
-      if (existing.authorId !== request.user.uid) {
-        return reply
-          .code(403)
-          .send({ error: 'Only the author can edit this item', code: 'FORBIDDEN' })
-      }
-
-      const updated = await updateFeedItem(db, resolvedChildId, feedItemId, body.data)
-      return reply.send(updated)
-    } catch (err: unknown) {
-      fastify.log.error({ err }, '[FEED] updateFeedItem failed')
-      return reply.code(500).send({ error: 'Failed to update feed item', code: 'INTERNAL_ERROR' })
-    }
-  })
-
-  // ── DELETE /orgs/:orgId/children/:childId/feed/:feedItemId ──────────────────
-  fastify.delete<{
-    Params: { orgId: string; childId: string; feedItemId: string }
-  }>('/orgs/:orgId/children/:childId/feed/:feedItemId', async (request, reply) => {
-    try {
-      const { orgId, childId, feedItemId } = request.params
-
-      if (!request.user)
-        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
-
-      const member = await requireOrgMember(request, reply, orgId)
-      const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
-
-      const db = getFirestore()
-      const existing = await getFeedItem(db, resolvedChildId, feedItemId)
-
-      if (!existing || existing.organizationId !== orgId) {
-        return reply.code(404).send({ error: 'Feed item not found', code: 'NOT_FOUND' })
-      }
-
-      // Author or admin can delete
-      const isAdmin = member.role === 'org_admin'
-      const isAuthor = existing.authorId === request.user.uid
-
-      if (!isAdmin && !isAuthor) {
-        return reply
-          .code(403)
-          .send({ error: 'Only the author or an admin can delete this item', code: 'FORBIDDEN' })
-      }
-
-      await deleteFeedItem(db, resolvedChildId, feedItemId)
-      return reply.code(204).send()
-    } catch (err: unknown) {
-      fastify.log.error({ err }, '[FEED] deleteFeedItem failed')
-      return reply.code(500).send({ error: 'Failed to delete feed item', code: 'INTERNAL_ERROR' })
-    }
-  })
-
-  // ── GET /orgs/:orgId/children/:childId/feed/:feedItemId/comments ─────────────
-  fastify.get<{
-    Params: { orgId: string; childId: string; feedItemId: string }
-  }>('/orgs/:orgId/children/:childId/feed/:feedItemId/comments', async (request, reply) => {
-    try {
-      const { orgId, childId, feedItemId } = request.params
-
-      if (!request.user)
-        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
-
-      const db = getFirestore()
-      const memberDoc = await db.doc(`organizations/${orgId}/members/${request.user.uid}`).get()
-      const memberRole: string = memberDoc.exists
-        ? (memberDoc.data()?.role ?? 'specialist')
-        : 'parent'
-
-      let resolvedChildId: string
-      if (memberDoc.exists) {
-        resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
-      } else {
-        const childDoc = await db.doc(`organizations/${orgId}/children/${childId}`).get()
-        if (!childDoc.exists || childDoc.data()?.parentUserId !== request.user.uid) {
-          return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
-        }
-        resolvedChildId = childId
-      }
-
-      const feedItem = await getFeedItem(db, resolvedChildId, feedItemId)
-      if (!feedItem || feedItem.organizationId !== orgId) {
-        return reply.code(404).send({ error: 'Feed item not found', code: 'NOT_FOUND' })
-      }
-
-      const effectiveRole: ActivityAuthorRole | 'parent' =
-        memberRole === 'org_admin'
-          ? 'org_admin'
-          : memberRole === 'specialist'
-            ? 'specialist'
-            : 'parent'
-
-      const comments = await listComments(db, resolvedChildId, feedItemId, effectiveRole)
-      return reply.send(comments)
-    } catch (err: unknown) {
-      fastify.log.error({ err }, '[FEED] listComments failed')
-      return reply.code(500).send({ error: 'Failed to list comments', code: 'INTERNAL_ERROR' })
-    }
-  })
-
-  // ── POST /orgs/:orgId/children/:childId/feed/:feedItemId/comments ────────────
-  fastify.post<{
-    Params: { orgId: string; childId: string; feedItemId: string }
-    Body: z.infer<typeof createCommentSchema>
-  }>('/orgs/:orgId/children/:childId/feed/:feedItemId/comments', async (request, reply) => {
-    try {
-      const { orgId, childId, feedItemId } = request.params
-
-      if (!request.user)
-        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
-
-      const body = createCommentSchema.safeParse(request.body)
-      if (!body.success) {
-        return reply.code(400).send({ error: body.error.message, code: 'VALIDATION_ERROR' })
-      }
-
-      const db = getFirestore()
-      const memberDoc = await db.doc(`organizations/${orgId}/members/${request.user.uid}`).get()
-      const memberRole: string | undefined = memberDoc.exists ? memberDoc.data()?.role : undefined
-      let resolvedChildId: string
-      let authorRole: ActivityAuthorRole | 'parent'
-
-      if (memberDoc.exists) {
-        resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
-        authorRole = memberRole === 'org_admin' ? 'org_admin' : 'specialist'
-      } else {
-        const resolved = await getResolvedChildId(db, orgId, childId)
-        if (!resolved) {
-          return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
-        }
-
-        const childDoc = await db.doc(`organizations/${orgId}/children/${resolved}`).get()
-        if (!childDoc.exists || childDoc.data()?.parentUserId !== request.user.uid) {
-          return reply.code(403).send({ error: 'Access denied', code: 'FORBIDDEN' })
-        }
-
-        resolvedChildId = resolved
-        authorRole = 'parent'
-      }
-
-      const feedItem = await getFeedItem(db, resolvedChildId, feedItemId)
-      if (!feedItem || feedItem.organizationId !== orgId) {
-        return reply.code(404).send({ error: 'Feed item not found', code: 'NOT_FOUND' })
-      }
-
-      const { uid, email } = request.user
-      const authorName = await getAuthorName(db, uid, email, authorRole)
-      const visibility = authorRole === 'parent' ? 'parent_visible' : body.data.visibility
-
-      const comment = await createComment(
-        db,
-        resolvedChildId,
-        feedItemId,
-        orgId,
-        uid,
-        authorRole,
-        authorName,
-        body.data.body,
-        visibility
-      )
-
-      // Bridge: if specialist replies to a parent_comment, write reply back to the
-      // legacy conversation so the parent sees it in the mobile app.
-      if (
-        (authorRole === 'specialist' || authorRole === 'org_admin') &&
-        feedItem.type === 'parent_comment'
-      ) {
-        bridgeSpecialistReplyToConversation(db, feedItem, body.data.body, uid, authorName).catch(
-          (err) =>
-            fastify.log.warn({ err }, '[FEED] Failed to bridge specialist reply to conversation')
-        )
-      }
-
-      // Notify relevant parties
-      const orgChildSnap = await db.doc(`organizations/${orgId}/children/${resolvedChildId}`).get()
-      const parentUserId = orgChildSnap.data()?.parentUserId as string | undefined
-      const childName: string = orgChildSnap.data()?.name ?? 'your child'
-
-      if (
-        (authorRole === 'specialist' || authorRole === 'org_admin') &&
-        visibility === 'parent_visible' &&
-        parentUserId
-      ) {
-        // Specialist/admin commented, visible to parent — notify parent
-        dispatch({
-          userId: parentUserId,
-          orgId,
-          role: 'parent',
-          type: 'note_added',
-          category: 'progressUpdates',
-          title: `New comment about ${childName}`,
-          body: body.data.body.slice(0, 120),
-          metadata: { childId: resolvedChildId, orgId, specialistId: uid },
-          dedupKey: `feed_comment_specialist:${comment.id}`,
-          channel: 'both',
-        }).catch(() => undefined)
-      }
-
-      if (
-        authorRole === 'parent' &&
-        feedItem.authorRole !== 'parent' &&
-        feedItem.authorRole !== 'system'
-      ) {
-        dispatch({
-          userId: feedItem.authorId,
-          orgId,
-          role: 'specialist',
-          type: 'new_message',
-          category: 'messages',
-          title: `New parent reply about ${childName}`,
-          body: body.data.body.slice(0, 120),
-          metadata: {
-            childId: resolvedChildId,
+        if (
+          authorRole === 'parent' &&
+          feedItem.authorRole !== 'parent' &&
+          feedItem.authorRole !== 'system'
+        ) {
+          dispatch({
+            userId: feedItem.authorId,
             orgId,
-            specialistId: feedItem.authorId,
-            parentId: uid,
-          },
-          dedupKey: `feed_comment_parent:${comment.id}`,
-          channel: 'both',
-        }).catch(() => undefined)
-      }
+            role: 'specialist',
+            type: 'new_message',
+            category: 'messages',
+            title: `New parent reply about ${childName}`,
+            body: body.data.body.slice(0, 120),
+            metadata: {
+              childId: resolvedChildId,
+              orgId,
+              specialistId: feedItem.authorId,
+              parentId: uid,
+            },
+            dedupKey: `feed_comment_parent:${comment.id}`,
+            channel: 'both',
+          }).catch(() => undefined)
+        }
 
-      return reply.code(201).send(comment)
-    } catch (err: unknown) {
-      fastify.log.error({ err }, '[FEED] createComment failed')
-      return reply.code(500).send({ error: 'Failed to create comment', code: 'INTERNAL_ERROR' })
+        return reply.code(201).send(comment)
+      } catch (err: unknown) {
+        fastify.log.error({ err }, '[FEED] createComment failed')
+        return reply.code(500).send({ error: 'Failed to create comment', code: 'INTERNAL_ERROR' })
+      }
     }
-  })
+  )
 
   // ── PATCH /orgs/:orgId/children/:childId/feed/read ──────────────────────────
   fastify.patch<{
     Params: { orgId: string; childId: string }
     Body: z.infer<typeof markReadSchema>
-  }>('/orgs/:orgId/children/:childId/feed/read', async (request, reply) => {
-    try {
-      const { orgId, childId } = request.params
+  }>(
+    '/orgs/:orgId/children/:childId/feed/read',
+    {
+      schema: {
+        tags: ['Activity'],
+        summary: 'Mark activity feed items as read for the authenticated user',
+        params: orgChildParamsSchema,
+        body: markReadBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['marked'],
+            properties: { marked: { type: 'number' } },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, childId } = request.params
 
-      if (!request.user)
-        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
+        if (!request.user)
+          return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
 
-      await requireOrgMember(request, reply, orgId)
-      const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        await requireOrgMember(request, reply, orgId)
+        const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
 
-      const body = markReadSchema.safeParse(request.body)
-      if (!body.success) {
-        return reply.code(400).send({ error: body.error.message, code: 'VALIDATION_ERROR' })
+        const body = markReadSchema.safeParse(request.body)
+        if (!body.success) {
+          return reply.code(400).send({ error: body.error.message, code: 'VALIDATION_ERROR' })
+        }
+
+        const db = getFirestore()
+        await markItemsRead(db, resolvedChildId, body.data.feedItemIds, request.user.uid)
+
+        return reply.send({ marked: body.data.feedItemIds.length })
+      } catch (err: unknown) {
+        fastify.log.error({ err }, '[FEED] markItemsRead failed')
+        return reply
+          .code(500)
+          .send({ error: 'Failed to mark items as read', code: 'INTERNAL_ERROR' })
       }
-
-      const db = getFirestore()
-      await markItemsRead(db, resolvedChildId, body.data.feedItemIds, request.user.uid)
-
-      return reply.send({ marked: body.data.feedItemIds.length })
-    } catch (err: unknown) {
-      fastify.log.error({ err }, '[FEED] markItemsRead failed')
-      return reply.code(500).send({ error: 'Failed to mark items as read', code: 'INTERNAL_ERROR' })
     }
-  })
+  )
 
   // ── POST /orgs/:orgId/children/:childId/feed/migrate-notes ──────────────────
   fastify.post<{
     Params: { orgId: string; childId: string }
-  }>('/orgs/:orgId/children/:childId/feed/migrate-notes', async (request, reply) => {
-    try {
-      const { orgId, childId } = request.params
+  }>(
+    '/orgs/:orgId/children/:childId/feed/migrate-notes',
+    {
+      schema: {
+        tags: ['Activity'],
+        summary:
+          "Migrate a child's legacy specialist notes into the activity feed (org admins only)",
+        params: orgChildParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['migrated'],
+            properties: { migrated: { type: 'number' } },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, childId } = request.params
 
-      if (!request.user)
-        return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
+        if (!request.user)
+          return reply.code(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' })
 
-      const member = await requireOrgMember(request, reply, orgId)
+        const member = await requireOrgMember(request, reply, orgId)
 
-      // Only admins can trigger migrations
-      if (member.role !== 'org_admin') {
-        return reply
-          .code(403)
-          .send({ error: 'Only admins can trigger note migration', code: 'FORBIDDEN' })
+        // Only admins can trigger migrations
+        if (member.role !== 'org_admin') {
+          return reply
+            .code(403)
+            .send({ error: 'Only admins can trigger note migration', code: 'FORBIDDEN' })
+        }
+
+        const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        const db = getFirestore()
+
+        const migrated = await migrateSpecialistNotes(db, orgId, resolvedChildId)
+        return reply.send({ migrated })
+      } catch (err: unknown) {
+        fastify.log.error({ err }, '[FEED] migrateSpecialistNotes failed')
+        return reply.code(500).send({ error: 'Failed to migrate notes', code: 'INTERNAL_ERROR' })
       }
-
-      const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
-      const db = getFirestore()
-
-      const migrated = await migrateSpecialistNotes(db, orgId, resolvedChildId)
-      return reply.send({ migrated })
-    } catch (err: unknown) {
-      fastify.log.error({ err }, '[FEED] migrateSpecialistNotes failed')
-      return reply.code(500).send({ error: 'Failed to migrate notes', code: 'INTERNAL_ERROR' })
     }
-  })
+  )
 }

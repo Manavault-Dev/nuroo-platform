@@ -46,10 +46,62 @@ const verifyOtpSchema = z.object({
   code: z.string().length(6),
 })
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const sendOtpBodySchema = {
+  type: 'object',
+  required: ['phone'],
+  additionalProperties: true,
+  properties: {
+    phone: {
+      type: 'string',
+      minLength: 8,
+      maxLength: 20,
+      description: 'Phone number, any common formatting accepted',
+    },
+  },
+} as const
+
+const verifyOtpBodySchema = {
+  type: 'object',
+  required: ['phone', 'code'],
+  additionalProperties: true,
+  properties: {
+    phone: { type: 'string', minLength: 8, maxLength: 20 },
+    code: {
+      type: 'string',
+      minLength: 6,
+      maxLength: 6,
+      description: '6-digit one-time code sent via WhatsApp',
+    },
+  },
+} as const
+
 export async function phoneAuthRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: z.infer<typeof sendOtpSchema> }>(
     '/auth/phone/send-otp',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    {
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['Auth'],
+        summary: 'Send a one-time WhatsApp OTP code to a phone number (public, rate-limited)',
+        body: sendOtpBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok'],
+            properties: { ok: { type: 'boolean' } },
+          },
+          400: errorResponseSchema,
+          429: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const parsed = sendOtpSchema.safeParse(request.body)
       if (!parsed.success) {
@@ -97,7 +149,29 @@ export async function phoneAuthRoutes(fastify: FastifyInstance) {
 
   fastify.post<{ Body: z.infer<typeof verifyOtpSchema> }>(
     '/auth/phone/verify-otp',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    {
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['Auth'],
+        summary:
+          'Verify a WhatsApp OTP code and mint a Firebase custom token for the resolved uid (public, rate-limited)',
+        body: verifyOtpBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'customToken', 'uid'],
+            properties: {
+              ok: { type: 'boolean' },
+              customToken: { type: 'string' },
+              uid: { type: 'string' },
+            },
+          },
+          400: errorResponseSchema,
+          429: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const parsed = verifyOtpSchema.safeParse(request.body)
       if (!parsed.success) {

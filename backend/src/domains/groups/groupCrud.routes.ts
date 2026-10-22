@@ -32,234 +32,256 @@ function adminTimestamp(date: Date) {
   return admin.firestore.Timestamp.fromDate(date)
 }
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const orgGroupParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'groupId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    groupId: { type: 'string', description: 'Group ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' }, details: {} },
+  additionalProperties: true,
+} as const
+
+const createGroupBodySchema = {
+  type: 'object',
+  required: ['name'],
+  properties: {
+    name: { type: 'string', minLength: 1, maxLength: 100 },
+    description: { type: 'string', maxLength: 500 },
+    color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+  },
+  additionalProperties: true,
+} as const
+
+const groupItemSchema = {
+  type: 'object',
+  required: ['id', 'name', 'color', 'orgId', 'parentCount'],
+  properties: {
+    id: { type: 'string' },
+    name: { type: 'string' },
+    description: { type: ['string', 'null'] },
+    color: { type: 'string' },
+    orgId: { type: 'string' },
+    parentCount: { type: 'number' },
+    lastAssignedAt: { type: ['string', 'null'] },
+    lastAssignedTaskTitles: { type: ['array', 'null'], items: { type: 'string' } },
+    createdAt: { type: ['string', 'null'] },
+    updatedAt: { type: ['string', 'null'] },
+    ownerId: { type: 'string' },
+    ownerName: { type: 'string' },
+  },
+} as const
+
+const groupListResponseSchema = {
+  type: 'object',
+  required: ['ok', 'groups', 'count'],
+  properties: {
+    ok: { type: 'boolean' },
+    groups: { type: 'array', items: groupItemSchema },
+    count: { type: 'number' },
+  },
+} as const
+
+const createGroupResponseSchema = {
+  type: 'object',
+  required: ['ok', 'group'],
+  properties: {
+    ok: { type: 'boolean' },
+    group: {
+      type: 'object',
+      required: ['id', 'name', 'color', 'orgId', 'parentCount', 'createdAt', 'updatedAt'],
+      properties: {
+        id: { type: 'string' },
+        name: { type: 'string' },
+        description: { type: ['string', 'null'] },
+        color: { type: 'string' },
+        orgId: { type: 'string' },
+        parentCount: { type: 'number' },
+        createdAt: { type: 'string' },
+        updatedAt: { type: 'string' },
+      },
+    },
+  },
+} as const
+
+const childSummarySchema = {
+  type: 'object',
+  required: ['id', 'name'],
+  properties: {
+    id: { type: 'string' },
+    name: { type: 'string' },
+    age: {},
+  },
+} as const
+
+const groupDetailResponseSchema = {
+  type: 'object',
+  required: ['ok', 'group'],
+  properties: {
+    ok: { type: 'boolean' },
+    group: {
+      type: 'object',
+      required: ['id', 'name', 'color', 'orgId', 'parents', 'parentCount'],
+      properties: {
+        id: { type: 'string' },
+        name: { type: 'string' },
+        description: { type: ['string', 'null'] },
+        color: { type: 'string' },
+        orgId: { type: 'string' },
+        parents: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['parentUserId', 'name', 'email', 'children'],
+            properties: {
+              parentUserId: { type: 'string' },
+              name: { type: 'string' },
+              email: { type: ['string', 'null'] },
+              children: { type: 'array', items: childSummarySchema },
+              addedAt: { type: ['string', 'null'] },
+            },
+          },
+        },
+        parentCount: { type: 'number' },
+        createdAt: { type: ['string', 'null'] },
+        updatedAt: { type: ['string', 'null'] },
+        ownerId: { type: 'string' },
+        ownerName: { type: 'string' },
+      },
+    },
+  },
+} as const
+
+const messageResponseSchema = {
+  type: 'object',
+  required: ['ok', 'message'],
+  properties: {
+    ok: { type: 'boolean' },
+    message: { type: 'string' },
+  },
+} as const
+
 export const groupCrudRoute: import('fastify').FastifyPluginAsync = async (fastify) => {
-  fastify.get<{ Params: { orgId: string } }>('/orgs/:orgId/groups', async (request, reply) => {
-    try {
-      const { orgId } = request.params
-      const member = await requireOrgMember(request, reply, orgId)
-      const { uid } = request.user!
-      const db = getFirestore()
+  fastify.get<{ Params: { orgId: string } }>(
+    '/orgs/:orgId/groups',
+    {
+      schema: {
+        tags: ['Groups'],
+        summary:
+          "List an organization's specialist groups (all groups for admins, own groups for specialists)",
+        params: orgIdParamsSchema,
+        response: {
+          200: groupListResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId } = request.params
+        const member = await requireOrgMember(request, reply, orgId)
+        const { uid } = request.user!
+        const db = getFirestore()
 
-      // Fetch live assignment summaries once for the whole org — single query,
-      // avoids N+1 and ensures group cards show accurate task titles without
-      // depending on the potentially-stale `lastAssignedTaskTitles` doc field.
-      const assignmentSummaries = await fetchGroupAssignmentSummaries(db, orgId)
+        // Fetch live assignment summaries once for the whole org — single query,
+        // avoids N+1 and ensures group cards show accurate task titles without
+        // depending on the potentially-stale `lastAssignedTaskTitles` doc field.
+        const assignmentSummaries = await fetchGroupAssignmentSummaries(db, orgId)
 
-      const applyLiveSummary = (group: Record<string, any>) => {
-        if (!assignmentSummaries) return group
+        const applyLiveSummary = (group: Record<string, any>) => {
+          if (!assignmentSummaries) return group
 
-        const summary = assignmentSummaries.get(group.id) ?? null
-        return {
-          ...group,
-          lastAssignedAt: summary?.lastAssignedAt ?? null,
-          lastAssignedTaskTitles: summary?.titles ?? null,
+          const summary = assignmentSummaries.get(group.id) ?? null
+          return {
+            ...group,
+            lastAssignedAt: summary?.lastAssignedAt ?? null,
+            lastAssignedTaskTitles: summary?.titles ?? null,
+          }
         }
-      }
 
-      if (member.role === 'org_admin') {
-        const allGroupsWithOwner = await fetchAllOrgGroups(db, orgId)
+        if (member.role === 'org_admin') {
+          const allGroupsWithOwner = await fetchAllOrgGroups(db, orgId)
+          const groups = await Promise.all(
+            allGroupsWithOwner.map(async ({ doc, ownerId }) => {
+              const parentCount = await countGroupParents(db, ownerId, doc.id)
+              const ownerName = await getSpecialistDisplayName(db, ownerId)
+              return applyLiveSummary(transformGroup(doc, parentCount, { ownerId, ownerName }))
+            })
+          )
+          return { ok: true, groups, count: groups.length }
+        }
+
+        const groupsSnapshot = await fetchGroupsWithFallback(db, uid, orgId)
         const groups = await Promise.all(
-          allGroupsWithOwner.map(async ({ doc, ownerId }) => {
-            const parentCount = await countGroupParents(db, ownerId, doc.id)
-            const ownerName = await getSpecialistDisplayName(db, ownerId)
-            return applyLiveSummary(transformGroup(doc, parentCount, { ownerId, ownerName }))
+          groupsSnapshot.docs.map(async (doc) => {
+            const parentCount = await countGroupParents(db, uid, doc.id)
+            return applyLiveSummary(transformGroup(doc, parentCount))
           })
         )
-        return { ok: true, groups, count: groups.length }
-      }
 
-      const groupsSnapshot = await fetchGroupsWithFallback(db, uid, orgId)
-      const groups = await Promise.all(
-        groupsSnapshot.docs.map(async (doc) => {
-          const parentCount = await countGroupParents(db, uid, doc.id)
-          return applyLiveSummary(transformGroup(doc, parentCount))
+        return {
+          ok: true,
+          groups,
+          count: groups.length,
+        }
+      } catch (error: any) {
+        fastify.log.error({ err: error }, 'Route handler failed')
+        return reply.code(500).send({
+          error: 'Failed to list groups',
+          details: error.message,
         })
-      )
-
-      return {
-        ok: true,
-        groups,
-        count: groups.length,
       }
-    } catch (error: any) {
-      fastify.log.error({ err: error }, 'Route handler failed')
-      return reply.code(500).send({
-        error: 'Failed to list groups',
-        details: error.message,
-      })
     }
-  })
+  )
 
   fastify.post<{
     Params: { orgId: string }
     Body: z.infer<typeof createGroupSchema>
-  }>('/orgs/:orgId/groups', async (request, reply) => {
-    try {
-      const { orgId } = request.params
-      await requireOrgMember(request, reply, orgId)
-      if (reply.sent) return
-
-      const featureCheck = await checkOrgHasFeature(orgId, 'teamSchedule')
-      if (!featureCheck.ok) {
-        return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
-      }
-
-      const { uid } = request.user!
-      const body = createGroupSchema.parse(request.body)
-      const now = new Date()
-
-      const db = getFirestore()
-
-      const existingGroups = await db
-        .collection(COLLECTIONS.SPECIALIST_GROUPS(uid))
-        .where('orgId', '==', orgId)
-        .where('name', '==', body.name)
-        .limit(1)
-        .get()
-
-      if (!existingGroups.empty) {
-        return reply.code(400).send({
-          error: 'Group with this name already exists',
-        })
-      }
-
-      const groupRef = db.collection(COLLECTIONS.SPECIALIST_GROUPS(uid)).doc()
-      const groupId = groupRef.id
-      const groupData = buildGroupData(
-        { name: body.name!, description: body.description, color: body.color },
-        orgId,
-        now
-      )
-
-      await groupRef.set(groupData)
-
-      return {
-        ok: true,
-        group: {
-          id: groupId,
-          ...groupData,
-          parentCount: 0,
-          createdAt: now.toISOString(),
-          updatedAt: now.toISOString(),
+  }>(
+    '/orgs/:orgId/groups',
+    {
+      schema: {
+        tags: ['Groups'],
+        summary: 'Create a new specialist group within an organization',
+        params: orgIdParamsSchema,
+        body: createGroupBodySchema,
+        response: {
+          200: createGroupResponseSchema,
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
         },
-      }
-    } catch (error: any) {
-      fastify.log.error({ err: error }, 'Route handler failed')
-      return reply.code(500).send({
-        error: 'Failed to create group',
-        details: error.message,
-      })
-    }
-  })
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId } = request.params
+        await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
 
-  fastify.get<{
-    Params: { orgId: string; groupId: string }
-    Querystring: { ownerId?: string }
-  }>('/orgs/:orgId/groups/:groupId', async (request, reply) => {
-    try {
-      const { orgId, groupId } = request.params
-      const member = await requireOrgMember(request, reply, orgId)
-      const { uid } = request.user!
-      const ownerId =
-        member.role === 'org_admin' && request.query?.ownerId
-          ? (request.query as { ownerId: string }).ownerId
-          : uid
+        const featureCheck = await checkOrgHasFeature(orgId, 'teamSchedule')
+        if (!featureCheck.ok) {
+          return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
+        }
 
-      const db = getFirestore()
-      const groupRef = db.doc(`${COLLECTIONS.SPECIALIST_GROUPS(ownerId)}/${groupId}`)
-      const groupSnap = await groupRef.get()
+        const { uid } = request.user!
+        const body = createGroupSchema.parse(request.body)
+        const now = new Date()
 
-      if (!groupSnap.exists) {
-        return reply.code(404).send({ error: 'Group not found' })
-      }
+        const db = getFirestore()
 
-      const groupData = groupSnap.data()!
-
-      if (!verifyGroupOwnership(groupData, orgId)) {
-        return reply.code(403).send({
-          error: 'Group does not belong to this organization',
-        })
-      }
-
-      if (member.role === 'specialist' && ownerId !== uid) {
-        return reply.code(403).send({ error: 'You can only view your own groups' })
-      }
-
-      const parentsSnapshot = await db.collection(COLLECTIONS.GROUP_PARENTS(ownerId, groupId)).get()
-
-      const parents = await Promise.all(
-        parentsSnapshot.docs.map(async (doc) => {
-          const data = doc.data()
-          const parentUid = doc.id
-          const { name, email } = await resolveUserName(db, parentUid)
-          const childIds = data.childIds || []
-          const children = await Promise.all(
-            childIds.map((childId: string) => fetchChildData(db, childId, parentUid))
-          )
-
-          return {
-            parentUserId: parentUid,
-            name,
-            email,
-            children,
-            addedAt: data.addedAt?.toDate?.()?.toISOString() || null,
-          }
-        })
-      )
-
-      const groupPayload: Record<string, unknown> = {
-        id: groupId,
-        name: groupData.name,
-        description: groupData.description || null,
-        color: groupData.color || DEFAULT_GROUP_COLOR,
-        orgId: groupData.orgId,
-        parents,
-        parentCount: parents.length,
-        createdAt: groupData.createdAt?.toDate?.()?.toISOString() || null,
-        updatedAt: groupData.updatedAt?.toDate?.()?.toISOString() || null,
-      }
-      if (member.role === 'org_admin' && ownerId !== uid) {
-        groupPayload.ownerId = ownerId
-        groupPayload.ownerName = await getSpecialistDisplayName(db, ownerId)
-      }
-      return { ok: true, group: groupPayload }
-    } catch (error: any) {
-      fastify.log.error({ err: error }, 'Route handler failed')
-      return reply.code(500).send({
-        error: 'Failed to get group',
-        details: error.message,
-      })
-    }
-  })
-  fastify.patch<{
-    Params: { orgId: string; groupId: string }
-    Body: Partial<z.infer<typeof createGroupSchema>>
-  }>('/orgs/:orgId/groups/:groupId', async (request, reply) => {
-    try {
-      const { orgId, groupId } = request.params
-      await requireOrgMember(request, reply, orgId)
-      const { uid } = request.user!
-      const body = request.body as any
-      const now = new Date()
-
-      const db = getFirestore()
-
-      const groupRef = db.doc(`${COLLECTIONS.SPECIALIST_GROUPS(uid)}/${groupId}`)
-      const groupSnap = await groupRef.get()
-
-      if (!groupSnap.exists) {
-        return reply.code(404).send({ error: 'Group not found' })
-      }
-
-      const groupData = groupSnap.data()!
-
-      if (!verifyGroupOwnership(groupData, orgId)) {
-        return reply.code(403).send({
-          error: 'Group does not belong to this organization',
-        })
-      }
-
-      if (body.name && body.name !== groupData.name) {
         const existingGroups = await db
           .collection(COLLECTIONS.SPECIALIST_GROUPS(uid))
           .where('orgId', '==', orgId)
@@ -272,33 +294,247 @@ export const groupCrudRoute: import('fastify').FastifyPluginAsync = async (fasti
             error: 'Group with this name already exists',
           })
         }
+
+        const groupRef = db.collection(COLLECTIONS.SPECIALIST_GROUPS(uid)).doc()
+        const groupId = groupRef.id
+        const groupData = buildGroupData(
+          { name: body.name!, description: body.description, color: body.color },
+          orgId,
+          now
+        )
+
+        await groupRef.set(groupData)
+
+        return {
+          ok: true,
+          group: {
+            id: groupId,
+            ...groupData,
+            parentCount: 0,
+            createdAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+          },
+        }
+      } catch (error: any) {
+        fastify.log.error({ err: error }, 'Route handler failed')
+        return reply.code(500).send({
+          error: 'Failed to create group',
+          details: error.message,
+        })
       }
-
-      const updateData: any = {
-        updatedAt: adminTimestamp(now),
-      }
-
-      if (body.name) updateData.name = body.name
-      if (body.description !== undefined) updateData.description = body.description || null
-      if (body.color) updateData.color = body.color
-
-      await groupRef.update(updateData)
-
-      return {
-        ok: true,
-        message: 'Group updated successfully',
-      }
-    } catch (error: any) {
-      fastify.log.error({ err: error }, 'Route handler failed')
-      return reply.code(500).send({
-        error: 'Failed to update group',
-        details: error.message,
-      })
     }
-  })
+  )
+
+  fastify.get<{
+    Params: { orgId: string; groupId: string }
+    Querystring: { ownerId?: string }
+  }>(
+    '/orgs/:orgId/groups/:groupId',
+    {
+      schema: {
+        tags: ['Groups'],
+        summary: 'Get a single group with its linked parents and children',
+        params: orgGroupParamsSchema,
+        querystring: {
+          type: 'object',
+          properties: {
+            ownerId: { type: 'string', description: 'Owning specialist (org_admin only)' },
+          },
+        },
+        response: {
+          200: groupDetailResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, groupId } = request.params
+        const member = await requireOrgMember(request, reply, orgId)
+        const { uid } = request.user!
+        const ownerId =
+          member.role === 'org_admin' && request.query?.ownerId
+            ? (request.query as { ownerId: string }).ownerId
+            : uid
+
+        const db = getFirestore()
+        const groupRef = db.doc(`${COLLECTIONS.SPECIALIST_GROUPS(ownerId)}/${groupId}`)
+        const groupSnap = await groupRef.get()
+
+        if (!groupSnap.exists) {
+          return reply.code(404).send({ error: 'Group not found' })
+        }
+
+        const groupData = groupSnap.data()!
+
+        if (!verifyGroupOwnership(groupData, orgId)) {
+          return reply.code(403).send({
+            error: 'Group does not belong to this organization',
+          })
+        }
+
+        if (member.role === 'specialist' && ownerId !== uid) {
+          return reply.code(403).send({ error: 'You can only view your own groups' })
+        }
+
+        const parentsSnapshot = await db
+          .collection(COLLECTIONS.GROUP_PARENTS(ownerId, groupId))
+          .get()
+
+        const parents = await Promise.all(
+          parentsSnapshot.docs.map(async (doc) => {
+            const data = doc.data()
+            const parentUid = doc.id
+            const { name, email } = await resolveUserName(db, parentUid)
+            const childIds = data.childIds || []
+            const children = await Promise.all(
+              childIds.map((childId: string) => fetchChildData(db, childId, parentUid))
+            )
+
+            return {
+              parentUserId: parentUid,
+              name,
+              email,
+              children,
+              addedAt: data.addedAt?.toDate?.()?.toISOString() || null,
+            }
+          })
+        )
+
+        const groupPayload: Record<string, unknown> = {
+          id: groupId,
+          name: groupData.name,
+          description: groupData.description || null,
+          color: groupData.color || DEFAULT_GROUP_COLOR,
+          orgId: groupData.orgId,
+          parents,
+          parentCount: parents.length,
+          createdAt: groupData.createdAt?.toDate?.()?.toISOString() || null,
+          updatedAt: groupData.updatedAt?.toDate?.()?.toISOString() || null,
+        }
+        if (member.role === 'org_admin' && ownerId !== uid) {
+          groupPayload.ownerId = ownerId
+          groupPayload.ownerName = await getSpecialistDisplayName(db, ownerId)
+        }
+        return { ok: true, group: groupPayload }
+      } catch (error: any) {
+        fastify.log.error({ err: error }, 'Route handler failed')
+        return reply.code(500).send({
+          error: 'Failed to get group',
+          details: error.message,
+        })
+      }
+    }
+  )
+  fastify.patch<{
+    Params: { orgId: string; groupId: string }
+    Body: Partial<z.infer<typeof createGroupSchema>>
+  }>(
+    '/orgs/:orgId/groups/:groupId',
+    {
+      schema: {
+        tags: ['Groups'],
+        summary: 'Update a group (name, description, color)',
+        params: orgGroupParamsSchema,
+        body: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', minLength: 1, maxLength: 100 },
+            description: { type: 'string', maxLength: 500 },
+            color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+          },
+          additionalProperties: true,
+        },
+        response: {
+          200: messageResponseSchema,
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, groupId } = request.params
+        await requireOrgMember(request, reply, orgId)
+        const { uid } = request.user!
+        const body = request.body as any
+        const now = new Date()
+
+        const db = getFirestore()
+
+        const groupRef = db.doc(`${COLLECTIONS.SPECIALIST_GROUPS(uid)}/${groupId}`)
+        const groupSnap = await groupRef.get()
+
+        if (!groupSnap.exists) {
+          return reply.code(404).send({ error: 'Group not found' })
+        }
+
+        const groupData = groupSnap.data()!
+
+        if (!verifyGroupOwnership(groupData, orgId)) {
+          return reply.code(403).send({
+            error: 'Group does not belong to this organization',
+          })
+        }
+
+        if (body.name && body.name !== groupData.name) {
+          const existingGroups = await db
+            .collection(COLLECTIONS.SPECIALIST_GROUPS(uid))
+            .where('orgId', '==', orgId)
+            .where('name', '==', body.name)
+            .limit(1)
+            .get()
+
+          if (!existingGroups.empty) {
+            return reply.code(400).send({
+              error: 'Group with this name already exists',
+            })
+          }
+        }
+
+        const updateData: any = {
+          updatedAt: adminTimestamp(now),
+        }
+
+        if (body.name) updateData.name = body.name
+        if (body.description !== undefined) updateData.description = body.description || null
+        if (body.color) updateData.color = body.color
+
+        await groupRef.update(updateData)
+
+        return {
+          ok: true,
+          message: 'Group updated successfully',
+        }
+      } catch (error: any) {
+        fastify.log.error({ err: error }, 'Route handler failed')
+        return reply.code(500).send({
+          error: 'Failed to update group',
+          details: error.message,
+        })
+      }
+    }
+  )
 
   fastify.delete<{ Params: { orgId: string; groupId: string } }>(
     '/orgs/:orgId/groups/:groupId',
+    {
+      schema: {
+        tags: ['Groups'],
+        summary: 'Delete a group and its parent memberships',
+        params: orgGroupParamsSchema,
+        response: {
+          200: messageResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId, groupId } = request.params

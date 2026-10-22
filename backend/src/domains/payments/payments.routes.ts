@@ -5,35 +5,133 @@ import { createPayment, verifyPayment, getPlanPrices, getPlanNames } from './pay
 import { PLAN_LIMITS, type PlanId } from './planLimits.js'
 import { createPaymentSchema } from './payments.schema.js'
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const okFalseErrorResponseSchema = {
+  type: 'object',
+  required: ['ok', 'error'],
+  properties: { ok: { type: 'boolean' }, error: { type: 'string' } },
+} as const
+
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
 export const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.get('/plans', async (request, reply) => {
-    try {
-      const prices = getPlanPrices()
-      const names = getPlanNames()
+  fastify.get(
+    '/plans',
+    {
+      schema: {
+        tags: ['Payments'],
+        summary: 'List available subscription plans with pricing and limits',
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'plans'],
+            properties: {
+              ok: { type: 'boolean' },
+              plans: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['id', 'name', 'price', 'currency', 'limits'],
+                  properties: {
+                    id: { type: 'string' },
+                    name: { type: 'string' },
+                    price: { type: 'number' },
+                    currency: { type: 'string' },
+                    limits: {
+                      anyOf: [
+                        {
+                          type: 'object',
+                          required: ['children', 'specialists'],
+                          properties: {
+                            // null means unlimited on that plan (e.g. growth's
+                            // specialists, enterprise's children/specialists) —
+                            // PLAN_LIMITS never omits the object itself, only
+                            // these individual fields can be null.
+                            children: { type: ['number', 'null'] },
+                            specialists: { type: ['number', 'null'] },
+                          },
+                        },
+                        { type: 'null' },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          500: okFalseErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const prices = getPlanPrices()
+        const names = getPlanNames()
 
-      const plans = (Object.keys(prices) as PlanId[]).map((planId) => {
-        const limits = PLAN_LIMITS[planId]
+        const plans = (Object.keys(prices) as PlanId[]).map((planId) => {
+          const limits = PLAN_LIMITS[planId]
+          return {
+            id: planId,
+            name: names[planId],
+            price: prices[planId],
+            currency: 'KGS',
+            limits: limits ? { children: limits.children, specialists: limits.specialists } : null,
+          }
+        })
+
         return {
-          id: planId,
-          name: names[planId],
-          price: prices[planId],
-          currency: 'KGS',
-          limits: limits ? { children: limits.children, specialists: limits.specialists } : null,
+          ok: true,
+          plans,
         }
-      })
-
-      return {
-        ok: true,
-        plans,
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Failed to get plans'
+        return reply.code(500).send({ ok: false, error: message })
       }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to get plans'
-      return reply.code(500).send({ ok: false, error: message })
     }
-  })
+  )
 
   fastify.post<{ Params: { orgId: string }; Body: z.infer<typeof createPaymentSchema> }>(
     '/orgs/:orgId/payments',
+    {
+      schema: {
+        tags: ['Payments'],
+        summary: 'Create a Finik payment for an organization plan (org admin only)',
+        params: orgIdParamsSchema,
+        body: {
+          type: 'object',
+          required: ['planId', 'orgId'],
+          properties: {
+            planId: { type: 'string', enum: ['starter', 'growth', 'enterprise'] },
+            orgId: { type: 'string' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'paymentId', 'paymentUrl', 'transactionId'],
+            properties: {
+              ok: { type: 'boolean' },
+              paymentId: { type: 'string' },
+              paymentUrl: { type: 'string' },
+              transactionId: { type: 'string' },
+            },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) {
         return reply.code(401).send({ error: 'Unauthorized' })
@@ -69,6 +167,42 @@ export const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { paymentId: string } }>(
     '/payments/:paymentId/verify',
+    {
+      schema: {
+        tags: ['Payments'],
+        summary: "Verify a payment's status (requires membership in the payment's organization)",
+        params: {
+          type: 'object',
+          required: ['paymentId'],
+          properties: { paymentId: { type: 'string', description: 'Payment ID' } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'orgId', 'payment'],
+            properties: {
+              ok: { type: 'boolean' },
+              orgId: { type: 'string' },
+              payment: {
+                type: 'object',
+                required: ['id', 'status', 'planId', 'amount', 'currency'],
+                properties: {
+                  id: { type: 'string' },
+                  status: { type: 'string' },
+                  planId: { type: 'string' },
+                  amount: { type: 'number' },
+                  currency: { type: 'string' },
+                },
+              },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) {
         return reply.code(401).send({ error: 'Unauthorized' })

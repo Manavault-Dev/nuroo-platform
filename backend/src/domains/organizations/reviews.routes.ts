@@ -30,6 +30,81 @@ const reviewInputSchema = z
 
 const statusSchema = z.object({ status: z.enum(['published', 'removed']) })
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const orgReviewIdParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'reviewId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    reviewId: { type: 'string', description: 'Review ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const publicReviewSchema = {
+  type: 'object',
+  required: [
+    'id',
+    'authorName',
+    'rating',
+    'text',
+    'createdAt',
+    'updatedAt',
+    'isVerifiedEnrollment',
+  ],
+  properties: {
+    id: { type: 'string' },
+    authorName: { type: 'string' },
+    rating: { type: 'number' },
+    text: { type: 'string' },
+    createdAt: { type: 'string' },
+    updatedAt: { type: 'string' },
+    isVerifiedEnrollment: { type: 'boolean' },
+  },
+} as const
+
+const adminReviewSchema = {
+  type: 'object',
+  required: [
+    'id',
+    'authorId',
+    'authorName',
+    'rating',
+    'text',
+    'status',
+    'createdAt',
+    'updatedAt',
+    'isVerifiedEnrollment',
+  ],
+  properties: {
+    id: { type: 'string' },
+    authorId: { type: 'string' },
+    authorName: { type: 'string' },
+    rating: { type: 'number' },
+    text: { type: 'string' },
+    status: { type: 'string', enum: ['published', 'removed'] },
+    createdAt: { type: 'string' },
+    updatedAt: { type: 'string' },
+    isVerifiedEnrollment: { type: 'boolean' },
+  },
+} as const
+
+const aggregateSchema = {
+  type: 'object',
+  required: ['reviewCount', 'averageRating'],
+  properties: { reviewCount: { type: 'number' }, averageRating: { type: 'number' } },
+} as const
+
 // ── helpers ────────────────────────────────────────────────────────────────────
 
 async function getOrgAggregate(db: FirebaseFirestore.Firestore, orgId: string) {
@@ -103,7 +178,35 @@ export const reviewsRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{ Params: { orgId: string }; Querystring: { limit?: string; cursor?: string } }>(
     '/marketplace/orgs/:orgId/reviews',
-    { config: { rateLimit: RATE_READ } },
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Organizations'],
+        summary: "List an organization's published reviews (public, paginated)",
+        params: orgIdParamsSchema,
+        querystring: {
+          type: 'object',
+          properties: {
+            limit: { type: 'string', description: 'Max reviews to return (capped at 50)' },
+            cursor: { type: 'string', description: 'Review ID to paginate after' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'reviews', 'nextCursor', 'reviewCount', 'averageRating'],
+            properties: {
+              ok: { type: 'boolean' },
+              reviews: { type: 'array', items: publicReviewSchema },
+              nextCursor: { type: ['string', 'null'] },
+              reviewCount: { type: 'number' },
+              averageRating: { type: 'number' },
+            },
+          },
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId } = request.params
       const limit = Math.min(Number(request.query.limit ?? 20), 50)
@@ -150,7 +253,47 @@ export const reviewsRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Params: { orgId: string } }>(
     '/marketplace/orgs/:orgId/reviews',
-    { config: { rateLimit: RATE_WRITE } },
+    {
+      config: { rateLimit: RATE_WRITE },
+      schema: {
+        tags: ['Organizations'],
+        summary: "Submit or update the authenticated parent's review for an organization",
+        params: orgIdParamsSchema,
+        body: {
+          type: 'object',
+          required: ['rating'],
+          additionalProperties: true,
+          properties: {
+            rating: { type: ['number', 'string'] },
+            text: { type: ['string', 'null'] },
+            comment: { type: ['string', 'null'] },
+            authorName: { type: ['string', 'null'] },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'review', 'aggregate'],
+            properties: {
+              ok: { type: 'boolean' },
+              review: publicReviewSchema,
+              aggregate: aggregateSchema,
+            },
+          },
+          201: {
+            type: 'object',
+            required: ['ok', 'review', 'aggregate'],
+            properties: {
+              ok: { type: 'boolean' },
+              review: publicReviewSchema,
+              aggregate: aggregateSchema,
+            },
+          },
+          401: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -242,7 +385,24 @@ export const reviewsRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.delete<{ Params: { orgId: string; reviewId: string } }>(
     '/marketplace/orgs/:orgId/reviews/:reviewId',
-    { config: { rateLimit: RATE_WRITE } },
+    {
+      config: { rateLimit: RATE_WRITE },
+      schema: {
+        tags: ['Organizations'],
+        summary: "Delete a review (the review's author or an org admin)",
+        params: orgReviewIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'aggregate'],
+            properties: { ok: { type: 'boolean' }, aggregate: aggregateSchema },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -287,7 +447,26 @@ export const reviewsRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.put<{ Params: { orgId: string; reviewId: string } }>(
     '/orgs/:orgId/reviews/:reviewId/status',
-    { config: { rateLimit: RATE_WRITE } },
+    {
+      config: { rateLimit: RATE_WRITE },
+      schema: {
+        tags: ['Organizations'],
+        summary: 'Moderate a review by publishing or removing it (org admin only)',
+        params: orgReviewIdParamsSchema,
+        body: {
+          type: 'object',
+          required: ['status'],
+          properties: { status: { type: 'string', enum: ['published', 'removed'] } },
+        },
+        response: {
+          200: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -338,7 +517,34 @@ export const reviewsRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{ Params: { orgId: string }; Querystring: { status?: string } }>(
     '/orgs/:orgId/reviews',
-    { config: { rateLimit: RATE_READ } },
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Organizations'],
+        summary: 'List all reviews (any status) for an organization — admin moderation view',
+        params: orgIdParamsSchema,
+        querystring: {
+          type: 'object',
+          properties: {
+            status: { type: 'string', description: 'Filter reviews by status' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'reviews', 'reviewCount', 'averageRating'],
+            properties: {
+              ok: { type: 'boolean' },
+              reviews: { type: 'array', items: adminReviewSchema },
+              reviewCount: { type: 'number' },
+              averageRating: { type: 'number' },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 

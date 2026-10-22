@@ -20,6 +20,45 @@ const unassignChildSchema = z.object({
   childId: z.string().min(1),
 })
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' } },
+} as const
+
+const errorWithDetailsResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' }, details: { type: 'string' } },
+} as const
+
+const assignBodySchema = {
+  type: 'object',
+  required: ['childId', 'specialistId'],
+  additionalProperties: true,
+  properties: {
+    childId: { type: 'string', description: 'Child ID to assign' },
+    specialistId: { type: 'string', description: 'Specialist ID to assign the child to' },
+  },
+} as const
+
+const unassignBodySchema = {
+  type: 'object',
+  required: ['childId'],
+  additionalProperties: true,
+  properties: {
+    childId: { type: 'string', description: 'Child ID to unassign' },
+  },
+} as const
+
 async function verifyChildAssignment(
   db: admin.firestore.Firestore,
   orgId: string,
@@ -59,6 +98,30 @@ function buildAssignmentUpdate(specialistId: string, now: Date) {
 export const assignmentsRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Params: { orgId: string }; Body: z.infer<typeof assignChildSchema> }>(
     '/orgs/:orgId/assignments',
+    {
+      schema: {
+        tags: ['Tasks'],
+        summary: 'Assign a child to a specialist within an organization',
+        params: orgIdParamsSchema,
+        body: assignBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'message', 'childId', 'specialistId'],
+            properties: {
+              ok: { type: 'boolean' },
+              message: { type: 'string' },
+              childId: { type: 'string' },
+              specialistId: { type: 'string' },
+            },
+          },
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorWithDetailsResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params
@@ -132,6 +195,28 @@ export const assignmentsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.delete<{ Params: { orgId: string }; Body: z.infer<typeof unassignChildSchema> }>(
     '/orgs/:orgId/assignments',
+    {
+      schema: {
+        tags: ['Tasks'],
+        summary: 'Unassign a child from its currently assigned specialist',
+        params: orgIdParamsSchema,
+        body: unassignBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'message', 'childId'],
+            properties: {
+              ok: { type: 'boolean' },
+              message: { type: 'string' },
+              childId: { type: 'string' },
+            },
+          },
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorWithDetailsResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params

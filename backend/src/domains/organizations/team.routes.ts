@@ -28,6 +28,55 @@ const updateMemberBranchSchema = z.object({
   branchRole: z.enum(BRANCH_ROLES).nullable().optional(),
 })
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const orgMemberParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'uid'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    uid: { type: 'string', description: 'Member user ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: {
+    error: { type: 'string' },
+    message: { type: 'string' },
+    details: { type: 'string' },
+  },
+} as const
+
+const teamMemberSchema = {
+  type: 'object',
+  required: [
+    'uid',
+    'email',
+    'name',
+    'orgDisplayName',
+    'role',
+    'joinedAt',
+    'branchId',
+    'branchRole',
+  ],
+  properties: {
+    uid: { type: 'string' },
+    email: { type: 'string' },
+    name: { type: 'string' },
+    orgDisplayName: { type: ['string', 'null'] },
+    role: { type: 'string', enum: ['admin', 'specialist'] },
+    joinedAt: { type: 'string', format: 'date-time' },
+    branchId: { type: ['string', 'null'] },
+    branchRole: { type: ['string', 'null'] },
+  },
+} as const
+
 function isActiveMember(memberData: admin.firestore.DocumentData): boolean {
   return !memberData.status || memberData.status === 'active'
 }
@@ -69,111 +118,154 @@ function transformTeamMember(
 }
 
 export const teamRoute: FastifyPluginAsync = async (fastify) => {
-  fastify.get<{ Params: { orgId: string } }>('/orgs/:orgId/team', async (request, reply) => {
-    try {
-      const { orgId } = request.params
-      const member = await requireOrgMember(request, reply, orgId)
-      if (reply.sent) return
+  fastify.get<{ Params: { orgId: string } }>(
+    '/orgs/:orgId/team',
+    {
+      schema: {
+        tags: ['Organizations'],
+        summary: "List an organization's active team members (org admin only)",
+        params: orgIdParamsSchema,
+        response: {
+          200: { type: 'array', items: teamMemberSchema },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId } = request.params
+        const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
 
-      if (member.role !== 'org_admin') {
-        return reply.code(403).send({
-          error: 'Only organization admins can view team members',
+        if (member.role !== 'org_admin') {
+          return reply.code(403).send({
+            error: 'Only organization admins can view team members',
+          })
+        }
+
+        const db = getFirestore()
+        const membersSnapshot = await db.collection(COLLECTIONS.ORG_MEMBERS(orgId)).get()
+
+        const activeMembers = membersSnapshot.docs.filter((doc) => isActiveMember(doc.data()))
+
+        const teamMembers = await Promise.all(
+          activeMembers.map(async (doc) => {
+            const specialistUid = doc.id
+            const specialistData = await getSpecialistProfile(db, specialistUid)
+            return transformTeamMember(doc, specialistData)
+          })
+        )
+
+        return teamMembers
+      } catch (error: unknown) {
+        const err = error as { message?: string; stack?: string }
+        console.error('[TEAM] Error fetching team members:', error)
+        return reply.code(500).send({
+          error: 'Failed to fetch team members',
+          message: err.message || 'Unknown error',
+          details: process.env.NODE_ENV === 'development' ? err.stack : undefined,
         })
       }
-
-      const db = getFirestore()
-      const membersSnapshot = await db.collection(COLLECTIONS.ORG_MEMBERS(orgId)).get()
-
-      const activeMembers = membersSnapshot.docs.filter((doc) => isActiveMember(doc.data()))
-
-      const teamMembers = await Promise.all(
-        activeMembers.map(async (doc) => {
-          const specialistUid = doc.id
-          const specialistData = await getSpecialistProfile(db, specialistUid)
-          return transformTeamMember(doc, specialistData)
-        })
-      )
-
-      return teamMembers
-    } catch (error: unknown) {
-      const err = error as { message?: string; stack?: string }
-      console.error('[TEAM] Error fetching team members:', error)
-      return reply.code(500).send({
-        error: 'Failed to fetch team members',
-        message: err.message || 'Unknown error',
-        details: process.env.NODE_ENV === 'development' ? err.stack : undefined,
-      })
     }
-  })
+  )
 
   fastify.patch<{
     Params: { orgId: string; uid: string }
     Body: z.infer<typeof updateMemberRoleSchema>
-  }>('/orgs/:orgId/members/:uid', async (request, reply) => {
-    try {
-      const { orgId, uid: targetUid } = request.params
-      const member = await requireOrgMember(request, reply, orgId)
-      if (reply.sent) return
-
-      if (member.role !== 'org_admin') {
-        return reply.code(403).send({ error: 'Only organization admins can update member roles' })
-      }
-
-      const currentUid = request.user!.uid
-      if (targetUid === currentUid) {
-        return reply.code(400).send({
-          error: 'Cannot change your own role. Transfer admin rights to another member first.',
-        })
-      }
-
-      const body = updateMemberRoleSchema.parse(request.body)
-      const db = getFirestore()
-
-      const memberRef = db.doc(`${COLLECTIONS.ORG_MEMBERS(orgId)}/${targetUid}`)
-      const memberSnap = await memberRef.get()
-      if (!memberSnap.exists) {
-        return reply.code(404).send({ error: 'Member not found' })
-      }
-
-      const now = admin.firestore.Timestamp.fromDate(new Date())
-      await memberRef.update({
-        role: body.role,
-        updatedAt: now,
-      })
-
-      const orgSnap = await db.doc(`${COLLECTIONS.ORGANIZATIONS}/${orgId}`).get()
-      await db.doc(`${COLLECTIONS.USER_ORGS(targetUid)}/${orgId}`).set(
-        {
-          orgId,
-          orgName: orgSnap.data()?.name || orgId,
-          country: orgSnap.data()?.country ?? null,
-          role: body.role,
-          status: 'active',
-          updatedAt: now,
+  }>(
+    '/orgs/:orgId/members/:uid',
+    {
+      schema: {
+        tags: ['Organizations'],
+        summary: "Update a team member's role (org admin only)",
+        params: orgMemberParamsSchema,
+        body: {
+          type: 'object',
+          required: ['role'],
+          properties: { role: { type: 'string', enum: ['org_admin', 'specialist'] } },
         },
-        { merge: true }
-      )
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'role'],
+            properties: { ok: { type: 'boolean' }, role: { type: 'string' } },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, uid: targetUid } = request.params
+        const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
 
-      const specialistRef = db.doc(`${COLLECTIONS.SPECIALISTS}/${targetUid}`)
-      const specialistSnap = await specialistRef.get()
-      if (specialistSnap.exists) {
-        await specialistRef.update({
-          orgId,
+        if (member.role !== 'org_admin') {
+          return reply.code(403).send({ error: 'Only organization admins can update member roles' })
+        }
+
+        const currentUid = request.user!.uid
+        if (targetUid === currentUid) {
+          return reply.code(400).send({
+            error: 'Cannot change your own role. Transfer admin rights to another member first.',
+          })
+        }
+
+        const body = updateMemberRoleSchema.parse(request.body)
+        const db = getFirestore()
+
+        const memberRef = db.doc(`${COLLECTIONS.ORG_MEMBERS(orgId)}/${targetUid}`)
+        const memberSnap = await memberRef.get()
+        if (!memberSnap.exists) {
+          return reply.code(404).send({ error: 'Member not found' })
+        }
+
+        const now = admin.firestore.Timestamp.fromDate(new Date())
+        await memberRef.update({
           role: body.role,
           updatedAt: now,
         })
-      }
 
-      return { ok: true, role: body.role }
-    } catch (error: unknown) {
-      const err = error as { message?: string; stack?: string }
-      console.error('[TEAM] Error updating member role:', error)
-      return reply.code(500).send({
-        error: 'Failed to update member role',
-        message: err.message || 'Unknown error',
-      })
+        const orgSnap = await db.doc(`${COLLECTIONS.ORGANIZATIONS}/${orgId}`).get()
+        await db.doc(`${COLLECTIONS.USER_ORGS(targetUid)}/${orgId}`).set(
+          {
+            orgId,
+            orgName: orgSnap.data()?.name || orgId,
+            country: orgSnap.data()?.country ?? null,
+            role: body.role,
+            status: 'active',
+            updatedAt: now,
+          },
+          { merge: true }
+        )
+
+        const specialistRef = db.doc(`${COLLECTIONS.SPECIALISTS}/${targetUid}`)
+        const specialistSnap = await specialistRef.get()
+        if (specialistSnap.exists) {
+          await specialistRef.update({
+            orgId,
+            role: body.role,
+            updatedAt: now,
+          })
+        }
+
+        return { ok: true, role: body.role }
+      } catch (error: unknown) {
+        const err = error as { message?: string; stack?: string }
+        console.error('[TEAM] Error updating member role:', error)
+        return reply.code(500).send({
+          error: 'Failed to update member role',
+          message: err.message || 'Unknown error',
+        })
+      }
     }
-  })
+  )
 
   // Enterprise: assign a member to a branch (Branch Admin, Admissions Manager, etc.).
   // Only HQ admins (no branch scope of their own) can assign branches — a branch-scoped
@@ -181,99 +273,178 @@ export const teamRoute: FastifyPluginAsync = async (fastify) => {
   fastify.patch<{
     Params: { orgId: string; uid: string }
     Body: z.infer<typeof updateMemberBranchSchema>
-  }>('/orgs/:orgId/members/:uid/branch', async (request, reply) => {
-    try {
-      const { orgId, uid: targetUid } = request.params
-      const member = await requireOrgMember(request, reply, orgId)
-      if (reply.sent) return
+  }>(
+    '/orgs/:orgId/members/:uid/branch',
+    {
+      schema: {
+        tags: ['Organizations'],
+        summary: 'Assign or clear a team member’s branch (HQ org admin only)',
+        params: orgMemberParamsSchema,
+        body: {
+          type: 'object',
+          required: ['branchId'],
+          properties: {
+            branchId: { type: ['string', 'null'] },
+            branchRole: {
+              type: ['string', 'null'],
+              enum: ['branch_admin', 'admissions_manager', 'finance_manager', 'teacher', null],
+            },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'branchId', 'branchRole'],
+            properties: {
+              ok: { type: 'boolean' },
+              branchId: { type: ['string', 'null'] },
+              branchRole: { type: ['string', 'null'] },
+            },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, uid: targetUid } = request.params
+        const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
 
-      if (member.role !== 'org_admin' || memberBranchScope(member)) {
-        return reply.code(403).send({ error: 'Only HQ admins can assign members to a branch' })
+        if (member.role !== 'org_admin' || memberBranchScope(member)) {
+          return reply.code(403).send({ error: 'Only HQ admins can assign members to a branch' })
+        }
+
+        const featureCheck = await checkOrgHasFeature(orgId, 'branches')
+        if (!featureCheck.ok) {
+          return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
+        }
+
+        const body = updateMemberBranchSchema.parse(request.body)
+        const db = getFirestore()
+
+        if (body.branchId) {
+          const branchSnap = await db.doc(`organizations/${orgId}/branches/${body.branchId}`).get()
+          if (!branchSnap.exists) return reply.code(404).send({ error: 'Branch not found' })
+        }
+
+        const memberRef = db.doc(`${COLLECTIONS.ORG_MEMBERS(orgId)}/${targetUid}`)
+        const memberSnap = await memberRef.get()
+        if (!memberSnap.exists) {
+          return reply.code(404).send({ error: 'Member not found' })
+        }
+
+        await memberRef.update({
+          branchId: body.branchId,
+          branchRole: body.branchId ? (body.branchRole ?? null) : null,
+          updatedAt: admin.firestore.Timestamp.fromDate(new Date()),
+        })
+
+        return {
+          ok: true,
+          branchId: body.branchId,
+          branchRole: body.branchId ? (body.branchRole ?? null) : null,
+        }
+      } catch (error: unknown) {
+        const err = error as { message?: string; stack?: string }
+        console.error('[TEAM] Error assigning member branch:', error)
+        return reply.code(500).send({
+          error: 'Failed to assign member branch',
+          message: err.message || 'Unknown error',
+        })
       }
-
-      const featureCheck = await checkOrgHasFeature(orgId, 'branches')
-      if (!featureCheck.ok) {
-        return reply.code(403).send({ error: featureCheck.error, upgradeRequired: true })
-      }
-
-      const body = updateMemberBranchSchema.parse(request.body)
-      const db = getFirestore()
-
-      if (body.branchId) {
-        const branchSnap = await db.doc(`organizations/${orgId}/branches/${body.branchId}`).get()
-        if (!branchSnap.exists) return reply.code(404).send({ error: 'Branch not found' })
-      }
-
-      const memberRef = db.doc(`${COLLECTIONS.ORG_MEMBERS(orgId)}/${targetUid}`)
-      const memberSnap = await memberRef.get()
-      if (!memberSnap.exists) {
-        return reply.code(404).send({ error: 'Member not found' })
-      }
-
-      await memberRef.update({
-        branchId: body.branchId,
-        branchRole: body.branchId ? (body.branchRole ?? null) : null,
-        updatedAt: admin.firestore.Timestamp.fromDate(new Date()),
-      })
-
-      return {
-        ok: true,
-        branchId: body.branchId,
-        branchRole: body.branchId ? (body.branchRole ?? null) : null,
-      }
-    } catch (error: unknown) {
-      const err = error as { message?: string; stack?: string }
-      console.error('[TEAM] Error assigning member branch:', error)
-      return reply.code(500).send({
-        error: 'Failed to assign member branch',
-        message: err.message || 'Unknown error',
-      })
     }
-  })
+  )
 
   fastify.patch<{
     Params: { orgId: string; uid: string }
     Body: z.infer<typeof updateMemberDisplayNameSchema>
-  }>('/orgs/:orgId/members/:uid/display-name', async (request, reply) => {
-    try {
-      const { orgId, uid: targetUid } = request.params
-      const member = await requireOrgMember(request, reply, orgId)
-      if (reply.sent) return
+  }>(
+    '/orgs/:orgId/members/:uid/display-name',
+    {
+      schema: {
+        tags: ['Organizations'],
+        summary: "Update a team member's organization-specific display name (org admin only)",
+        params: orgMemberParamsSchema,
+        body: {
+          type: 'object',
+          required: ['orgDisplayName'],
+          properties: { orgDisplayName: { type: ['string', 'null'] } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'orgDisplayName'],
+            properties: { ok: { type: 'boolean' }, orgDisplayName: { type: ['string', 'null'] } },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, uid: targetUid } = request.params
+        const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
 
-      if (member.role !== 'org_admin') {
-        return reply
-          .code(403)
-          .send({ error: 'Only organization admins can update member display names' })
+        if (member.role !== 'org_admin') {
+          return reply
+            .code(403)
+            .send({ error: 'Only organization admins can update member display names' })
+        }
+
+        const body = updateMemberDisplayNameSchema.parse(request.body)
+        const db = getFirestore()
+
+        const memberRef = db.doc(`${COLLECTIONS.ORG_MEMBERS(orgId)}/${targetUid}`)
+        const memberSnap = await memberRef.get()
+        if (!memberSnap.exists) {
+          return reply.code(404).send({ error: 'Member not found' })
+        }
+
+        const now = admin.firestore.Timestamp.fromDate(new Date())
+        await memberRef.update({
+          orgDisplayName: body.orgDisplayName ?? admin.firestore.FieldValue.delete(),
+          updatedAt: now,
+        })
+
+        return { ok: true, orgDisplayName: body.orgDisplayName }
+      } catch (error: unknown) {
+        const err = error as { message?: string; stack?: string }
+        console.error('[TEAM] Error updating member display name:', error)
+        return reply.code(500).send({
+          error: 'Failed to update member display name',
+          message: err.message || 'Unknown error',
+        })
       }
-
-      const body = updateMemberDisplayNameSchema.parse(request.body)
-      const db = getFirestore()
-
-      const memberRef = db.doc(`${COLLECTIONS.ORG_MEMBERS(orgId)}/${targetUid}`)
-      const memberSnap = await memberRef.get()
-      if (!memberSnap.exists) {
-        return reply.code(404).send({ error: 'Member not found' })
-      }
-
-      const now = admin.firestore.Timestamp.fromDate(new Date())
-      await memberRef.update({
-        orgDisplayName: body.orgDisplayName ?? admin.firestore.FieldValue.delete(),
-        updatedAt: now,
-      })
-
-      return { ok: true, orgDisplayName: body.orgDisplayName }
-    } catch (error: unknown) {
-      const err = error as { message?: string; stack?: string }
-      console.error('[TEAM] Error updating member display name:', error)
-      return reply.code(500).send({
-        error: 'Failed to update member display name',
-        message: err.message || 'Unknown error',
-      })
     }
-  })
+  )
 
   fastify.delete<{ Params: { orgId: string; uid: string } }>(
     '/orgs/:orgId/members/:uid',
+    {
+      schema: {
+        tags: ['Organizations'],
+        summary: 'Remove (deactivate) a team member from an organization (org admin only)',
+        params: orgMemberParamsSchema,
+        response: {
+          200: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId, uid: targetUid } = request.params

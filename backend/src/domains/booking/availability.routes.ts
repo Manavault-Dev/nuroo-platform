@@ -19,13 +19,83 @@ const availabilitySchema = z.object({
   breakBetweenSlotsMinutes: z.number().int().min(0).max(120).default(0),
 })
 
+const orgSpecialistParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'specialistId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    specialistId: { type: 'string', description: 'Specialist user ID' },
+  },
+} as const
+
+const orgParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const timeRangeResponseSchema = {
+  type: 'object',
+  required: ['start', 'end'],
+  properties: { start: { type: 'string' }, end: { type: 'string' } },
+} as const
+
+const availabilityTemplateResponseSchema = {
+  type: 'object',
+  required: [
+    'specialistId',
+    'orgId',
+    'schedule',
+    'slotDurationMinutes',
+    'breakBetweenSlotsMinutes',
+    'updatedAt',
+  ],
+  properties: {
+    specialistId: { type: 'string' },
+    orgId: { type: 'string' },
+    schedule: {
+      type: 'object',
+      additionalProperties: { type: 'array', items: timeRangeResponseSchema },
+    },
+    slotDurationMinutes: { type: 'number' },
+    breakBetweenSlotsMinutes: { type: 'number' },
+    updatedAt: { type: 'string' },
+  },
+} as const
+
 export const availabilityRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
   /** GET /orgs/:orgId/specialists/:specialistId/availability */
   fastify.get<{ Params: { orgId: string; specialistId: string } }>(
     '/orgs/:orgId/specialists/:specialistId/availability',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: "Get a specialist's weekly availability template",
+        params: orgSpecialistParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'availability'],
+            properties: {
+              ok: { type: 'boolean' },
+              availability: {
+                anyOf: [availabilityTemplateResponseSchema, { type: 'null' }],
+              },
+            },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, specialistId } = request.params
@@ -47,7 +117,47 @@ export const availabilityRoute: FastifyPluginAsync = async (fastify) => {
   /** PUT /orgs/:orgId/specialists/:specialistId/availability */
   fastify.put<{ Params: { orgId: string; specialistId: string } }>(
     '/orgs/:orgId/specialists/:specialistId/availability',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: "Set a specialist's weekly availability template",
+        params: orgSpecialistParamsSchema,
+        body: {
+          type: 'object',
+          required: ['schedule'],
+          additionalProperties: true,
+          properties: {
+            schedule: {
+              type: 'object',
+              description: 'Map of day-of-week key (mon..sun) to a list of HH:MM time ranges',
+              additionalProperties: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['start', 'end'],
+                  properties: { start: { type: 'string' }, end: { type: 'string' } },
+                },
+              },
+            },
+            slotDurationMinutes: { type: 'number', minimum: 5, maximum: 480 },
+            breakBetweenSlotsMinutes: { type: 'number', minimum: 0, maximum: 120 },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'availability'],
+            properties: {
+              ok: { type: 'boolean' },
+              availability: availabilityTemplateResponseSchema,
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, specialistId } = request.params
@@ -88,7 +198,21 @@ export const availabilityRoute: FastifyPluginAsync = async (fastify) => {
     Querystring: { category?: string }
   }>(
     '/marketplace/organizations/:orgId/specialists',
-    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    {
+      config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['Booking'],
+        summary: 'List active specialists for an organization (public marketplace)',
+        params: orgParamsSchema,
+        querystring: {
+          type: 'object',
+          properties: { category: { type: 'string' } },
+        },
+        response: {
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId } = request.params
 

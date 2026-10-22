@@ -100,28 +100,57 @@ async function findActiveOrganization(
   return null
 }
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const sessionResponseSchema = {
+  type: 'object',
+  required: ['ok', 'hasOrg'],
+  properties: {
+    ok: { type: 'boolean' },
+    hasOrg: { type: 'boolean' },
+    orgId: { type: 'string' },
+  },
+} as const
+
 export const sessionRoute: FastifyPluginAsync = async (fastify) => {
-  fastify.get('/session', async (request, reply) => {
-    if (!request.user) {
-      return reply.code(401).send({ error: 'Unauthorized' })
-    }
+  fastify.get(
+    '/session',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: "Resolve the current user's active organization, if any",
+        response: {
+          200: sessionResponseSchema,
+          401: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.code(401).send({ error: 'Unauthorized' })
+      }
 
-    const db = getFirestore()
-    const { uid } = request.user
+      const db = getFirestore()
+      const { uid } = request.user
 
-    const specialistRef = db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}`)
-    const specialistSnap = await specialistRef.get()
+      const specialistRef = db.doc(`${COLLECTIONS.SPECIALISTS}/${uid}`)
+      const specialistSnap = await specialistRef.get()
 
-    if (!specialistSnap.exists) {
+      if (!specialistSnap.exists) {
+        return { ok: true, hasOrg: false }
+      }
+
+      const orgId = await findActiveOrganization(db, uid)
+
+      if (orgId) {
+        return { ok: true, orgId, hasOrg: true }
+      }
+
       return { ok: true, hasOrg: false }
     }
-
-    const orgId = await findActiveOrganization(db, uid)
-
-    if (orgId) {
-      return { ok: true, orgId, hasOrg: true }
-    }
-
-    return { ok: true, hasOrg: false }
-  })
+  )
 }

@@ -31,6 +31,28 @@ const calendarDocPath = (uid: string, role: CalendarRole) =>
     ? `users/${uid}/integrations/google_calendar`
     : `specialists/${uid}/integrations/google_calendar`
 
+const roleQuerystringSchema = {
+  type: 'object',
+  properties: {
+    role: {
+      type: 'string',
+      description: 'parent or specialist; any other value is treated as specialist',
+    },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
 export const calendarRoutes: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
@@ -39,7 +61,23 @@ export const calendarRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Querystring: { role?: string } }>(
     '/calendar/connect',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Calendar'],
+        summary: 'Get the Google OAuth consent URL to connect a calendar',
+        querystring: roleQuerystringSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'url'],
+            properties: { ok: { type: 'boolean' }, url: { type: 'string' } },
+          },
+          401: errorResponseSchema,
+          503: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -61,7 +99,24 @@ export const calendarRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Querystring: { code?: string; state?: string; error?: string } }>(
     '/calendar/callback',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Calendar'],
+        summary: 'OAuth callback — exchanges the Google auth code and redirects back to the app',
+        querystring: {
+          type: 'object',
+          properties: {
+            code: { type: 'string' },
+            state: { type: 'string' },
+            error: { type: 'string' },
+          },
+        },
+        response: {
+          400: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { code, state, error } = request.query
 
@@ -133,7 +188,27 @@ export const calendarRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Querystring: { role?: string } }>(
     '/calendar/status',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Calendar'],
+        summary: "Get the authenticated user's calendar connection status",
+        querystring: roleQuerystringSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'connected'],
+            properties: {
+              ok: { type: 'boolean' },
+              connected: { type: 'boolean' },
+              googleEmail: { type: ['string', 'null'] },
+              connectedAt: { type: ['string', 'null'] },
+            },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -159,7 +234,18 @@ export const calendarRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.delete<{ Querystring: { role?: string } }>(
     '/calendar/disconnect',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Calendar'],
+        summary: "Disconnect the authenticated user's Google Calendar integration",
+        querystring: roleQuerystringSchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
