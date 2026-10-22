@@ -32,6 +32,7 @@ export const manualBillingRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       await requirePlatformAdmin(request, reply)
+      if (reply.sent) return
 
       const { orgId } = request.params
       const { plan, activeUntil, note } = request.body
@@ -115,6 +116,7 @@ export const manualBillingRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       await requirePlatformAdmin(request, reply)
+      if (reply.sent) return
 
       const { orgId } = request.params
       const { activeUntil, note } = request.body
