@@ -28,6 +28,71 @@ const feeSchema = z.object({
   note: z.string().max(500).optional(),
 })
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: {
+    error: { type: 'string' },
+    code: { type: 'string' },
+    upgradeRequired: { type: 'boolean' },
+  },
+} as const
+
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const attendanceQuerystringSchema = {
+  type: 'object',
+  properties: {
+    date: { type: 'string', description: 'Date in YYYY-MM-DD format (defaults to today)' },
+  },
+} as const
+
+const attendanceBodySchema = {
+  type: 'object',
+  required: ['childId', 'childName', 'date', 'status'],
+  additionalProperties: true,
+  properties: {
+    childId: { type: 'string' },
+    childName: { type: 'string' },
+    date: { type: 'string', description: 'YYYY-MM-DD' },
+    status: { type: 'string', enum: ['present', 'absent', 'late'] },
+    note: { type: 'string', maxLength: 500 },
+  },
+} as const
+
+const financeQuerystringSchema = {
+  type: 'object',
+  properties: {
+    month: { type: 'string', description: 'Month in YYYY-MM format (defaults to current month)' },
+    branchId: { type: 'string' },
+  },
+} as const
+
+const feeBodySchema = {
+  type: 'object',
+  required: ['childId', 'childName', 'month', 'amount', 'status'],
+  additionalProperties: true,
+  properties: {
+    childId: { type: 'string' },
+    childName: { type: 'string' },
+    month: { type: 'string', description: 'YYYY-MM' },
+    amount: { type: 'number', minimum: 0 },
+    status: { type: 'string', enum: ['paid', 'pending', 'overdue'] },
+    note: { type: 'string', maxLength: 500 },
+  },
+} as const
+
+const okMessageResponseSchema = {
+  type: 'object',
+  required: ['ok', 'message'],
+  properties: { ok: { type: 'boolean' }, message: { type: 'string' } },
+} as const
+
 async function resolveChildName(
   db: FirebaseFirestore.Firestore,
   childId: string,
@@ -145,6 +210,41 @@ async function isChildInSpecialistGroup(
 export const financeRoute: FastifyPluginAsync = async (fastify) => {
   fastify.get<{ Params: { orgId: string }; Querystring: { date?: string } }>(
     '/orgs/:orgId/attendance',
+    {
+      schema: {
+        tags: ['Finance'],
+        summary: 'List attendance records for an organization on a given date',
+        params: orgIdParamsSchema,
+        querystring: attendanceQuerystringSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'date', 'records'],
+            properties: {
+              ok: { type: 'boolean' },
+              date: { type: 'string' },
+              records: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['childId', 'childName'],
+                  properties: {
+                    childId: { type: 'string' },
+                    childName: { type: 'string' },
+                    status: { type: ['string', 'null'], enum: ['present', 'absent', 'late', null] },
+                    note: { type: ['string', 'null'] },
+                    markedAt: { type: ['string', 'null'], format: 'date-time' },
+                  },
+                },
+              },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params
@@ -274,6 +374,21 @@ export const financeRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string }; Body: z.infer<typeof attendanceSchema> }>(
     '/orgs/:orgId/attendance',
+    {
+      schema: {
+        tags: ['Finance'],
+        summary: 'Record a child attendance status for a date',
+        params: orgIdParamsSchema,
+        body: attendanceBodySchema,
+        response: {
+          200: okMessageResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params
@@ -340,6 +455,53 @@ export const financeRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string }; Querystring: { month?: string; branchId?: string } }>(
     '/orgs/:orgId/finance',
+    {
+      schema: {
+        tags: ['Finance'],
+        summary: 'List monthly fee/invoice records for an organization',
+        params: orgIdParamsSchema,
+        querystring: financeQuerystringSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'month', 'records'],
+            properties: {
+              ok: { type: 'boolean' },
+              month: { type: 'string' },
+              records: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['childId', 'childName', 'amount', 'currency', 'status'],
+                  properties: {
+                    childId: { type: 'string' },
+                    childName: { type: 'string' },
+                    amount: { type: 'number' },
+                    currency: { type: 'string' },
+                    status: { type: 'string' },
+                    paidAt: { type: ['string', 'null'], format: 'date-time' },
+                    note: { type: ['string', 'null'] },
+                    billingDay: { type: 'number' },
+                    dueDate: { type: 'string' },
+                    daysUntilDue: { type: 'number' },
+                    billingStatus: {
+                      type: 'string',
+                      enum: ['paid', 'overdue', 'due_soon', 'upcoming'],
+                    },
+                    invoiceId: { type: 'string' },
+                    paymentUrl: { type: ['string', 'null'] },
+                    source: { type: 'string', enum: ['invoice'] },
+                  },
+                },
+              },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params
@@ -466,6 +628,20 @@ export const financeRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string }; Body: z.infer<typeof feeSchema> }>(
     '/orgs/:orgId/finance',
+    {
+      schema: {
+        tags: ['Finance'],
+        summary: 'Record a monthly fee status for a child',
+        params: orgIdParamsSchema,
+        body: feeBodySchema,
+        response: {
+          200: okMessageResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params

@@ -2,6 +2,10 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { getFirestore } from '../../infrastructure/database/firebase.js'
 import type { EventDoc, PublicEvent } from './events.types.js'
+import {
+  getParentCalendarAuth,
+  upsertCalendarEvent,
+} from '../../infrastructure/calendar/calendarSync.service.js'
 
 const RATE = { max: 120, timeWindow: '1 minute' }
 
@@ -48,39 +52,129 @@ async function getCachedEvents(db: ReturnType<typeof getFirestore>): Promise<Pub
   return data
 }
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const publicEventSchema = {
+  type: 'object',
+  required: ['id', 'orgId', 'title', 'date', 'format'],
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    orgId: { type: 'string' },
+    orgName: { type: 'string' },
+    orgLogoUrl: { type: ['string', 'null'] },
+    title: { type: 'string' },
+    description: { type: 'string' },
+    coverUrl: { type: ['string', 'null'] },
+    date: { type: 'string' },
+    endDate: { type: ['string', 'null'] },
+    location: { type: 'string' },
+    city: { type: ['string', 'null'] },
+    format: { type: 'string', enum: ['online', 'offline', 'hybrid'] },
+    price: { type: 'integer' },
+    currency: { type: 'string' },
+    spotsTotal: { type: 'integer' },
+    spotsLeft: { type: 'number' },
+    registeredCount: { type: 'integer' },
+    category: { type: ['string', 'null'] },
+    ageMin: { type: ['integer', 'null'] },
+    ageMax: { type: ['integer', 'null'] },
+  },
+} as const
+
 export const eventsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
-  fastify.get('/marketplace/events', { config: { rateLimit: RATE } }, async (request, reply) => {
-    const query = z
-      .object({
-        category: z.string().optional(),
-        format: z.enum(['online', 'offline', 'hybrid']).optional(),
-        city: z.string().optional(),
-        free: z.enum(['true', 'false']).optional(),
-        limit: z.coerce.number().int().min(1).max(100).default(24),
-      })
-      .parse(request.query)
+  fastify.get(
+    '/marketplace/events',
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Events'],
+        summary: 'Public listing of published, upcoming events across the marketplace',
+        querystring: {
+          type: 'object',
+          properties: {
+            category: { type: 'string' },
+            format: { type: 'string', enum: ['online', 'offline', 'hybrid'] },
+            city: { type: 'string' },
+            free: { type: 'string', enum: ['true', 'false'] },
+            limit: { type: 'string', description: 'Integer 1-100, as a numeric string' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'events'],
+            properties: {
+              ok: { type: 'boolean' },
+              events: { type: 'array', items: publicEventSchema },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const query = z
+        .object({
+          category: z.string().optional(),
+          format: z.enum(['online', 'offline', 'hybrid']).optional(),
+          city: z.string().optional(),
+          free: z.enum(['true', 'false']).optional(),
+          limit: z.coerce.number().int().min(1).max(100).default(24),
+        })
+        .parse(request.query)
 
-    let events = await getCachedEvents(db)
+      let events = await getCachedEvents(db)
 
-    if (query.category) events = events.filter((e) => e.category === query.category)
-    if (query.format) events = events.filter((e) => e.format === query.format)
-    if (query.city)
-      events = events.filter((e) => e.city?.toLowerCase() === query.city!.toLowerCase())
-    if (query.free === 'true') events = events.filter((e) => e.price === 0)
-    events = events.slice(0, query.limit)
+      if (query.category) events = events.filter((e) => e.category === query.category)
+      if (query.format) events = events.filter((e) => e.format === query.format)
+      if (query.city)
+        events = events.filter((e) => e.city?.toLowerCase() === query.city!.toLowerCase())
+      if (query.free === 'true') events = events.filter((e) => e.price === 0)
+      events = events.slice(0, query.limit)
 
-    reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
-    return { ok: true, events }
-  })
+      reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
+      return { ok: true, events }
+    }
+  )
 
   // ── GET /marketplace/events/:eventId ──────────────────────────────────────
   // Public detail page — no auth required
 
   fastify.get<{ Params: { eventId: string } }>(
     '/marketplace/events/:eventId',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Events'],
+        summary: 'Public event detail page',
+        params: {
+          type: 'object',
+          required: ['eventId'],
+          properties: { eventId: { type: 'string', description: 'Event ID' } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'event'],
+            properties: { ok: { type: 'boolean' }, event: publicEventSchema },
+          },
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { eventId } = request.params
       const snap = await db.doc(`events/${eventId}`).get()
@@ -98,7 +192,24 @@ export const eventsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { eventId: string } }>(
     '/marketplace/events/:eventId/register',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    {
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['Events'],
+        summary: 'Register the current user for an event',
+        params: {
+          type: 'object',
+          required: ['eventId'],
+          properties: { eventId: { type: 'string', description: 'Event ID' } },
+        },
+        response: {
+          201: okResponseSchema,
+          401: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -144,7 +255,32 @@ export const eventsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
 
       _cache = null
 
+      // Sync to the parent's Google Calendar if connected (fire-and-forget,
+      // create-only — there's no unregister flow today to delete it on).
+      void (async () => {
+        try {
+          const auth = await getParentCalendarAuth(request.user!.uid)
+          if (!auth.connected || !auth.refreshToken) return
+
+          const endDateTime = event.endDate ?? addOneHour(event.date)
+          const googleEventId = await upsertCalendarEvent(auth.refreshToken, {
+            title: event.title,
+            description: event.description || undefined,
+            location: event.location || undefined,
+            startDateTime: event.date,
+            endDateTime,
+          })
+          await registrationRef.update({ googleCalendarEventId: googleEventId })
+        } catch (err) {
+          console.error('[EventsMarketplace] Calendar sync failed:', err)
+        }
+      })()
+
       return reply.code(201).send({ ok: true })
     }
   )
+}
+
+function addOneHour(isoDateTime: string): string {
+  return new Date(new Date(isoDateTime).getTime() + 60 * 60 * 1000).toISOString()
 }

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { getAbsoluteUrl } from '@/lib/seo/site'
 
 type Props = {
-  params: { locale: string; eventId: string }
+  params: Promise<{ locale: string; eventId: string }>
   children: React.ReactNode
 }
 
@@ -46,7 +46,8 @@ async function fetchEventMeta(
   }
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params
   const { locale, eventId } = params
   const fallback = FALLBACK[locale] ?? FALLBACK.en
   const ogLocale = LOCALE_OG[locale] ?? 'en_US'

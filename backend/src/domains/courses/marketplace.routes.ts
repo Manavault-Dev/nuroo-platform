@@ -43,13 +43,88 @@ async function completeNoBodyPreParsing(
   return stream
 }
 
+// ─── Fastify/OpenAPI schemas ────────────────────────────────────────────────
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const marketplaceCourseSchema = {
+  type: 'object',
+  required: ['id', 'orgId', 'title', 'status', 'visibility', 'accessPolicy'],
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    orgId: { type: 'string' },
+    ownerOrgId: { type: 'string' },
+    ownerOrgName: { type: 'string' },
+    ownerOrgLogo: { type: 'string' },
+    title: { type: 'string' },
+    description: { type: 'string' },
+    coverUrl: { type: 'string' },
+    tags: { type: 'array', items: { type: 'string' } },
+    status: { type: 'string' },
+    visibility: { type: 'string' },
+    accessPolicy: { type: 'string' },
+    price: { type: 'number' },
+    currency: { type: 'string' },
+    moduleCount: { type: 'integer' },
+    lessonCount: { type: 'integer' },
+    enrollmentCount: { type: 'integer' },
+  },
+} as const
+
+const courseOrgCourseParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'courseId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    courseId: { type: 'string', description: 'Course ID' },
+  },
+} as const
+
 export const marketplaceRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
   // Public marketplace listing — reads from root courseIndex (no Firestore index needed).
   fastify.get(
     '/marketplace/courses',
-    { config: { rateLimit: MARKETPLACE_READ_RATE_LIMIT } },
+    {
+      config: { rateLimit: MARKETPLACE_READ_RATE_LIMIT },
+      schema: {
+        tags: ['Courses'],
+        summary: 'Public listing of published, marketplace-visible courses',
+        querystring: {
+          type: 'object',
+          properties: {
+            tag: { type: 'string' },
+            free: { type: 'string', enum: ['true', 'false'] },
+            accessPolicy: { type: 'string' },
+            orgId: { type: 'string' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'courses', 'total'],
+            properties: {
+              ok: { type: 'boolean' },
+              courses: { type: 'array', items: marketplaceCourseSchema },
+              total: { type: 'integer' },
+            },
+          },
+        },
+      },
+    },
     async (request) => {
       const {
         tag,
@@ -126,6 +201,30 @@ export const marketplaceRoute: FastifyPluginAsync = async (fastify) => {
   // Get a single public course with its modules (no lesson bodies — must enroll)
   fastify.get<{ Params: { orgId: string; courseId: string } }>(
     '/marketplace/orgs/:orgId/courses/:courseId',
+    {
+      schema: {
+        tags: ['Courses'],
+        summary: "Public course detail page with its modules' lesson metadata",
+        params: courseOrgCourseParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'course', 'modules'],
+            additionalProperties: true,
+            properties: {
+              ok: { type: 'boolean' },
+              course: marketplaceCourseSchema,
+              modules: {
+                type: 'array',
+                items: { type: 'object', additionalProperties: true },
+              },
+              access: { type: ['object', 'null'], additionalProperties: true },
+            },
+          },
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId } = request.params
       const courseRef = db.doc(`organizations/${orgId}/courses/${courseId}`)
@@ -182,7 +281,30 @@ export const marketplaceRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string; courseId: string } }>(
     '/marketplace/orgs/:orgId/courses/:courseId/access',
-    { config: { rateLimit: MARKETPLACE_READ_RATE_LIMIT } },
+    {
+      config: { rateLimit: MARKETPLACE_READ_RATE_LIMIT },
+      schema: {
+        tags: ['Courses'],
+        summary: "Check the current user's access decision for a marketplace course",
+        params: courseOrgCourseParamsSchema,
+        querystring: {
+          type: 'object',
+          properties: { childId: { type: 'string' } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'access'],
+            properties: {
+              ok: { type: 'boolean' },
+              access: { type: 'object', additionalProperties: true },
+            },
+          },
+          401: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -224,7 +346,46 @@ export const marketplaceRoute: FastifyPluginAsync = async (fastify) => {
   // Enroll in a course (parent must be authenticated)
   fastify.post<{ Params: { orgId: string; courseId: string } }>(
     '/marketplace/orgs/:orgId/courses/:courseId/enroll',
-    { config: { rateLimit: MARKETPLACE_WRITE_RATE_LIMIT } },
+    {
+      config: { rateLimit: MARKETPLACE_WRITE_RATE_LIMIT },
+      schema: {
+        tags: ['Courses'],
+        summary: 'Parent enrolls in a free/accessible marketplace course',
+        params: courseOrgCourseParamsSchema,
+        body: {
+          type: 'object',
+          additionalProperties: true,
+          properties: { childId: { type: 'string', minLength: 1 } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'enrollment'],
+            additionalProperties: true,
+            properties: {
+              ok: { type: 'boolean' },
+              enrollment: { type: 'object', additionalProperties: true },
+            },
+          },
+          201: {
+            type: 'object',
+            required: ['ok', 'enrollment', 'entitlement', 'access'],
+            additionalProperties: true,
+            properties: {
+              ok: { type: 'boolean' },
+              enrollment: { type: 'object', additionalProperties: true },
+              entitlement: { type: 'object', additionalProperties: true },
+              access: { type: 'object', additionalProperties: true },
+            },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          402: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -284,7 +445,44 @@ export const marketplaceRoute: FastifyPluginAsync = async (fastify) => {
   // Create payment checkout for a PAID course
   fastify.post<{ Params: { orgId: string; courseId: string } }>(
     '/marketplace/orgs/:orgId/courses/:courseId/checkout',
-    { config: { rateLimit: MARKETPLACE_WRITE_RATE_LIMIT } },
+    {
+      config: { rateLimit: MARKETPLACE_WRITE_RATE_LIMIT },
+      schema: {
+        tags: ['Courses'],
+        summary: 'Create a payment checkout session for a paid marketplace course',
+        params: courseOrgCourseParamsSchema,
+        body: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            childId: { type: 'string', minLength: 1 },
+            returnUrl: { type: 'string' },
+          },
+        },
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok'],
+            additionalProperties: true,
+            properties: {
+              ok: { type: 'boolean' },
+              enrollment: { type: 'object', additionalProperties: true },
+              entitlement: { type: 'object', additionalProperties: true },
+              requiresPayment: { type: 'boolean' },
+              paymentId: { type: 'string' },
+              paymentUrl: { type: 'string' },
+              amount: { type: 'number' },
+              currency: { type: 'string' },
+            },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          502: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -418,7 +616,33 @@ export const marketplaceRoute: FastifyPluginAsync = async (fastify) => {
   // Get single lesson by lessonId (searches across modules)
   fastify.get<{ Params: { orgId: string; courseId: string; lessonId: string } }>(
     '/marketplace/orgs/:orgId/courses/:courseId/lessons/:lessonId',
-    { config: { rateLimit: MARKETPLACE_READ_RATE_LIMIT } },
+    {
+      config: { rateLimit: MARKETPLACE_READ_RATE_LIMIT },
+      schema: {
+        tags: ['Courses'],
+        summary: 'Get a single public lesson by ID (searches across the course modules)',
+        params: {
+          type: 'object',
+          required: ['orgId', 'courseId', 'lessonId'],
+          properties: {
+            orgId: { type: 'string' },
+            courseId: { type: 'string' },
+            lessonId: { type: 'string' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'lesson'],
+            properties: {
+              ok: { type: 'boolean' },
+              lesson: { type: 'object', additionalProperties: true },
+            },
+          },
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, courseId, lessonId } = request.params
 
@@ -455,7 +679,35 @@ export const marketplaceRoute: FastifyPluginAsync = async (fastify) => {
   // Get enrolled course content (lessons) — only if enrolled
   fastify.get<{ Params: { orgId: string; courseId: string; moduleId: string } }>(
     '/marketplace/orgs/:orgId/courses/:courseId/modules/:moduleId/lessons',
-    { config: { rateLimit: MARKETPLACE_READ_RATE_LIMIT } },
+    {
+      config: { rateLimit: MARKETPLACE_READ_RATE_LIMIT },
+      schema: {
+        tags: ['Courses'],
+        summary: 'List full lesson content for an enrolled course module',
+        params: {
+          type: 'object',
+          required: ['orgId', 'courseId', 'moduleId'],
+          properties: {
+            orgId: { type: 'string' },
+            courseId: { type: 'string' },
+            moduleId: { type: 'string' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'lessons'],
+            properties: {
+              ok: { type: 'boolean' },
+              lessons: { type: 'array', items: { type: 'object', additionalProperties: true } },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -508,7 +760,28 @@ export const marketplaceRoute: FastifyPluginAsync = async (fastify) => {
     Params: { orgId: string; courseId: string; moduleId: string; lessonId: string }
   }>(
     '/marketplace/orgs/:orgId/courses/:courseId/modules/:moduleId/lessons/:lessonId/complete',
-    { config: { rateLimit: MARKETPLACE_WRITE_RATE_LIMIT }, preParsing: completeNoBodyPreParsing },
+    {
+      config: { rateLimit: MARKETPLACE_WRITE_RATE_LIMIT },
+      preParsing: completeNoBodyPreParsing,
+      schema: {
+        tags: ['Courses'],
+        summary: 'Mark a lesson as complete for the current user',
+        params: {
+          type: 'object',
+          required: ['orgId', 'courseId', 'moduleId', 'lessonId'],
+          properties: {
+            orgId: { type: 'string' },
+            courseId: { type: 'string' },
+            moduleId: { type: 'string' },
+            lessonId: { type: 'string' },
+          },
+        },
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+        },
+      },
+    },
     markLessonCompleteHandler as any
   )
 
@@ -517,14 +790,68 @@ export const marketplaceRoute: FastifyPluginAsync = async (fastify) => {
     Params: { orgId: string; courseId: string; lessonId: string }
   }>(
     '/marketplace/orgs/:orgId/courses/:courseId/lessons/:lessonId/complete',
-    { config: { rateLimit: MARKETPLACE_WRITE_RATE_LIMIT }, preParsing: completeNoBodyPreParsing },
+    {
+      config: { rateLimit: MARKETPLACE_WRITE_RATE_LIMIT },
+      preParsing: completeNoBodyPreParsing,
+      schema: {
+        tags: ['Courses'],
+        summary: 'Mark a lesson as complete for the current user (mobile path, no moduleId)',
+        params: {
+          type: 'object',
+          required: ['orgId', 'courseId', 'lessonId'],
+          properties: {
+            orgId: { type: 'string' },
+            courseId: { type: 'string' },
+            lessonId: { type: 'string' },
+          },
+        },
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+        },
+      },
+    },
     markLessonCompleteHandler as any
   )
 
   // Course progress for the current user
   fastify.get<{ Params: { orgId: string; courseId: string } }>(
     '/marketplace/orgs/:orgId/courses/:courseId/progress',
-    { config: { rateLimit: MARKETPLACE_READ_RATE_LIMIT } },
+    {
+      config: { rateLimit: MARKETPLACE_READ_RATE_LIMIT },
+      schema: {
+        tags: ['Courses'],
+        summary: "Get the current user's lesson-completion progress for a course",
+        params: courseOrgCourseParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'progress'],
+            properties: {
+              ok: { type: 'boolean' },
+              progress: {
+                type: 'object',
+                required: [
+                  'enrollmentId',
+                  'totalLessons',
+                  'completedLessons',
+                  'progressPct',
+                  'completedLessonIds',
+                ],
+                properties: {
+                  enrollmentId: { type: 'string' },
+                  totalLessons: { type: 'integer' },
+                  completedLessons: { type: 'integer' },
+                  progressPct: { type: 'integer' },
+                  completedLessonIds: { type: 'array', items: { type: 'string' } },
+                },
+              },
+            },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -562,7 +889,24 @@ export const marketplaceRoute: FastifyPluginAsync = async (fastify) => {
   // Get my enrollments
   fastify.get(
     '/marketplace/my/enrollments',
-    { config: { rateLimit: MARKETPLACE_READ_RATE_LIMIT } },
+    {
+      config: { rateLimit: MARKETPLACE_READ_RATE_LIMIT },
+      schema: {
+        tags: ['Courses'],
+        summary: "List the current user's active course entitlements/enrollments",
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'enrollments'],
+            properties: {
+              ok: { type: 'boolean' },
+              enrollments: { type: 'array', items: { type: 'object', additionalProperties: true } },
+            },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 

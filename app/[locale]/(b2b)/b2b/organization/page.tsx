@@ -10,6 +10,7 @@ import { getCurrentUser, getIdToken } from '@/lib/b2b/authClient'
 import { useAuth } from '@/lib/b2b/AuthContext'
 import { apiClient } from '@/lib/b2b/api'
 import { Select } from '@/components/ui/Select'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { OrgPageTabs } from '@/components/b2b/OrgPageTabs'
 import {
   Building2,
@@ -31,6 +32,7 @@ import {
   Star,
   ShieldCheck,
   ShieldOff,
+  Trash2,
 } from 'lucide-react'
 import { COUNTRIES, ORG_CATEGORIES } from '@/lib/b2b/countries'
 
@@ -140,6 +142,9 @@ export default function OrganizationPage() {
   const [uploadedImages, setUploadedImages] = useState<Set<string>>(new Set())
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   // Reviews
   type AdminReview = {
@@ -422,6 +427,34 @@ export default function OrganizationPage() {
       setError(err instanceof Error ? err.message : t('updateError'))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDeleteOrg = async () => {
+    if (!currentOrgId) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      const idToken = await getIdToken(true)
+      if (!idToken) {
+        router.push('/b2b/login')
+        return
+      }
+      apiClient.setToken(idToken)
+      await apiClient.deleteOrganization(currentOrgId)
+      updateProfile((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          organizations: prev.organizations.filter((item) => item.orgId !== currentOrgId),
+        }
+      })
+      router.push('/b2b/onboarding')
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : t('deleteOrgError'))
+      setShowDeleteConfirm(false)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -1308,7 +1341,39 @@ export default function OrganizationPage() {
             </div>
           )}
         </div>
+
+        {/* ── Danger zone ── */}
+        <div className="bg-white rounded-xl shadow-sm border border-red-100 p-6">
+          <h3 className="text-base font-semibold text-gray-900 mb-1">{t('dangerZoneTitle')}</h3>
+          <p className="text-sm text-gray-500 mb-4">{t('dangerZoneSubtitle')}</p>
+          {deleteError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm mb-4">
+              {deleteError}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowDeleteConfirm(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-red-600 border border-red-200 hover:bg-red-50 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            {t('deleteOrgButton')}
+          </button>
+        </div>
       </div>
+
+      {showDeleteConfirm && (
+        <ConfirmModal
+          title={t('deleteOrgTitle')}
+          subtitle={t('deleteOrgSubtitle')}
+          description={t('deleteOrgDescription')}
+          confirmLabel={t('deleteOrgConfirm')}
+          cancelLabel={t('deleteOrgCancel')}
+          loading={deleting}
+          onConfirm={handleDeleteOrg}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
     </div>
   )
 }

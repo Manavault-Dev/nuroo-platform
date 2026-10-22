@@ -5,7 +5,8 @@ export interface BookingConfirmedEvent {
   orgName: string
   parentId: string
   parentName: string
-  parentEmail: string
+  parentEmail?: string
+  parentPhone?: string | null
   specialistName: string
   serviceName?: string | null
   date: string
@@ -21,6 +22,7 @@ export interface BookingCancelledEvent {
   parentId: string
   parentName: string
   parentEmail?: string
+  parentPhone?: string | null
   specialistName: string
   date: string
   startTime: string

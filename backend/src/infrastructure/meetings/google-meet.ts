@@ -32,8 +32,8 @@ function getOAuthClient() {
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri)
 }
 
-/** Build an authenticated Calendar client from specialist's stored refresh token */
-function getCalendarWithRefreshToken(refreshToken: string): calendar_v3.Calendar {
+/** Build an authenticated Calendar client from a stored refresh token */
+export function getCalendarWithRefreshToken(refreshToken: string): calendar_v3.Calendar {
   const oauth2 = getOAuthClient()
   oauth2.setCredentials({ refresh_token: refreshToken })
   return google.calendar({ version: 'v3', auth: oauth2 })

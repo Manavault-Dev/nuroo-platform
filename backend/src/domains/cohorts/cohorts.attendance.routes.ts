@@ -7,6 +7,66 @@ import { canManageCohort, denyNotInstructor, isInMemberBranchScope } from './coh
 import type { CohortDoc, AttendanceDoc } from './cohorts.types.js'
 import { RATE, COL, attendanceSchema, nowIso } from './cohorts.helpers.js'
 
+const sessionParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'cohortId', 'sessionId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    cohortId: { type: 'string', description: 'Cohort ID' },
+    sessionId: { type: 'string', description: 'Session ID' },
+  },
+} as const
+
+const cohortParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'cohortId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    cohortId: { type: 'string', description: 'Cohort ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
+const attendanceBodySchema = {
+  type: 'object',
+  required: ['records'],
+  additionalProperties: true,
+  properties: {
+    records: {
+      type: 'array',
+      minItems: 1,
+      items: {
+        type: 'object',
+        required: ['childId', 'status'],
+        properties: {
+          childId: { type: 'string' },
+          status: { type: 'string', enum: ['present', 'absent', 'late'] },
+        },
+      },
+    },
+  },
+} as const
+
+const attendanceRecordSchema = {
+  type: 'object',
+  required: ['childId', 'sessionId', 'cohortId', 'status'],
+  additionalProperties: true,
+  properties: {
+    childId: { type: 'string' },
+    sessionId: { type: 'string' },
+    cohortId: { type: 'string' },
+    status: { type: 'string', enum: ['present', 'absent', 'late'] },
+    markedAt: { type: 'string' },
+    markedBy: { type: 'string' },
+  },
+} as const
+
 export const cohortsAttendanceRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
@@ -14,7 +74,25 @@ export const cohortsAttendanceRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string; cohortId: string; sessionId: string } }>(
     '/orgs/:orgId/cohorts/:cohortId/sessions/:sessionId/attendance',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Record attendance for every child in a cohort session',
+        params: sessionParamsSchema,
+        body: attendanceBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'count'],
+            properties: { ok: { type: 'boolean' }, count: { type: 'integer' } },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const member = await requireOrgMember(request, reply, request.params.orgId)
@@ -58,7 +136,27 @@ export const cohortsAttendanceRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string; cohortId: string; sessionId: string } }>(
     '/orgs/:orgId/cohorts/:cohortId/sessions/:sessionId/attendance',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Get recorded attendance for a cohort session',
+        params: sessionParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'attendance'],
+            properties: {
+              ok: { type: 'boolean' },
+              attendance: { type: 'array', items: attendanceRecordSchema },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const member = await requireOrgMember(request, reply, request.params.orgId)
@@ -88,7 +186,25 @@ export const cohortsAttendanceRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string; cohortId: string } }>(
     '/orgs/:orgId/cohorts/:cohortId/cover',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Upload a cover image for a cohort (multipart/form-data)',
+        params: cohortParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'coverUrl'],
+            properties: { ok: { type: 'boolean' }, coverUrl: { type: 'string' } },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const member = await requireOrgMember(request, reply, request.params.orgId)

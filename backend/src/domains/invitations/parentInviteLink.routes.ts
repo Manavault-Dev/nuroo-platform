@@ -6,6 +6,34 @@ import { getFirestore } from '../../infrastructure/database/firebase.js'
 import { checkOrgCanAddChild } from '../payments/planLimits.js'
 import { registeredChildDisplayName } from './invitations.helpers.js'
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const inviteCodeBodyOrQuerySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    inviteCode: { type: 'string', maxLength: 100 },
+    code: { type: 'string', maxLength: 100 },
+    invite_code: { type: 'string', maxLength: 100 },
+  },
+} as const
+
+const inviteCodeWithChildBodyOrQuerySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    inviteCode: { type: 'string', maxLength: 100 },
+    code: { type: 'string', maxLength: 100 },
+    invite_code: { type: 'string', maxLength: 100 },
+    childId: { type: 'string' },
+    child_id: { type: 'string' },
+  },
+} as const
+
 export const parentInviteLinkRoute: FastifyPluginAsync = async (fastify) => {
   const _validateInviteSchema = z.object({
     inviteCode: z.string().min(1).max(100).optional(),
@@ -81,9 +109,34 @@ export const parentInviteLinkRoute: FastifyPluginAsync = async (fastify) => {
     }
   }
 
+  const validateRouteSchema = {
+    tags: ['Invitations'],
+    summary: 'Validate a parent-invite code and return the specialist/organization it belongs to',
+    body: inviteCodeBodyOrQuerySchema,
+    querystring: inviteCodeBodyOrQuerySchema,
+    response: {
+      200: {
+        type: 'object',
+        required: ['ok', 'valid', 'specialistId', 'specialistName', 'orgId'],
+        properties: {
+          ok: { type: 'boolean' },
+          valid: { type: 'boolean' },
+          specialistId: { type: 'string' },
+          specialistName: { type: 'string' },
+          orgId: { type: 'string' },
+          orgName: { type: 'string' },
+        },
+      },
+      400: errorResponseSchema,
+      401: errorResponseSchema,
+      404: errorResponseSchema,
+      500: errorResponseSchema,
+    },
+  }
+
   // Register both /api/... (canonical) and /... (alias for legacy mobile builds)
-  fastify.post('/api/org/parent-invites/validate', handleValidate)
-  fastify.post('/org/parent-invites/validate', handleValidate)
+  fastify.post('/api/org/parent-invites/validate', { schema: validateRouteSchema }, handleValidate)
+  fastify.post('/org/parent-invites/validate', { schema: validateRouteSchema }, handleValidate)
 
   const _useInviteSchema = z.object({
     inviteCode: z.string().min(1).max(100).optional(),
@@ -202,8 +255,32 @@ export const parentInviteLinkRoute: FastifyPluginAsync = async (fastify) => {
     }
   }
 
-  fastify.post('/api/org/parent-invites/use', handleUse)
-  fastify.post('/org/parent-invites/use', handleUse)
+  const useRouteSchema = {
+    tags: ['Invitations'],
+    summary: 'Use a parent-invite code to connect a child to the invite-owning specialist/org',
+    body: inviteCodeWithChildBodyOrQuerySchema,
+    querystring: inviteCodeWithChildBodyOrQuerySchema,
+    response: {
+      200: {
+        type: 'object',
+        required: ['ok', 'orgId', 'childId', 'message'],
+        properties: {
+          ok: { type: 'boolean' },
+          orgId: { type: 'string' },
+          childId: { type: 'string' },
+          message: { type: 'string' },
+        },
+      },
+      400: errorResponseSchema,
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      404: errorResponseSchema,
+      500: errorResponseSchema,
+    },
+  }
+
+  fastify.post('/api/org/parent-invites/use', { schema: useRouteSchema }, handleUse)
+  fastify.post('/org/parent-invites/use', { schema: useRouteSchema }, handleUse)
 
   const handleAccept = async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.user) {
@@ -327,6 +404,31 @@ export const parentInviteLinkRoute: FastifyPluginAsync = async (fastify) => {
     }
   }
 
-  fastify.post('/api/org/parent-invites/accept', handleAccept)
-  fastify.post('/org/parent-invites/accept', handleAccept)
+  const acceptRouteSchema = {
+    tags: ['Invitations'],
+    summary:
+      'Accept a parent-invite code, linking the calling parent and child to the specialist/org',
+    body: inviteCodeWithChildBodyOrQuerySchema,
+    querystring: inviteCodeWithChildBodyOrQuerySchema,
+    response: {
+      200: {
+        type: 'object',
+        required: ['ok', 'orgId', 'childId', 'message'],
+        properties: {
+          ok: { type: 'boolean' },
+          orgId: { type: 'string' },
+          childId: { type: 'string' },
+          message: { type: 'string' },
+        },
+      },
+      400: errorResponseSchema,
+      401: errorResponseSchema,
+      403: errorResponseSchema,
+      404: errorResponseSchema,
+      500: errorResponseSchema,
+    },
+  }
+
+  fastify.post('/api/org/parent-invites/accept', { schema: acceptRouteSchema }, handleAccept)
+  fastify.post('/org/parent-invites/accept', { schema: acceptRouteSchema }, handleAccept)
 }

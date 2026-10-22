@@ -21,6 +21,56 @@ const createNoteSchema = z.object({
   visibleToParent: z.boolean().optional(),
 })
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' } },
+} as const
+
+const errorWithDetailsResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' }, details: { type: 'string' } },
+} as const
+
+const orgChildParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'childId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    childId: { type: 'string', description: 'Child ID' },
+  },
+} as const
+
+const createNoteBodySchema = {
+  type: 'object',
+  required: ['text'],
+  additionalProperties: true,
+  properties: {
+    text: { type: 'string', minLength: 1, maxLength: MAX_NOTE_LENGTH },
+    tags: { type: 'array', items: { type: 'string' } },
+    visibleToParent: { type: 'boolean' },
+  },
+} as const
+
+const noteSchema = {
+  type: 'object',
+  required: ['id', 'childId', 'orgId', 'specialistId', 'specialistName', 'text'],
+  properties: {
+    id: { type: 'string' },
+    childId: { type: 'string' },
+    orgId: { type: 'string' },
+    specialistId: { type: 'string' },
+    specialistName: { type: 'string' },
+    text: { type: 'string' },
+    tags: { type: 'array', items: { type: 'string' } },
+    createdAt: { type: 'string', format: 'date-time' },
+    updatedAt: { type: 'string', format: 'date-time' },
+  },
+} as const
+
 function extractSpecialistName(
   specialistData: admin.firestore.DocumentData | null,
   email: string | undefined
@@ -83,6 +133,21 @@ function buildNoteData(
 export const notesRoute: FastifyPluginAsync = async (fastify) => {
   fastify.get<{ Params: { orgId: string; childId: string } }>(
     '/orgs/:orgId/children/:childId/notes',
+    {
+      schema: {
+        tags: ['Messaging'],
+        summary: 'List specialist notes for a child',
+        params: orgChildParamsSchema,
+        response: {
+          200: { type: 'array', items: noteSchema },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+          500: errorWithDetailsResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId, childId } = request.params
@@ -115,127 +180,146 @@ export const notesRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: { orgId: string; childId: string }
     Body: z.infer<typeof createNoteSchema>
-  }>('/orgs/:orgId/children/:childId/notes', async (request, reply) => {
-    try {
-      const { orgId, childId } = request.params
-
-      if (!request.user) {
-        return reply.code(401).send({ error: 'Unauthorized' })
-      }
-
-      const body = createNoteSchema.parse(request.body)
-
-      await requireOrgMember(request, reply, orgId)
-      const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
-
-      const db = getFirestore()
-      const { uid, email } = request.user
-      const specialistName = await getSpecialistName(db, uid, email)
-
-      const notesRef = db.collection(COLLECTIONS.CHILD_NOTES(resolvedChildId))
-      const now = new Date()
-      const noteData = buildNoteData(orgId, uid, specialistName, body.text, body.tags, now)
-      noteData.visibleToParent = body.visibleToParent !== false
-
-      const [noteRef, orgChildSnap] = await Promise.all([
-        notesRef.add(noteData),
-        db.doc(`organizations/${orgId}/children/${resolvedChildId}`).get(),
-      ])
-
-      const parentUserId = orgChildSnap.data()?.parentUserId
-      const childName = orgChildSnap.data()?.name || 'your child'
-
-      if (parentUserId) {
-        dispatch({
-          userId: parentUserId,
-          orgId,
-          role: 'parent',
-          type: 'note_added',
-          category: 'progressUpdates',
-          title: `📋 New note from ${specialistName}`,
-          body: 'A new specialist note has been added.',
-          metadata: { childId: resolvedChildId, orgId, specialistId: uid },
-          dedupKey: `note_added:${noteRef.id}`,
-          channel: 'both',
-        }).catch(() => {})
-      }
-
-      // Write note to the conversation thread (awaited so failures are visible in logs)
-      // convId format: {orgId}_{childId}_{specialistId} — one thread per specialist-child pair
-      const convId = `${orgId}_${resolvedChildId}_${uid}`
-      const convRef = db.doc(`conversations/${convId}`)
-
+  }>(
+    '/orgs/:orgId/children/:childId/notes',
+    {
+      schema: {
+        tags: ['Messaging'],
+        summary: 'Create a specialist note for a child',
+        params: orgChildParamsSchema,
+        body: createNoteBodySchema,
+        response: {
+          201: noteSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+          500: errorWithDetailsResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
       try {
-        // Upsert conversation document in a single atomic merge
-        const convData: Record<string, unknown> = {
-          orgId,
+        const { orgId, childId } = request.params
+
+        if (!request.user) {
+          return reply.code(401).send({ error: 'Unauthorized' })
+        }
+
+        const body = createNoteSchema.parse(request.body)
+
+        await requireOrgMember(request, reply, orgId)
+        const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+
+        const db = getFirestore()
+        const { uid, email } = request.user
+        const specialistName = await getSpecialistName(db, uid, email)
+
+        const notesRef = db.collection(COLLECTIONS.CHILD_NOTES(resolvedChildId))
+        const now = new Date()
+        const noteData = buildNoteData(orgId, uid, specialistName, body.text, body.tags, now)
+        noteData.visibleToParent = body.visibleToParent !== false
+
+        const [noteRef, orgChildSnap] = await Promise.all([
+          notesRef.add(noteData),
+          db.doc(`organizations/${orgId}/children/${resolvedChildId}`).get(),
+        ])
+
+        const parentUserId = orgChildSnap.data()?.parentUserId
+        const childName = orgChildSnap.data()?.name || 'your child'
+
+        if (parentUserId) {
+          dispatch({
+            userId: parentUserId,
+            orgId,
+            role: 'parent',
+            type: 'note_added',
+            category: 'progressUpdates',
+            title: `📋 New note from ${specialistName}`,
+            body: 'A new specialist note has been added.',
+            metadata: { childId: resolvedChildId, orgId, specialistId: uid },
+            dedupKey: `note_added:${noteRef.id}`,
+            channel: 'both',
+          }).catch(() => {})
+        }
+
+        // Write note to the conversation thread (awaited so failures are visible in logs)
+        // convId format: {orgId}_{childId}_{specialistId} — one thread per specialist-child pair
+        const convId = `${orgId}_${resolvedChildId}_${uid}`
+        const convRef = db.doc(`conversations/${convId}`)
+
+        try {
+          // Upsert conversation document in a single atomic merge
+          const convData: Record<string, unknown> = {
+            orgId,
+            childId: resolvedChildId,
+            childName,
+            specialistId: uid,
+            specialistName,
+            lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastMessageText: body.text.slice(0, 120),
+            lastMessageSenderId: uid,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          }
+          if (parentUserId) {
+            convData.parentId = parentUserId
+          }
+
+          await convRef.set(convData, { merge: true })
+
+          // Increment parent's unread count
+          if (parentUserId) {
+            await convRef.update({
+              [`unread.${parentUserId}`]: admin.firestore.FieldValue.increment(1),
+            })
+          }
+
+          // Add the note as a message in the conversation
+          await db.collection(`conversations/${convId}/messages`).add({
+            senderId: uid,
+            senderRole: 'specialist',
+            senderName: specialistName,
+            text: body.text,
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+            isNote: true,
+          })
+        } catch (convErr) {
+          console.error('[NOTES] Failed to write conversation message:', convErr)
+        }
+
+        try {
+          await createFeedItem(db, orgId, resolvedChildId, uid, 'specialist', specialistName, {
+            type: 'specialist_note',
+            body: body.text,
+            visibility: body.visibleToParent === false ? 'internal' : 'parent_visible',
+            relatedEntityType: 'note',
+            relatedEntityId: noteRef.id,
+            metadata: { noteId: noteRef.id, tags: body.tags || [] },
+          })
+        } catch (feedErr) {
+          console.error('[NOTES] Failed to write activity feed item:', feedErr)
+        }
+
+        const note: SpecialistNote = {
+          id: noteRef.id,
           childId: resolvedChildId,
-          childName,
+          orgId,
           specialistId: uid,
           specialistName,
-          lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
-          lastMessageText: body.text.slice(0, 120),
-          lastMessageSenderId: uid,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        }
-        if (parentUserId) {
-          convData.parentId = parentUserId
-        }
-
-        await convRef.set(convData, { merge: true })
-
-        // Increment parent's unread count
-        if (parentUserId) {
-          await convRef.update({
-            [`unread.${parentUserId}`]: admin.firestore.FieldValue.increment(1),
-          })
-        }
-
-        // Add the note as a message in the conversation
-        await db.collection(`conversations/${convId}/messages`).add({
-          senderId: uid,
-          senderRole: 'specialist',
-          senderName: specialistName,
           text: body.text,
-          sentAt: admin.firestore.FieldValue.serverTimestamp(),
-          isNote: true,
+          tags: body.tags,
+          createdAt: now,
+          updatedAt: now,
+        }
+
+        return reply.code(201).send(note)
+      } catch (error: any) {
+        console.error('[NOTES] Error creating note:', error)
+        return reply.code(500).send({
+          error: 'Failed to create note',
+          details: error.message,
         })
-      } catch (convErr) {
-        console.error('[NOTES] Failed to write conversation message:', convErr)
       }
-
-      try {
-        await createFeedItem(db, orgId, resolvedChildId, uid, 'specialist', specialistName, {
-          type: 'specialist_note',
-          body: body.text,
-          visibility: body.visibleToParent === false ? 'internal' : 'parent_visible',
-          relatedEntityType: 'note',
-          relatedEntityId: noteRef.id,
-          metadata: { noteId: noteRef.id, tags: body.tags || [] },
-        })
-      } catch (feedErr) {
-        console.error('[NOTES] Failed to write activity feed item:', feedErr)
-      }
-
-      const note: SpecialistNote = {
-        id: noteRef.id,
-        childId: resolvedChildId,
-        orgId,
-        specialistId: uid,
-        specialistName,
-        text: body.text,
-        tags: body.tags,
-        createdAt: now,
-        updatedAt: now,
-      }
-
-      return reply.code(201).send(note)
-    } catch (error: any) {
-      console.error('[NOTES] Error creating note:', error)
-      return reply.code(500).send({
-        error: 'Failed to create note',
-        details: error.message,
-      })
     }
-  })
+  )
 }

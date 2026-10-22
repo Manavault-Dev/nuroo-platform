@@ -17,6 +17,92 @@ const branchSchema = z.object({
   photoUrl: z.string().url().optional(),
 })
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const orgBranchIdParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'branchId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    branchId: { type: 'string', description: 'Branch ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' }, details: { type: 'string' } },
+} as const
+
+const forbiddenResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' }, upgradeRequired: { type: 'boolean' } },
+} as const
+
+const branchResponseSchema = {
+  type: 'object',
+  required: [
+    'id',
+    'name',
+    'address',
+    'phone',
+    'contactPerson',
+    'description',
+    'photoUrl',
+    'createdAt',
+    'updatedAt',
+  ],
+  properties: {
+    id: { type: 'string' },
+    name: { type: 'string' },
+    address: { type: ['string', 'null'] },
+    phone: { type: ['string', 'null'] },
+    contactPerson: { type: ['string', 'null'] },
+    description: { type: ['string', 'null'] },
+    photoUrl: { type: ['string', 'null'] },
+    createdAt: { type: ['string', 'null'] },
+    updatedAt: { type: ['string', 'null'] },
+  },
+} as const
+
+const branchBodySchema = {
+  type: 'object',
+  required: ['name'],
+  additionalProperties: true,
+  properties: {
+    name: { type: 'string' },
+    address: { type: 'string' },
+    phone: { type: 'string' },
+    contactPerson: { type: 'string' },
+    description: { type: 'string' },
+    photoUrl: { type: 'string', format: 'uri' },
+  },
+} as const
+
+const branchUpdateBodySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    name: { type: 'string' },
+    address: { type: 'string' },
+    phone: { type: 'string' },
+    contactPerson: { type: 'string' },
+    description: { type: 'string' },
+    photoUrl: { type: 'string' },
+  },
+} as const
+
+const okMessageResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' }, message: { type: 'string' } },
+} as const
+
 function transformBranch(doc: admin.firestore.QueryDocumentSnapshot) {
   const data = doc.data()
   return {
@@ -33,35 +119,111 @@ function transformBranch(doc: admin.firestore.QueryDocumentSnapshot) {
 }
 
 export const branchesRoute: FastifyPluginAsync = async (fastify) => {
-  fastify.get<{ Params: { orgId: string } }>('/orgs/:orgId/branches', async (request, reply) => {
-    try {
-      const { orgId } = request.params
-      await requireOrgMember(request, reply, orgId)
-      if (reply.sent) return
-
-      const db = getFirestore()
-      let snapshot: admin.firestore.QuerySnapshot
-
+  fastify.get<{ Params: { orgId: string } }>(
+    '/orgs/:orgId/branches',
+    {
+      schema: {
+        tags: ['Organizations'],
+        summary: "List an organization's branches",
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'branches', 'count'],
+            properties: {
+              ok: { type: 'boolean' },
+              branches: { type: 'array', items: branchResponseSchema },
+              count: { type: 'number' },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
       try {
-        snapshot = await db.collection(ORG_BRANCHES(orgId)).orderBy('createdAt', 'desc').get()
-      } catch {
-        snapshot = await db.collection(ORG_BRANCHES(orgId)).get()
+        const { orgId } = request.params
+        await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
+
+        const db = getFirestore()
+        let snapshot: admin.firestore.QuerySnapshot
+
+        try {
+          snapshot = await db.collection(ORG_BRANCHES(orgId)).orderBy('createdAt', 'desc').get()
+        } catch {
+          snapshot = await db.collection(ORG_BRANCHES(orgId)).get()
+        }
+
+        const branches = snapshot.docs.map(transformBranch)
+
+        return { ok: true, branches, count: branches.length }
+      } catch (error: any) {
+        console.error('[BRANCHES] Error listing branches:', error)
+        return reply.code(500).send({ error: 'Failed to list branches', details: error.message })
       }
-
-      const branches = snapshot.docs.map(transformBranch)
-
-      return { ok: true, branches, count: branches.length }
-    } catch (error: any) {
-      console.error('[BRANCHES] Error listing branches:', error)
-      return reply.code(500).send({ error: 'Failed to list branches', details: error.message })
     }
-  })
+  )
 
   // GET /orgs/:orgId/branches/stats — enterprise dashboard: per-branch revenue,
   // unpaid invoices and team size (HQ sees all branches; a branch-scoped admin
   // sees only their own branch).
   fastify.get<{ Params: { orgId: string } }>(
     '/orgs/:orgId/branches/stats',
+    {
+      schema: {
+        tags: ['Organizations'],
+        summary: 'Get per-branch revenue, unpaid invoice, and team-size stats for an organization',
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'month', 'stats', 'totals'],
+            properties: {
+              ok: { type: 'boolean' },
+              month: { type: 'string' },
+              stats: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: [
+                    'branchId',
+                    'name',
+                    'revenueThisMonth',
+                    'unpaidCount',
+                    'unpaidAmount',
+                    'teamCount',
+                  ],
+                  properties: {
+                    branchId: { type: 'string' },
+                    name: { type: 'string' },
+                    revenueThisMonth: { type: 'number' },
+                    unpaidCount: { type: 'number' },
+                    unpaidAmount: { type: 'number' },
+                    teamCount: { type: 'number' },
+                  },
+                },
+              },
+              totals: {
+                type: 'object',
+                required: ['revenueThisMonth', 'unpaidCount', 'unpaidAmount', 'teamCount'],
+                properties: {
+                  revenueThisMonth: { type: 'number' },
+                  unpaidCount: { type: 'number' },
+                  unpaidAmount: { type: 'number' },
+                  teamCount: { type: 'number' },
+                },
+              },
+            },
+          },
+          401: errorResponseSchema,
+          403: forbiddenResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params
@@ -165,6 +327,24 @@ export const branchesRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string }; Body: z.infer<typeof branchSchema> }>(
     '/orgs/:orgId/branches',
+    {
+      schema: {
+        tags: ['Organizations'],
+        summary: 'Create a new branch for an organization',
+        params: orgIdParamsSchema,
+        body: branchBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'branch'],
+            properties: { ok: { type: 'boolean' }, branch: branchResponseSchema },
+          },
+          401: errorResponseSchema,
+          403: forbiddenResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId } = request.params
@@ -217,48 +397,80 @@ export const branchesRoute: FastifyPluginAsync = async (fastify) => {
   fastify.patch<{
     Params: { orgId: string; branchId: string }
     Body: Partial<z.infer<typeof branchSchema>>
-  }>('/orgs/:orgId/branches/:branchId', async (request, reply) => {
-    try {
-      const { orgId, branchId } = request.params
-      const member = await requireOrgMember(request, reply, orgId)
-      if (reply.sent) return
+  }>(
+    '/orgs/:orgId/branches/:branchId',
+    {
+      schema: {
+        tags: ['Organizations'],
+        summary: "Update an organization branch's fields",
+        params: orgBranchIdParamsSchema,
+        body: branchUpdateBodySchema,
+        response: {
+          200: okMessageResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { orgId, branchId } = request.params
+        const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
 
-      if (member.role !== 'org_admin') {
-        return reply.code(403).send({ error: 'Only org admins can update branches' })
+        if (member.role !== 'org_admin') {
+          return reply.code(403).send({ error: 'Only org admins can update branches' })
+        }
+
+        const db = getFirestore()
+        const branchRef = db.doc(`${ORG_BRANCHES(orgId)}/${branchId}`)
+        const snap = await branchRef.get()
+
+        if (!snap.exists) {
+          return reply.code(404).send({ error: 'Branch not found' })
+        }
+
+        const now = new Date()
+        const body = request.body as any
+        const updateData: any = {
+          updatedAt: admin.firestore.Timestamp.fromDate(now),
+        }
+
+        if (body.name !== undefined) updateData.name = body.name
+        if (body.address !== undefined) updateData.address = body.address || null
+        if (body.phone !== undefined) updateData.phone = body.phone || null
+        if (body.contactPerson !== undefined) updateData.contactPerson = body.contactPerson || null
+        if (body.description !== undefined) updateData.description = body.description || null
+        if (body.photoUrl !== undefined) updateData.photoUrl = body.photoUrl || null
+
+        await branchRef.update(updateData)
+
+        return { ok: true, message: 'Branch updated successfully' }
+      } catch (error: any) {
+        console.error('[BRANCHES] Error updating branch:', error)
+        return reply.code(500).send({ error: 'Failed to update branch', details: error.message })
       }
-
-      const db = getFirestore()
-      const branchRef = db.doc(`${ORG_BRANCHES(orgId)}/${branchId}`)
-      const snap = await branchRef.get()
-
-      if (!snap.exists) {
-        return reply.code(404).send({ error: 'Branch not found' })
-      }
-
-      const now = new Date()
-      const body = request.body as any
-      const updateData: any = {
-        updatedAt: admin.firestore.Timestamp.fromDate(now),
-      }
-
-      if (body.name !== undefined) updateData.name = body.name
-      if (body.address !== undefined) updateData.address = body.address || null
-      if (body.phone !== undefined) updateData.phone = body.phone || null
-      if (body.contactPerson !== undefined) updateData.contactPerson = body.contactPerson || null
-      if (body.description !== undefined) updateData.description = body.description || null
-      if (body.photoUrl !== undefined) updateData.photoUrl = body.photoUrl || null
-
-      await branchRef.update(updateData)
-
-      return { ok: true, message: 'Branch updated successfully' }
-    } catch (error: any) {
-      console.error('[BRANCHES] Error updating branch:', error)
-      return reply.code(500).send({ error: 'Failed to update branch', details: error.message })
     }
-  })
+  )
 
   fastify.delete<{ Params: { orgId: string; branchId: string } }>(
     '/orgs/:orgId/branches/:branchId',
+    {
+      schema: {
+        tags: ['Organizations'],
+        summary: 'Delete an organization branch',
+        params: orgBranchIdParamsSchema,
+        response: {
+          200: okMessageResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          500: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       try {
         const { orgId, branchId } = request.params

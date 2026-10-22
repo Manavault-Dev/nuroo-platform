@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
 
-type Props = { params: { locale: string } }
+type Props = { params: Promise<{ locale: string }> }
 
 /** /legal/privacy → /{locale}/privacy (canonical privacy policy page) */
-export default function LegalPrivacyRedirect({ params }: Props) {
+export default async function LegalPrivacyRedirect(props: Props) {
+  const params = await props.params
   redirect(`/${params.locale}/privacy`)
 }

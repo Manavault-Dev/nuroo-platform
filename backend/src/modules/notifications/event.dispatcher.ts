@@ -1,5 +1,6 @@
 import { dispatch as pushDispatch } from './notification.service.js'
 import { getEmailProvider } from '../email/resend.provider.js'
+import { getWhatsAppNotificationProvider } from '../whatsapp/whatsappNotification.provider.js'
 import {
   bookingConfirmedTemplate,
   bookingCancelledTemplate,
@@ -82,20 +83,33 @@ class EventDispatcher {
         channel: 'both',
         dedupKey,
       }),
-      this._sendEmail(async () => {
-        const { subject, html } = bookingConfirmedTemplate({
-          parentName: e.parentName,
-          specialistName: e.specialistName,
-          serviceName: e.serviceName,
-          date: e.date,
-          startTime: e.startTime,
-          endTime: e.endTime,
-          orgName: e.orgName,
-          bookingId: e.bookingId,
-          meetingUrl: e.meetingUrl,
-        })
-        await getEmailProvider().send({ to: e.parentEmail, subject, html })
-      }),
+      e.parentEmail
+        ? this._sendEmail(async () => {
+            const { subject, html } = bookingConfirmedTemplate({
+              parentName: e.parentName,
+              specialistName: e.specialistName,
+              serviceName: e.serviceName,
+              date: e.date,
+              startTime: e.startTime,
+              endTime: e.endTime,
+              orgName: e.orgName,
+              bookingId: e.bookingId,
+              meetingUrl: e.meetingUrl,
+            })
+            await getEmailProvider().send({ to: e.parentEmail!, subject, html })
+          })
+        : Promise.resolve(),
+      e.parentPhone
+        ? this._sendWhatsApp(async () => {
+            await getWhatsAppNotificationProvider().sendBookingUpdate(e.parentPhone!, {
+              parentName: e.parentName,
+              specialistName: e.specialistName,
+              date: e.date,
+              time: e.startTime,
+              statusText: 'подтверждена',
+            })
+          })
+        : Promise.resolve(),
     ])
   }
 
@@ -123,6 +137,17 @@ class EventDispatcher {
               reason: e.reason,
             })
             await getEmailProvider().send({ to: e.parentEmail!, subject, html })
+          })
+        : Promise.resolve(),
+      e.parentPhone
+        ? this._sendWhatsApp(async () => {
+            await getWhatsAppNotificationProvider().sendBookingUpdate(e.parentPhone!, {
+              parentName: e.parentName,
+              specialistName: e.specialistName,
+              date: e.date,
+              time: e.startTime,
+              statusText: 'отменена',
+            })
           })
         : Promise.resolve(),
     ])
@@ -260,6 +285,16 @@ class EventDispatcher {
       await fn()
     } catch (err) {
       console.error('[EventDispatcher] Email send failed:', err)
+    }
+  }
+
+  private async _sendWhatsApp(fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn()
+    } catch (err) {
+      // Expected until WHATSAPP_BOOKING_TEMPLATE_* env vars + Meta template
+      // are set up — never let this block push/email delivery.
+      console.error('[EventDispatcher] WhatsApp send failed:', err)
     }
   }
 }

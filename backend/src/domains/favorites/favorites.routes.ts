@@ -23,13 +23,78 @@ const addFavoriteSchema = z.object({
   orgName: z.string().trim().max(200).default(''),
 })
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const favoriteResponseSchema = {
+  type: 'object',
+  additionalProperties: true,
+  required: ['id'],
+  properties: {
+    id: { type: 'string', description: 'The favorited specialist ID' },
+    parentId: { type: 'string' },
+    orgId: { type: 'string' },
+    specialistId: { type: 'string' },
+    specialistName: { type: 'string' },
+    specialistAvatar: { type: ['string', 'null'] },
+    orgName: { type: 'string' },
+    savedAt: { type: 'string' },
+  },
+} as const
+
+const addFavoriteBodySchema = {
+  type: 'object',
+  required: ['orgId', 'specialistId'],
+  additionalProperties: true,
+  properties: {
+    orgId: { type: 'string', minLength: 1 },
+    specialistId: { type: 'string', minLength: 1 },
+    specialistName: { type: 'string', maxLength: 200 },
+    specialistAvatar: { type: ['string', 'null'] },
+    orgName: { type: 'string', maxLength: 200 },
+  },
+} as const
+
+const specialistIdParamsSchema = {
+  type: 'object',
+  required: ['specialistId'],
+  properties: { specialistId: { type: 'string', description: 'Specialist ID' } },
+} as const
+
 export const favoritesRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
   /** GET /marketplace/favorites — list authenticated parent's saved specialists */
   fastify.get(
     '/marketplace/favorites',
-    { config: { rateLimit: RATE_READ } },
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Favorites'],
+        summary: "List the authenticated parent's saved specialists",
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'favorites'],
+            properties: {
+              ok: { type: 'boolean' },
+              favorites: { type: 'array', items: favoriteResponseSchema },
+            },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const parentId = request.user.uid
@@ -48,7 +113,24 @@ export const favoritesRoute: FastifyPluginAsync = async (fastify) => {
   /** POST /marketplace/favorites — add specialist to favorites */
   fastify.post(
     '/marketplace/favorites',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Favorites'],
+        summary: "Save a specialist to the authenticated parent's favorites",
+        body: addFavoriteBodySchema,
+        response: {
+          201: okResponseSchema,
+          400: {
+            type: 'object',
+            required: ['error'],
+            additionalProperties: true,
+            properties: { error: { type: 'string' }, issues: { type: 'array' } },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const parentId = request.user.uid
@@ -80,7 +162,18 @@ export const favoritesRoute: FastifyPluginAsync = async (fastify) => {
   /** DELETE /marketplace/favorites/:specialistId — remove from favorites */
   fastify.delete<{ Params: { specialistId: string } }>(
     '/marketplace/favorites/:specialistId',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Favorites'],
+        summary: "Remove a specialist from the authenticated parent's favorites",
+        params: specialistIdParamsSchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const parentId = request.user.uid
@@ -94,7 +187,22 @@ export const favoritesRoute: FastifyPluginAsync = async (fastify) => {
   /** GET /marketplace/favorites/:specialistId/check — quick boolean check */
   fastify.get<{ Params: { specialistId: string } }>(
     '/marketplace/favorites/:specialistId/check',
-    { config: { rateLimit: RATE_READ } },
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Favorites'],
+        summary: "Check whether a specialist is saved to the authenticated parent's favorites",
+        params: specialistIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'saved'],
+            properties: { ok: { type: 'boolean' }, saved: { type: 'boolean' } },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const parentId = request.user.uid

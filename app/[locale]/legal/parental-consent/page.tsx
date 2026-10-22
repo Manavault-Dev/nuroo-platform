@@ -3,9 +3,10 @@ import { Link } from '@/i18n/navigation'
 import { FileText, Info } from 'lucide-react'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 
-type Props = { params: { locale: string } }
+type Props = { params: Promise<{ locale: string }> }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params
   const t = await getTranslations({ locale: params.locale, namespace: 'legalPage.parentalConsent' })
   return {
     title: `${t('badge')} — Nuroo`,
@@ -16,7 +17,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 const DOCUMENT_VERSION = '1.0'
 
-export default async function ParentalConsentPage({ params }: Props) {
+export default async function ParentalConsentPage(props: Props) {
+  const params = await props.params
   setRequestLocale(params.locale)
   const t = await getTranslations('legalPage.parentalConsent')
 

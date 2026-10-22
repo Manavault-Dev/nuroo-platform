@@ -21,6 +21,52 @@ const improveBodySchema = z.object({
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions'
 const MODEL = 'gpt-4.1-mini'
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' }, details: {} },
+  additionalProperties: true,
+} as const
+
+const improveInstructionBodySchema = {
+  type: 'object',
+  required: ['roughText'],
+  properties: {
+    roughText: { type: 'string', minLength: 10, maxLength: 650 },
+    language: { type: 'string', enum: ['ru', 'en', 'ky'] },
+    context: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', maxLength: 200 },
+        category: { type: 'string', maxLength: 100 },
+        ageMin: { type: 'integer', minimum: 0, maximum: 18 },
+        ageMax: { type: 'integer', minimum: 0, maximum: 18 },
+      },
+      additionalProperties: true,
+    },
+  },
+  additionalProperties: true,
+} as const
+
+const improveInstructionResponseSchema = {
+  type: 'object',
+  required: ['ok', 'result'],
+  properties: {
+    ok: { type: 'boolean' },
+    result: {
+      type: 'object',
+      required: ['title', 'description', 'instructions', 'parentTip', 'expectedResult'],
+      properties: {
+        title: { type: 'string' },
+        description: { type: 'string' },
+        instructions: { type: 'array', items: { type: 'string' } },
+        parentTip: { type: 'string' },
+        expectedResult: { type: 'string' },
+      },
+    },
+  },
+} as const
+
 function buildSystemPrompt(language: string): string {
   if (language === 'en') {
     return `You are a child development specialist assistant. Transform a rough task description into a clear, structured instruction for parents.
@@ -85,7 +131,21 @@ function buildUserPrompt(
 export const specialistAiRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/api/specialist/ai/improve-instruction',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    {
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['AI'],
+        summary: "Turn a specialist's rough task description into a structured instruction",
+        body: improveInstructionBodySchema,
+        response: {
+          200: improveInstructionResponseSchema,
+          400: errorResponseSchema,
+          500: errorResponseSchema,
+          502: errorResponseSchema,
+          503: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const parse = improveBodySchema.safeParse(request.body)
       if (!parse.success) {

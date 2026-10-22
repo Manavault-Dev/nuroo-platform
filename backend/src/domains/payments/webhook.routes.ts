@@ -13,12 +13,41 @@ import {
 } from '../../domains/courses/courseAccess.service.js'
 import type { CourseDoc } from '../../domains/courses/courses.types.js'
 
+const webhookOkResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: {
+    ok: { type: 'boolean' },
+    skipped: { type: 'string' },
+    idempotent: { type: 'boolean' },
+  },
+} as const
+
+const webhookErrorResponseSchema = {
+  type: 'object',
+  required: ['error', 'code'],
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
 export const webhookRoutes: FastifyPluginAsync = async (fastify) => {
-  // POST /webhooks/finik — NO Firebase auth, called by Finik servers
+  // POST /webhooks/finik — NO Firebase auth, called by Finik servers (whitelisted
+  // in src/index.ts via `urlPath.startsWith('/webhooks/')`); authenticity is
+  // verified by HMAC signature below rather than a Firebase bearer token. The
+  // body shape is external/untyped (Finik's payload), so no `body` schema is
+  // declared here to avoid rejecting a currently-valid webhook payload.
   fastify.post(
     '/webhooks/finik',
     {
       config: { rawBody: true },
+      schema: {
+        tags: ['Payments'],
+        summary: 'Finik payment provider webhook (signature-verified, no Firebase auth)',
+        response: {
+          200: webhookOkResponseSchema,
+          400: webhookErrorResponseSchema,
+          500: webhookErrorResponseSchema,
+        },
+      },
     },
     async (request, reply) => {
       const rawBody = (request as unknown as { rawBody?: Buffer }).rawBody
@@ -32,30 +61,39 @@ export const webhookRoutes: FastifyPluginAsync = async (fastify) => {
       const receivedSig = headers['x-signature'] || headers['x-webhook-signature'] || ''
       const secret = config.FINIK_WEBHOOK_SECRET || ''
 
-      // Verify HMAC-SHA256 signature
-      if (secret) {
-        const expectedSig = crypto.createHmac('sha256', secret).update(bodyStr).digest('hex')
-        let sigValid = false
-        try {
-          const receivedBuf = Buffer.from(receivedSig, 'hex')
-          const expectedBuf = Buffer.from(expectedSig, 'hex')
-          sigValid =
-            receivedBuf.length === expectedBuf.length &&
-            crypto.timingSafeEqual(receivedBuf, expectedBuf)
-        } catch {
-          sigValid = false
-        }
+      // Verify HMAC-SHA256 signature. A missing secret must fail closed (reject
+      // the request) rather than skip verification — otherwise an environment
+      // with FINIK_WEBHOOK_SECRET unset would accept unauthenticated payment
+      // payloads from anyone.
+      if (!secret) {
+        fastify.log.error({ event: 'finik_webhook_secret_not_configured' })
+        Sentry.captureMessage('finik_webhook_secret_not_configured', { level: 'error' })
+        return reply
+          .code(500)
+          .send({ error: 'Webhook not configured', code: 'WEBHOOK_NOT_CONFIGURED' })
+      }
 
-        if (!sigValid) {
-          fastify.log.warn({ event: 'finik_webhook_invalid_signature' })
-          Sentry.captureMessage('finik_webhook_invalid_signature', {
-            level: 'warning',
-            extra: { ip: request.ip },
-          })
-          return reply
-            .code(400)
-            .send({ error: 'Invalid webhook signature', code: 'INVALID_SIGNATURE' })
-        }
+      const expectedSig = crypto.createHmac('sha256', secret).update(bodyStr).digest('hex')
+      let sigValid = false
+      try {
+        const receivedBuf = Buffer.from(receivedSig, 'hex')
+        const expectedBuf = Buffer.from(expectedSig, 'hex')
+        sigValid =
+          receivedBuf.length === expectedBuf.length &&
+          crypto.timingSafeEqual(receivedBuf, expectedBuf)
+      } catch {
+        sigValid = false
+      }
+
+      if (!sigValid) {
+        fastify.log.warn({ event: 'finik_webhook_invalid_signature' })
+        Sentry.captureMessage('finik_webhook_invalid_signature', {
+          level: 'warning',
+          extra: { ip: request.ip },
+        })
+        return reply
+          .code(400)
+          .send({ error: 'Invalid webhook signature', code: 'INVALID_SIGNATURE' })
       }
 
       let payload: Record<string, unknown>

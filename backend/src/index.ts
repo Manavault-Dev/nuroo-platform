@@ -42,6 +42,8 @@ import { auditRoutes } from './infrastructure/audit/audit.routes.js'
 import { calendarRoutes } from './domains/calendar/calendar.routes.js'
 import { legalRoutes } from './domains/legal/legal.routes.js'
 import { passwordResetRoutes } from './domains/auth/password-reset.routes.js'
+import { phoneAuthRoutes } from './domains/auth/phoneAuth.routes.js'
+import { buildErrorHandler } from './shared/errors/index.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -72,6 +74,11 @@ async function buildServer() {
   })
 
   Sentry.setupFastifyErrorHandler(fastify)
+
+  // Centralized error contract — see shared/errors/errorHandler.ts. Sentry
+  // still captures the exception via the hook above; this handler only
+  // controls the response shape and adds server-side logging.
+  fastify.setErrorHandler(buildErrorHandler(fastify))
 
   try {
     initializeFirebaseAdmin()
@@ -170,6 +177,7 @@ async function buildServer() {
     if (urlPath.startsWith('/internal/cron/trial-notifications')) return // authenticated via its own CRON_SECRET, not Firebase
     if (method === 'GET' && urlPath.startsWith('/invites/child/')) return // public child-invite landing lookup — org/child name only, no auth required
     if (urlPath === '/auth/forgot-password') return
+    if (urlPath === '/auth/phone/send-otp' || urlPath === '/auth/phone/verify-otp') return // parent phone-OTP login — not yet authenticated by definition
     if (urlPath === '/marketplace/courses' || urlPath.startsWith('/marketplace/courses?')) return
     if (urlPath === '/marketplace/cohorts' || urlPath.startsWith('/marketplace/cohorts?')) return
     if (urlPath === '/marketplace/events' || urlPath.startsWith('/marketplace/events?')) return
@@ -196,6 +204,9 @@ async function buildServer() {
       return
     // Public branch cards on an org's marketplace profile (read-only, no auth)
     if (method === 'GET' && /^\/marketplace\/orgs\/[^/]+\/branches(\?.*)?$/.test(urlPath)) return
+    // Public org reviews — read-only, browsing reviews shouldn't require login
+    // (writing a review still goes through the POST route's own auth check).
+    if (method === 'GET' && /^\/marketplace\/orgs\/[^/]+\/reviews(\?.*)?$/.test(urlPath)) return
     // Public admission-request ("leave a request") form submission — no auth,
     // a prospective parent hasn't created a Nuroo account yet
     if (method === 'POST' && /^\/marketplace\/orgs\/[^/]+\/leads(\?.*)?$/.test(urlPath)) return
@@ -257,6 +268,7 @@ async function buildServer() {
     calendarRoutes,
     legalRoutes,
     passwordResetRoutes,
+    phoneAuthRoutes,
     notificationsDomain,
     parentApiRoutes, // external module
   ]

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { getAbsoluteUrl } from '@/lib/seo/site'
 
 type Props = {
-  params: { locale: string; orgId: string; courseId: string }
+  params: Promise<{ locale: string; orgId: string; courseId: string }>
   children: React.ReactNode
 }
 
@@ -47,7 +47,8 @@ async function fetchCohortMeta(
   }
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params
   const { locale, orgId, courseId } = params
   const fallback = FALLBACK[locale] ?? FALLBACK.en
   const ogLocale = LOCALE_OG[locale] ?? 'en_US'

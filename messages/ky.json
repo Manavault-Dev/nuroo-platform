@@ -1124,7 +1124,16 @@
         "imageReadyHint": "Бул сүрөттү колдонуу үчүн «Сактоо» баскычын басыңыз.",
         "imageSavedHint": "Сүрөт жүктөлдү жана сакталды.",
         "imageSourceHint": "Сүрөт шилтемесин киргизиңиз же түзмөгүңүздөн файл жүктөңүз.",
-        "imageUploadError": "Сүрөттү жүктөө ишке ашкан жок."
+        "imageUploadError": "Сүрөттү жүктөө ишке ашкан жок.",
+        "dangerZoneTitle": "Коркунучтуу аймак",
+        "dangerZoneSubtitle": "Уюм үчүн кайтарылгыс аракеттер.",
+        "deleteOrgButton": "Уюмду өчүрүү",
+        "deleteOrgTitle": "Уюмду өчүрөсүзбү?",
+        "deleteOrgSubtitle": "Бул аракетти артка кайтарууга болбойт",
+        "deleteOrgDescription": "Уюм толугу менен өчүрүлөт. Бул анда балдар, брондоолор же башка команда мүчөлөрү жок болгондо гана мүмкүн.",
+        "deleteOrgConfirm": "Биротоло өчүрүү",
+        "deleteOrgCancel": "Жокко чыгаруу",
+        "deleteOrgError": "Уюмду өчүрүү ишке ашкан жок."
       },
       "team": {
         "title": "Мүчөлөр",
@@ -1202,7 +1211,37 @@
           "regenerating": "Жаңылануудо...",
           "scanToConnect": "{name} менен байланышуу үчүн сканерлеңиз",
           "failedCreateChild": "Баланы түзүү мүмкүн болгон жок",
-          "failedCreateInvite": "Чакырууну түзүү мүмкүн болгон жок"
+          "failedCreateInvite": "Чакырууну түзүү мүмкүн болгон жок",
+          "statusPendingReview": "Текшерүү керек",
+          "pendingReviewHint": "Телефон номери көрсөтүлгөн менен дал келген жок. Бул чын эле туура ата-эне экенин текшериңиз.",
+          "approveBtn": "Тастыктоо",
+          "rejectBtn": "Четке кагуу"
+        },
+        "childImport": {
+          "title": "Excel'ден балдарды импорттоо",
+          "instructions": "Балдардын тизмеси менен файлды жүктөңүз — ар бири үчүн профиль жана ата-энеге жеке шилтеме түзүлөт.",
+          "columnsTitle": "Файлдагы тилкелер:",
+          "columnRequired": "Милдеттүү: Аты",
+          "columnsOptional": "Милдеттүү эмес: Фамилиясы, Туулган күнү, Жынысы, Тобу, Ата-эненин аты, Телефону, Email",
+          "chooseFile": "Файлды тандаңыз же бул жерге ташыңыз",
+          "validCount": "{count} сап даяр",
+          "invalidCount": "{count} сапта ката бар",
+          "ok": "Даяр",
+          "colRow": "№",
+          "colName": "Аты",
+          "colStatus": "Статус",
+          "createdCount": "{count} бала түзүлдү",
+          "skippedCount": "{count} сап өткөрүлүп жиберилди",
+          "downloadLinks": "Шилтемелерди жүктөп алуу (CSV)",
+          "copyAll": "Баарын көчүрүү",
+          "back": "Артка",
+          "confirmImport": "{count} баланы импорттоо",
+          "done": "Даяр",
+          "cancel": "Жокко чыгаруу",
+          "importFromExcel": "Excel'ден импорттоо",
+          "planLimitGeneric": "Учурдагы тарифте балдардын чеги ашты.",
+          "previewFailed": "Файлды окуу мүмкүн болгон жок",
+          "commitFailed": "Импорттоо ишке ашкан жок"
         }
       },
       "onboarding": {
@@ -2707,6 +2746,14 @@
     "openLinkAgain": "Орноткондон кийин бул шилтемени кайра ачыңыз",
     "alreadyClaimed": "Бул чакыруу мурунтан эле колдонулган.",
     "linkNotFound": "Шилтеме табылган жок",
-    "linkInvalid": "Бул шилтеме жараксыз же мөөнөтү өткөн"
+    "linkInvalid": "Бул шилтеме жараксыз же мөөнөтү өткөн",
+    "pendingReview": "Арыз уюм тарабынан каралууда. Ал бекитилгенде сизге билдиребиз."
+  },
+  "calendarConnected": {
+    "successTitle": "Google Calendar туташты",
+    "successMessage": "Бул баракты жаап, Nuroo колдонмосуна кайта кирсеңиз болот.",
+    "errorTitle": "Google Calendar туташпай калды",
+    "errorMessage": "Бир жерден ката кетти. Колдонмого кайтып, кайра аракет кылыңыз.",
+    "backToApp": "Колдонмого кайтуу"
   }
 }

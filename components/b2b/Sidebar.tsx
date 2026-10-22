@@ -450,7 +450,7 @@ export function Sidebar({
 
         {!isBusiness && (
           <div className="shrink-0 px-4 pb-3">
-            <a
+            <Link
               href="/b2b/billing"
               className="flex flex-col gap-0.5 w-full rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 px-4 py-3 text-white shadow-sm hover:from-violet-600 hover:to-purple-700 transition-all"
             >
@@ -458,7 +458,7 @@ export function Sidebar({
               <span className="text-[11px] opacity-80 leading-tight">
                 Команда, отчёты, финансы →
               </span>
-            </a>
+            </Link>
           </div>
         )}
         <div className="b2b-sidebar-footer shrink-0 border-t border-gray-100 px-4 py-3">

@@ -41,7 +41,7 @@ const Pricing = dynamic(() => import('@/components/landing/Pricing').then((m) =>
 })
 const Footer = dynamic(() => import('@/components/layout/Footer').then((m) => m.Footer))
 
-type Props = { params: { locale: string } }
+type Props = { params: Promise<{ locale: string }> }
 
 const BASE = getSiteUrl()
 const SERVER_API_URL = `${(process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3101').replace(/\/+$/, '')}/v1`
@@ -164,7 +164,8 @@ const LOCALE_META = {
   },
 } as const
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params
   const locale = params.locale
   const meta = LOCALE_META[locale as keyof typeof LOCALE_META] ?? LOCALE_META.en
   const alternateLocales = (['ru', 'en', 'ky'] as const)
@@ -233,7 +234,8 @@ const jsonLd = {
   ],
 }
 
-export default async function Home({ params }: Props) {
+export default async function Home(props: Props) {
+  const params = await props.params
   setRequestLocale(params.locale)
   const marketplace = await fetchLandingMarketplaceData()
 
