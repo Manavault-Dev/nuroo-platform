@@ -17,6 +17,11 @@ import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
 import { timesOverlap, validateBookingInput } from './booking.service.js'
 import type { BookingDoc, Slot } from './types.js'
 import { writeAudit } from '../../infrastructure/audit/audit.js'
+import {
+  getParentCalendarAuth,
+  updateCalendarEvent,
+  upsertCalendarEvent,
+} from '../../infrastructure/calendar/calendarSync.service.js'
 
 const RATE = { max: 30, timeWindow: '1 minute' }
 
@@ -37,6 +42,54 @@ const rebookSchema = z.object({
   notes: z.string().trim().max(1000).optional().nullable(),
 })
 
+const bookingParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'bookingId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    bookingId: { type: 'string', description: 'Booking ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const rescheduleBodySchema = {
+  type: 'object',
+  required: ['slotId', 'date', 'startTime', 'endTime'],
+  additionalProperties: true,
+  properties: {
+    slotId: { type: 'string', minLength: 1 },
+    date: { type: 'string', description: 'YYYY-MM-DD' },
+    startTime: { type: 'string', description: 'HH:MM' },
+    endTime: { type: 'string', description: 'HH:MM' },
+    reason: { type: 'string', maxLength: 500 },
+  },
+} as const
+
+const rebookBodySchema = {
+  type: 'object',
+  required: ['slotId', 'date', 'startTime', 'endTime'],
+  additionalProperties: true,
+  properties: {
+    slotId: { type: 'string', minLength: 1 },
+    date: { type: 'string', description: 'YYYY-MM-DD' },
+    startTime: { type: 'string', description: 'HH:MM' },
+    endTime: { type: 'string', description: 'HH:MM' },
+    childId: { type: ['string', 'null'] },
+    notes: { type: ['string', 'null'], maxLength: 1000 },
+  },
+} as const
+
 export const bookingRescheduleRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
@@ -47,7 +100,22 @@ export const bookingRescheduleRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.put<{ Params: { orgId: string; bookingId: string } }>(
     '/marketplace/organizations/:orgId/bookings/:bookingId/reschedule',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Reschedule a booking to a new slot',
+        params: bookingParamsSchema,
+        body: rescheduleBodySchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params
@@ -172,6 +240,24 @@ export const bookingRescheduleRoute: FastifyPluginAsync = async (fastify) => {
         reason: reason ?? null,
       })
 
+      // Keep the parent's calendar event in sync with the new time (fire-and-forget) —
+      // this route had no side-effect dispatch at all before calendar sync.
+      if (booking.googleCalendarEventId) {
+        void (async () => {
+          try {
+            const auth = await getParentCalendarAuth(booking.parentId)
+            if (auth.connected && auth.refreshToken) {
+              await updateCalendarEvent(auth.refreshToken, booking.googleCalendarEventId!, {
+                startDateTime: `${date}T${startTime}:00`,
+                endDateTime: `${date}T${endTime}:00`,
+              })
+            }
+          } catch (err) {
+            console.error('[Booking] Calendar event update failed:', err)
+          }
+        })()
+      }
+
       return { ok: true }
     }
   )
@@ -183,7 +269,26 @@ export const bookingRescheduleRoute: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Params: { orgId: string; bookingId: string } }>(
     '/marketplace/organizations/:orgId/bookings/:bookingId/rebook',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Create a new booking that repeats an earlier booking in a new slot',
+        params: bookingParamsSchema,
+        body: rebookBodySchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'bookingId'],
+            properties: { ok: { type: 'boolean' }, bookingId: { type: 'string' } },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params
@@ -267,6 +372,38 @@ export const bookingRescheduleRoute: FastifyPluginAsync = async (fastify) => {
           return reply.code(409).send({ error: 'This slot is no longer available' })
         throw err
       }
+
+      // Sync the new booking to the parent's calendar (fire-and-forget)
+      void (async () => {
+        try {
+          const auth = await getParentCalendarAuth(parentId)
+          if (!auth.connected || !auth.refreshToken) return
+
+          const [specialistSnap, orgSnap] = await Promise.all([
+            db.doc(`users/${original.specialistId}`).get(),
+            db.doc(`organizations/${orgId}`).get(),
+          ])
+          const specialistName: string =
+            (specialistSnap.data() as { fullName?: string } | undefined)?.fullName ?? 'Специалист'
+          const orgName: string = (orgSnap.data() as { name?: string } | undefined)?.name ?? 'Nuroo'
+
+          const googleEventId = await upsertCalendarEvent(auth.refreshToken, {
+            title: `${specialistName} — ${orgName}`,
+            description: notes ?? undefined,
+            location: orgName,
+            startDateTime: `${date}T${startTime}:00`,
+            endDateTime: `${date}T${endTime}:00`,
+          })
+          await Promise.all([
+            newRef.update({ googleCalendarEventId: googleEventId }),
+            db
+              .doc(`userBookings/${parentId}/items/${newRef.id}`)
+              .update({ googleCalendarEventId: googleEventId }),
+          ])
+        } catch (err) {
+          console.error('[Booking] Calendar sync failed:', err)
+        }
+      })()
 
       return reply.code(201).send({ ok: true, bookingId: newRef.id })
     }

@@ -1776,27 +1776,34 @@ export default function GroupsPage() {
             </button>
           </div>
 
-          {(gradeTarget.submissionText || gradeTarget.fileUrl) && (
-            <div className="mb-5 p-4 bg-blue-50 border border-blue-100 rounded-xl">
-              <p className="text-xs font-semibold text-blue-600 mb-1.5 flex items-center gap-1.5">
+          {gradeTarget.tasks.some((task) => task.submissionText || task.fileUrl) && (
+            <div className="mb-5 p-4 bg-blue-50 border border-blue-100 rounded-xl space-y-3">
+              <p className="text-xs font-semibold text-blue-600 flex items-center gap-1.5">
                 <FileText className="w-3.5 h-3.5" />
                 {t('studentAnswer')}
               </p>
-              {gradeTarget.submissionText && (
-                <p className="text-sm text-blue-900 leading-relaxed">
-                  {gradeTarget.submissionText}
-                </p>
-              )}
-              {gradeTarget.fileUrl && (
-                <SubmissionImagePreview
-                  key={gradeTarget.fileUrl}
-                  fileUrl={gradeTarget.fileUrl}
-                  onViewFullSize={() => setLightboxUrl(gradeTarget.fileUrl!)}
-                  className="mt-2 max-h-60 rounded-lg border border-blue-200 bg-white"
-                  showLabel={false}
-                  labelPreviewUnavailable={t('previewUnavailable')}
-                />
-              )}
+              {gradeTarget.tasks
+                .filter((task) => task.submissionText || task.fileUrl)
+                .map((task) => (
+                  <div key={task.taskId}>
+                    {gradeTarget.tasks.length > 1 && (
+                      <p className="text-xs font-semibold text-blue-700 mb-1">{task.title}</p>
+                    )}
+                    {task.submissionText && (
+                      <p className="text-sm text-blue-900 leading-relaxed">{task.submissionText}</p>
+                    )}
+                    {task.fileUrl && (
+                      <SubmissionImagePreview
+                        key={task.fileUrl}
+                        fileUrl={task.fileUrl}
+                        onViewFullSize={() => setLightboxUrl(task.fileUrl!)}
+                        className="mt-2 max-h-60 rounded-lg border border-blue-200 bg-white"
+                        showLabel={false}
+                        labelPreviewUnavailable={t('previewUnavailable')}
+                      />
+                    )}
+                  </div>
+                ))}
             </div>
           )}
 

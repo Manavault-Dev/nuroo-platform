@@ -38,6 +38,74 @@ const reviewVerificationSchema = z.object({
   rejectionReason: z.string().max(2000).optional(),
 })
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const verificationResponseSchema = {
+  type: 'object',
+  additionalProperties: true,
+  required: ['id', 'childId', 'parentUserId', 'status', 'documentRefs', 'createdAt', 'updatedAt'],
+  properties: {
+    id: { type: 'string' },
+    childId: { type: 'string' },
+    parentUserId: { type: 'string' },
+    courseId: { type: 'string' },
+    orgId: { type: 'string' },
+    status: { type: 'string', enum: ['PENDING', 'APPROVED', 'REJECTED'] },
+    documentRefs: { type: 'array', items: { type: 'string' } },
+    note: { type: 'string' },
+    rejectionReason: { type: 'string' },
+    reviewedBy: { type: 'string' },
+    reviewedAt: { type: 'string' },
+    createdAt: { type: 'string' },
+    updatedAt: { type: 'string' },
+  },
+} as const
+
+const submitVerificationBodySchema = {
+  type: 'object',
+  required: ['childId', 'courseId', 'orgId', 'documentRefs'],
+  additionalProperties: true,
+  properties: {
+    childId: { type: 'string', minLength: 1 },
+    courseId: { type: 'string', minLength: 1 },
+    orgId: { type: 'string', minLength: 1 },
+    documentRefs: {
+      type: 'array',
+      items: { type: 'string', minLength: 1 },
+      minItems: 1,
+      maxItems: 10,
+    },
+    note: { type: 'string', maxLength: 2000 },
+  },
+} as const
+
+const reviewVerificationBodySchema = {
+  type: 'object',
+  required: ['status'],
+  additionalProperties: true,
+  properties: {
+    status: { type: 'string', enum: ['APPROVED', 'REJECTED'] },
+    rejectionReason: { type: 'string', maxLength: 2000 },
+  },
+} as const
+
+const verificationIdParamsSchema = {
+  type: 'object',
+  required: ['verificationId'],
+  properties: { verificationId: { type: 'string', description: 'Child verification ID' } },
+} as const
+
 // Returns the orgId the caller is authorized to review for.
 // superAdmin: can review any org (returns orgId from query or undefined for all).
 // org_admin:  can only review their own org (orgId must be provided).
@@ -113,7 +181,24 @@ export const childVerificationsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get(
     '/verifications/children/mine',
-    { config: { rateLimit: SUBMIT_RATE_LIMIT } },
+    {
+      config: { rateLimit: SUBMIT_RATE_LIMIT },
+      schema: {
+        tags: ['Verifications'],
+        summary: "List the authenticated parent's own child verification requests",
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'verifications'],
+            properties: {
+              ok: { type: 'boolean' },
+              verifications: { type: 'array', items: verificationResponseSchema },
+            },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -132,7 +217,30 @@ export const childVerificationsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post(
     '/verifications/children/documents',
-    { config: { rateLimit: DOCUMENT_UPLOAD_RATE_LIMIT } },
+    {
+      config: { rateLimit: DOCUMENT_UPLOAD_RATE_LIMIT },
+      schema: {
+        tags: ['Verifications'],
+        summary: 'Upload a child-verification supporting document (PDF, JPG, PNG, or WebP)',
+        consumes: ['multipart/form-data'],
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'documentRef', 'path', 'filename', 'contentType', 'size'],
+            properties: {
+              ok: { type: 'boolean' },
+              documentRef: { type: 'string' },
+              path: { type: 'string' },
+              filename: { type: 'string' },
+              contentType: { type: 'string' },
+              size: { type: 'number' },
+            },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -164,7 +272,29 @@ export const childVerificationsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post(
     '/verifications/children',
-    { config: { rateLimit: SUBMIT_RATE_LIMIT } },
+    {
+      config: { rateLimit: SUBMIT_RATE_LIMIT },
+      schema: {
+        tags: ['Verifications'],
+        summary: 'Submit a child verification request for course enrollment',
+        body: submitVerificationBodySchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'verification'],
+            properties: { ok: { type: 'boolean' }, verification: verificationResponseSchema },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          409: {
+            type: 'object',
+            required: ['error', 'verification'],
+            properties: { error: { type: 'string' }, verification: verificationResponseSchema },
+          },
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
@@ -221,7 +351,42 @@ export const childVerificationsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get(
     '/admin/verifications/children',
-    { config: { rateLimit: REVIEW_RATE_LIMIT } },
+    {
+      config: { rateLimit: REVIEW_RATE_LIMIT },
+      schema: {
+        tags: ['Verifications'],
+        summary: 'List child verification requests for review (org admins and super admins)',
+        querystring: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            status: { type: 'string', enum: ['PENDING', 'APPROVED', 'REJECTED'] },
+            courseId: { type: 'string' },
+            orgId: { type: 'string' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'verifications'],
+            properties: {
+              ok: { type: 'boolean' },
+              verifications: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: true,
+                  properties: { documentUrls: { type: 'array', items: { type: 'string' } } },
+                },
+              },
+            },
+          },
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const {
         status = 'PENDING',
@@ -278,7 +443,22 @@ export const childVerificationsRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.patch<{ Params: { verificationId: string } }>(
     '/admin/verifications/children/:verificationId',
-    { config: { rateLimit: REVIEW_RATE_LIMIT } },
+    {
+      config: { rateLimit: REVIEW_RATE_LIMIT },
+      schema: {
+        tags: ['Verifications'],
+        summary: 'Approve or reject a child verification request (org admins and super admins)',
+        params: verificationIdParamsSchema,
+        body: reviewVerificationBodySchema,
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 

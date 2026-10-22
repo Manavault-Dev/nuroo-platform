@@ -1,12 +1,15 @@
 /**
- * Google Calendar OAuth routes for specialists.
+ * Google Calendar OAuth routes for specialists and parents.
  *
  * Flow:
- *   1. Specialist requests connect URL  → GET /calendar/connect
+ *   1. User requests connect URL        → GET /calendar/connect?role=parent|specialist
  *   2. Google redirects back            → GET /calendar/callback?code=...&state=...
  *   3. Backend exchanges code → tokens  → saves refreshToken in Firestore
- *   4. Specialist is now connected      → GET /calendar/status
- *   5. Disconnect                       → DELETE /calendar/disconnect
+ *   4. User is now connected            → GET /calendar/status?role=...
+ *   5. Disconnect                       → DELETE /calendar/disconnect?role=...
+ *
+ * `role` only ever picks which of the CALLER'S OWN doc paths gets read/written
+ * (never another uid's), so a client-supplied value carries no cross-user risk.
  */
 
 import type { FastifyPluginAsync } from 'fastify'
@@ -18,53 +21,134 @@ import {
 
 const RATE = { max: 30, timeWindow: '1 minute' }
 
-/** Firestore path: specialists/{uid}/integrations/google_calendar */
-const calendarDocPath = (uid: string) => `specialists/${uid}/integrations/google_calendar`
+type CalendarRole = 'parent' | 'specialist'
+
+const toRole = (value: unknown): CalendarRole => (value === 'parent' ? 'parent' : 'specialist')
+
+/** Firestore path: specialists/{uid}/integrations/google_calendar, or users/{uid}/... for parents */
+const calendarDocPath = (uid: string, role: CalendarRole) =>
+  role === 'parent'
+    ? `users/${uid}/integrations/google_calendar`
+    : `specialists/${uid}/integrations/google_calendar`
+
+const roleQuerystringSchema = {
+  type: 'object',
+  properties: {
+    role: {
+      type: 'string',
+      description: 'parent or specialist; any other value is treated as specialist',
+    },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
 
 export const calendarRoutes: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
   // ── GET /calendar/connect ─────────────────────────────────────────────────
-  // Returns the Google OAuth consent URL for the authenticated specialist.
+  // Returns the Google OAuth consent URL for the authenticated user.
 
-  fastify.get('/calendar/connect', { config: { rateLimit: RATE } }, async (request, reply) => {
-    if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
+  fastify.get<{ Querystring: { role?: string } }>(
+    '/calendar/connect',
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Calendar'],
+        summary: 'Get the Google OAuth consent URL to connect a calendar',
+        querystring: roleQuerystringSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'url'],
+            properties: { ok: { type: 'boolean' }, url: { type: 'string' } },
+          },
+          401: errorResponseSchema,
+          503: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
-    const uid = request.user.uid
-    const state = Buffer.from(JSON.stringify({ uid, ts: Date.now() })).toString('base64url')
+      const uid = request.user.uid
+      const role = toRole(request.query.role)
+      const state = Buffer.from(JSON.stringify({ uid, role, ts: Date.now() })).toString('base64url')
 
-    try {
-      const url = getOAuthConsentUrl(state)
-      return { ok: true, url }
-    } catch (err: any) {
-      return reply.code(503).send({ error: err.message })
+      try {
+        const url = getOAuthConsentUrl(state)
+        return { ok: true, url }
+      } catch (err: any) {
+        return reply.code(503).send({ error: err.message })
+      }
     }
-  })
+  )
 
   // ── GET /calendar/callback ────────────────────────────────────────────────
   // Google redirects here after specialist approves access.
 
   fastify.get<{ Querystring: { code?: string; state?: string; error?: string } }>(
     '/calendar/callback',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Calendar'],
+        summary: 'OAuth callback — exchanges the Google auth code and redirects back to the app',
+        querystring: {
+          type: 'object',
+          properties: {
+            code: { type: 'string' },
+            state: { type: 'string' },
+            error: { type: 'string' },
+          },
+        },
+        response: {
+          400: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { code, state, error } = request.query
 
+      // Best-effort role decode from state, even on the access_denied path —
+      // Google echoes back the original `state` regardless of outcome.
+      const roleFromState = (): CalendarRole => {
+        try {
+          return toRole(JSON.parse(Buffer.from(state ?? '', 'base64url').toString()).role)
+        } catch {
+          return 'specialist'
+        }
+      }
+      const errorRedirect = (reason: string, role: CalendarRole) =>
+        role === 'parent'
+          ? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://usenuroo.com'}/calendar-connected?error=${reason}`
+          : `${process.env.NEXT_PUBLIC_B2B_URL ?? ''}/b2b/integrations?error=${reason}`
+
       if (error) {
-        return reply.redirect(
-          `${process.env.NEXT_PUBLIC_B2B_URL ?? ''}/b2b/integrations?error=access_denied`
-        )
+        return reply.redirect(errorRedirect('access_denied', roleFromState()))
       }
 
       if (!code || !state) {
         return reply.code(400).send({ error: 'Missing code or state' })
       }
 
-      // Decode state to get uid
+      // Decode state to get uid/role
       let uid: string
+      let role: CalendarRole
       try {
         const decoded = JSON.parse(Buffer.from(state, 'base64url').toString())
         uid = decoded.uid
+        role = toRole(decoded.role) // absent on old in-flight states → defaults to specialist
         if (!uid) throw new Error('Missing uid in state')
 
         // Reject stale states (> 10 min)
@@ -75,10 +159,15 @@ export const calendarRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ error: 'Invalid state parameter' })
       }
 
+      const successRedirect =
+        role === 'parent'
+          ? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://usenuroo.com'}/calendar-connected?success=1`
+          : `${process.env.NEXT_PUBLIC_B2B_URL ?? ''}/b2b/integrations?success=1`
+
       try {
         const { refreshToken, email } = await exchangeCodeForTokens(code)
 
-        await db.doc(calendarDocPath(uid)).set({
+        await db.doc(calendarDocPath(uid, role)).set({
           connected: true,
           googleEmail: email,
           refreshToken, // stored encrypted in prod via KMS ideally
@@ -86,47 +175,82 @@ export const calendarRoutes: FastifyPluginAsync = async (fastify) => {
           updatedAt: new Date().toISOString(),
         })
 
-        const redirectUrl = `${process.env.NEXT_PUBLIC_B2B_URL ?? ''}/b2b/integrations?success=1`
-        return reply.redirect(redirectUrl)
+        return reply.redirect(successRedirect)
       } catch (err: any) {
         fastify.log.error({ err }, 'Google Calendar OAuth callback failed')
-        const redirectUrl = `${process.env.NEXT_PUBLIC_B2B_URL ?? ''}/b2b/integrations?error=token_exchange`
-        return reply.redirect(redirectUrl)
+        return reply.redirect(errorRedirect('token_exchange', role))
       }
     }
   )
 
   // ── GET /calendar/status ──────────────────────────────────────────────────
-  // Returns connection status for the authenticated specialist.
+  // Returns connection status for the authenticated user.
 
-  fastify.get('/calendar/status', { config: { rateLimit: RATE } }, async (request, reply) => {
-    if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
+  fastify.get<{ Querystring: { role?: string } }>(
+    '/calendar/status',
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Calendar'],
+        summary: "Get the authenticated user's calendar connection status",
+        querystring: roleQuerystringSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'connected'],
+            properties: {
+              ok: { type: 'boolean' },
+              connected: { type: 'boolean' },
+              googleEmail: { type: ['string', 'null'] },
+              connectedAt: { type: ['string', 'null'] },
+            },
+          },
+          401: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
-    const snap = await db.doc(calendarDocPath(request.user.uid)).get()
+      const role = toRole(request.query.role)
+      const snap = await db.doc(calendarDocPath(request.user.uid, role)).get()
 
-    if (!snap.exists || !snap.data()?.connected) {
-      return { ok: true, connected: false }
+      if (!snap.exists || !snap.data()?.connected) {
+        return { ok: true, connected: false }
+      }
+
+      const data = snap.data()!
+      return {
+        ok: true,
+        connected: true,
+        googleEmail: data.googleEmail ?? null,
+        connectedAt: data.connectedAt ?? null,
+      }
     }
-
-    const data = snap.data()!
-    return {
-      ok: true,
-      connected: true,
-      googleEmail: data.googleEmail ?? null,
-      connectedAt: data.connectedAt ?? null,
-    }
-  })
+  )
 
   // ── DELETE /calendar/disconnect ───────────────────────────────────────────
   // Revokes access and removes stored tokens.
 
-  fastify.delete(
+  fastify.delete<{ Querystring: { role?: string } }>(
     '/calendar/disconnect',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Calendar'],
+        summary: "Disconnect the authenticated user's Google Calendar integration",
+        querystring: roleQuerystringSchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 
-      await db.doc(calendarDocPath(request.user.uid)).set({
+      const role = toRole(request.query.role)
+      await db.doc(calendarDocPath(request.user.uid, role)).set({
         connected: false,
         googleEmail: null,
         refreshToken: null,

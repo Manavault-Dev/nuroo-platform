@@ -81,6 +81,59 @@ async function getCachedCohorts(db: ReturnType<typeof getFirestore>): Promise<Pu
   return cohorts
 }
 
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  additionalProperties: true,
+  properties: { error: { type: 'string' }, code: { type: 'string' } },
+} as const
+
+const publicCohortSchema = {
+  type: 'object',
+  required: ['id', 'orgId', 'title', 'status'],
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    orgId: { type: 'string' },
+    branchId: { type: ['string', 'null'] },
+    orgName: { type: ['string', 'null'] },
+    orgLogoUrl: { type: ['string', 'null'] },
+    title: { type: 'string' },
+    description: { type: 'string' },
+    instructorName: { type: ['string', 'null'] },
+    category: { type: ['string', 'null'] },
+    ageMin: { type: ['integer', 'null'] },
+    ageMax: { type: ['integer', 'null'] },
+    format: { type: 'string', enum: ['online', 'offline'] },
+    targetAudience: { type: 'string' },
+    startDate: { type: 'string' },
+    endDate: { type: 'string' },
+    price: { type: 'number' },
+    currency: { type: 'string' },
+    maxParticipants: { type: 'integer' },
+    enrolledCount: { type: 'integer' },
+    spotsLeft: { type: 'integer' },
+    status: { type: 'string' },
+    coverUrl: { type: ['string', 'null'] },
+  },
+} as const
+
+const publicSessionSchema = {
+  type: 'object',
+  required: ['id', 'date', 'startTime', 'endTime', 'status'],
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string' },
+    date: { type: 'string' },
+    startTime: { type: 'string' },
+    endTime: { type: 'string' },
+    format: { type: 'string' },
+    status: { type: 'string' },
+    topic: { type: ['string', 'null'] },
+    meetingUrl: { type: ['string', 'null'] },
+  },
+} as const
+
 export const cohortsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
 
@@ -97,50 +150,101 @@ export const cohortsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
     limit: z.coerce.number().int().min(1).max(100).default(24),
   })
 
-  fastify.get('/marketplace/cohorts', { config: { rateLimit: RATE } }, async (request, reply) => {
-    const query = listQuerySchema.parse(request.query)
+  fastify.get(
+    '/marketplace/cohorts',
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Public listing of open/in-progress cohorts across the marketplace',
+        querystring: {
+          type: 'object',
+          properties: {
+            category: { type: 'string' },
+            format: { type: 'string', enum: ['online', 'offline'] },
+            ageMin: { type: 'string', description: 'Integer age, as a numeric string' },
+            ageMax: { type: 'string', description: 'Integer age, as a numeric string' },
+            orgId: { type: 'string' },
+            branchId: { type: 'string' },
+            limit: { type: 'string', description: 'Integer 1-100, as a numeric string' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'cohorts'],
+            properties: {
+              ok: { type: 'boolean' },
+              cohorts: { type: 'array', items: publicCohortSchema },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const query = listQuerySchema.parse(request.query)
 
-    let cohorts: PublicCohort[]
+      let cohorts: PublicCohort[]
 
-    if (query.orgId) {
-      // Single-org: bypass cache, query directly
-      const snap = await db
-        .collection(`organizations/${query.orgId}/cohorts`)
-        .where('status', 'in', ['open', 'in_progress'])
-        .limit(query.limit)
-        .get()
-      cohorts = snap.docs
-        .map((d) => ({ id: d.id, orgId: query.orgId!, ...d.data() }) as CohortDoc)
-        .filter((doc) => {
-          const s = computeStatus(doc)
-          return s === 'open' || s === 'in_progress' || s === 'full'
-        })
-        .map(toPublic)
-    } else {
-      // Cross-org: served from 60-second in-memory cache
-      cohorts = await getCachedCohorts(db)
+      if (query.orgId) {
+        // Single-org: bypass cache, query directly
+        const snap = await db
+          .collection(`organizations/${query.orgId}/cohorts`)
+          .where('status', 'in', ['open', 'in_progress'])
+          .limit(query.limit)
+          .get()
+        cohorts = snap.docs
+          .map((d) => ({ id: d.id, orgId: query.orgId!, ...d.data() }) as CohortDoc)
+          .filter((doc) => {
+            const s = computeStatus(doc)
+            return s === 'open' || s === 'in_progress' || s === 'full'
+          })
+          .map(toPublic)
+      } else {
+        // Cross-org: served from 60-second in-memory cache
+        cohorts = await getCachedCohorts(db)
+      }
+
+      if (query.category) cohorts = cohorts.filter((c) => c.category === query.category)
+      if (query.format) cohorts = cohorts.filter((c) => c.format === query.format)
+      if (query.branchId) cohorts = cohorts.filter((c) => c.branchId === query.branchId)
+      if (query.ageMin !== null && query.ageMin !== undefined) {
+        cohorts = cohorts.filter((c) => (c.ageMax ?? 99) >= query.ageMin!)
+      }
+      if (query.ageMax !== null && query.ageMax !== undefined) {
+        cohorts = cohorts.filter((c) => (c.ageMin ?? 0) <= query.ageMax!)
+      }
+
+      reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
+      return { ok: true, cohorts }
     }
-
-    if (query.category) cohorts = cohorts.filter((c) => c.category === query.category)
-    if (query.format) cohorts = cohorts.filter((c) => c.format === query.format)
-    if (query.branchId) cohorts = cohorts.filter((c) => c.branchId === query.branchId)
-    if (query.ageMin !== null && query.ageMin !== undefined) {
-      cohorts = cohorts.filter((c) => (c.ageMax ?? 99) >= query.ageMin!)
-    }
-    if (query.ageMax !== null && query.ageMax !== undefined) {
-      cohorts = cohorts.filter((c) => (c.ageMin ?? 0) <= query.ageMax!)
-    }
-
-    reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
-    return { ok: true, cohorts }
-  })
+  )
 
   // ── GET /marketplace/cohorts/:orgId/:cohortId ─────────────────────────────
   // Public detail page — no auth required
 
   fastify.get<{ Params: { orgId: string; cohortId: string } }>(
     '/marketplace/cohorts/:orgId/:cohortId',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Marketplace cohort detail page',
+        params: {
+          type: 'object',
+          required: ['orgId', 'cohortId'],
+          properties: { orgId: { type: 'string' }, cohortId: { type: 'string' } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'cohort'],
+            properties: { ok: { type: 'boolean' }, cohort: publicCohortSchema },
+          },
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, cohortId } = request.params
       const snap = await db.doc(`organizations/${orgId}/cohorts/${cohortId}`).get()
@@ -160,7 +264,29 @@ export const cohortsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string; cohortId: string } }>(
     '/marketplace/cohorts/:orgId/:cohortId/sessions',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Upcoming scheduled sessions for a marketplace cohort',
+        params: {
+          type: 'object',
+          required: ['orgId', 'cohortId'],
+          properties: { orgId: { type: 'string' }, cohortId: { type: 'string' } },
+        },
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'sessions'],
+            properties: {
+              ok: { type: 'boolean' },
+              sessions: { type: 'array', items: publicSessionSchema },
+            },
+          },
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, cohortId } = request.params
       const cohortSnap = await db.doc(`organizations/${orgId}/cohorts/${cohortId}`).get()
@@ -208,7 +334,38 @@ export const cohortsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string; cohortId: string } }>(
     '/marketplace/cohorts/:orgId/:cohortId/enroll',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    {
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['Cohorts'],
+        summary: 'Parent enrolls their child in a cohort from the marketplace',
+        params: {
+          type: 'object',
+          required: ['orgId', 'cohortId'],
+          properties: { orgId: { type: 'string' }, cohortId: { type: 'string' } },
+        },
+        body: {
+          type: 'object',
+          required: ['childId', 'childName'],
+          additionalProperties: true,
+          properties: {
+            childId: { type: 'string' },
+            childName: { type: 'string', maxLength: 200 },
+            parentPhone: { type: ['string', 'null'], maxLength: 30 },
+          },
+        },
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'enrollmentId'],
+            properties: { ok: { type: 'boolean' }, enrollmentId: { type: 'string' } },
+          },
+          401: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
 

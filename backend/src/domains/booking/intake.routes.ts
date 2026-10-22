@@ -23,7 +23,192 @@ import {
 const RATE = { max: 60, timeWindow: '1 minute' }
 const RATE_DRAFT = { max: 120, timeWindow: '1 minute' }
 
-// ── Routes ────────────────────────────────────────────────────────────────────
+// ── Request/response schema building blocks ────────────────────────────────
+
+const orgParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const orgFormParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'formId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    formId: { type: 'string', description: 'Intake form ID' },
+  },
+} as const
+
+const orgBookingParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'bookingId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    bookingId: { type: 'string', description: 'Booking ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const intakeFieldResponseSchema = {
+  type: 'object',
+  required: ['id', 'label', 'type', 'required'],
+  properties: {
+    id: { type: 'string' },
+    label: { type: 'string' },
+    type: { type: 'string', enum: ['text', 'textarea', 'select', 'checkbox'] },
+    options: { type: 'array', items: { type: 'string' } },
+    required: { type: 'boolean' },
+  },
+} as const
+
+const intakeSectionResponseSchema = {
+  type: 'object',
+  required: ['id', 'title', 'fields'],
+  properties: {
+    id: { type: 'string' },
+    title: { type: 'string' },
+    fields: { type: 'array', items: intakeFieldResponseSchema },
+  },
+} as const
+
+const intakeFormResponseSchema = {
+  type: 'object',
+  required: ['id', 'orgId', 'name', 'fields', 'isActive', 'createdAt', 'updatedAt'],
+  properties: {
+    id: { type: 'string' },
+    orgId: { type: 'string' },
+    name: { type: 'string' },
+    fields: { type: 'array', items: intakeFieldResponseSchema },
+    sections: { type: 'array', items: intakeSectionResponseSchema },
+    isActive: { type: 'boolean' },
+    isDefault: { type: 'boolean' },
+    createdAt: { type: 'string' },
+    updatedAt: { type: 'string' },
+  },
+} as const
+
+const intakeDraftResponseSchema = {
+  type: 'object',
+  required: ['bookingId', 'parentId', 'formId', 'answers', 'updatedAt'],
+  properties: {
+    bookingId: { type: 'string' },
+    parentId: { type: 'string' },
+    formId: { type: 'string' },
+    answers: { type: 'object', additionalProperties: true },
+    updatedAt: { type: 'string' },
+  },
+} as const
+
+const intakeSubmissionResponseSchema = {
+  type: 'object',
+  required: [
+    'bookingId',
+    'parentId',
+    'formId',
+    'templateSnapshot',
+    'answers',
+    'consentGiven',
+    'submittedAt',
+  ],
+  properties: {
+    bookingId: { type: 'string' },
+    parentId: { type: 'string' },
+    formId: { type: 'string' },
+    templateSnapshot: {
+      type: 'object',
+      required: ['name', 'fields'],
+      properties: {
+        name: { type: 'string' },
+        fields: { type: 'array', items: intakeFieldResponseSchema },
+        sections: { type: 'array', items: intakeSectionResponseSchema },
+      },
+    },
+    answers: { type: 'object', additionalProperties: true },
+    consentGiven: { type: 'boolean' },
+    submittedAt: { type: 'string' },
+  },
+} as const
+
+const intakeReviewResponseSchema = {
+  type: 'object',
+  required: ['reviewedAt', 'reviewedBy'],
+  properties: {
+    reviewedAt: { type: 'string' },
+    reviewedBy: { type: 'string' },
+  },
+} as const
+
+// ── Request body schemas ────────────────────────────────────────────────────
+
+const intakeFieldBodySchema = {
+  type: 'object',
+  required: ['id', 'label', 'type', 'required'],
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string', minLength: 1 },
+    label: { type: 'string', minLength: 1, maxLength: 300 },
+    type: { type: 'string', enum: ['text', 'textarea', 'select', 'checkbox'] },
+    options: { type: 'array', items: { type: 'string', minLength: 1 }, maxItems: 20 },
+    required: { type: 'boolean' },
+  },
+} as const
+
+const intakeSectionBodySchema = {
+  type: 'object',
+  required: ['id', 'title', 'fields'],
+  additionalProperties: true,
+  properties: {
+    id: { type: 'string', minLength: 1 },
+    title: { type: 'string', minLength: 1, maxLength: 200 },
+    fields: { type: 'array', items: intakeFieldBodySchema, minItems: 1, maxItems: 20 },
+  },
+} as const
+
+const intakeFormBodySchema = {
+  type: 'object',
+  required: ['name'],
+  additionalProperties: true,
+  properties: {
+    name: { type: 'string', minLength: 1, maxLength: 200 },
+    fields: { type: 'array', items: intakeFieldBodySchema, maxItems: 50 },
+    sections: { type: 'array', items: intakeSectionBodySchema, maxItems: 15 },
+  },
+} as const
+
+const intakeDraftBodySchema = {
+  type: 'object',
+  required: ['formId', 'answers'],
+  additionalProperties: true,
+  properties: {
+    formId: { type: 'string', minLength: 1 },
+    answers: { type: 'object', additionalProperties: true },
+  },
+} as const
+
+const intakeSubmitBodySchema = {
+  type: 'object',
+  required: ['formId', 'answers', 'consentGiven'],
+  additionalProperties: true,
+  properties: {
+    formId: { type: 'string', minLength: 1 },
+    answers: { type: 'object', additionalProperties: true },
+    consentGiven: { type: 'boolean' },
+  },
+} as const
+
+// ── Validation schemas (unchanged) ──────────────────────────────────────────
 
 const intakeFieldSchema = z.object({
   id: z.string().trim().min(1),
@@ -56,7 +241,26 @@ export const intakeRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string } }>(
     '/orgs/:orgId/intake-forms',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'List active intake forms for an organization',
+        params: orgParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'forms'],
+            properties: {
+              ok: { type: 'boolean' },
+              forms: { type: 'array', items: intakeFormResponseSchema },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId } = request.params
@@ -80,7 +284,24 @@ export const intakeRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/intake-forms',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Create a custom intake form for an organization',
+        params: orgParamsSchema,
+        body: intakeFormBodySchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'form'],
+            properties: { ok: { type: 'boolean' }, form: intakeFormResponseSchema },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId } = request.params
@@ -121,7 +342,36 @@ export const intakeRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/default-intake-template',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Create the default Nuroo intake template for an organization (idempotent)',
+        params: orgParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'created', 'form'],
+            properties: {
+              ok: { type: 'boolean' },
+              created: { type: 'boolean', enum: [false] },
+              form: intakeFormResponseSchema,
+            },
+          },
+          201: {
+            type: 'object',
+            required: ['ok', 'created', 'form'],
+            properties: {
+              ok: { type: 'boolean' },
+              created: { type: 'boolean', enum: [true] },
+              form: intakeFormResponseSchema,
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId } = request.params
@@ -164,7 +414,39 @@ export const intakeRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string; formId: string } }>(
     '/marketplace/organizations/:orgId/intake-forms/:formId',
-    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    {
+      config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Fetch an active intake form (public marketplace)',
+        params: orgFormParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'form'],
+            properties: {
+              ok: { type: 'boolean' },
+              form: {
+                type: 'object',
+                required: ['id', 'name', 'fields'],
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  fields: { type: 'array', items: intakeFieldResponseSchema },
+                  sections: {
+                    anyOf: [
+                      { type: 'array', items: intakeSectionResponseSchema },
+                      { type: 'null' },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId, formId } = request.params
 
@@ -192,7 +474,23 @@ export const intakeRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.patch<{ Params: { orgId: string; bookingId: string } }>(
     '/marketplace/organizations/:orgId/bookings/:bookingId/intake/draft',
-    { config: { rateLimit: RATE_DRAFT } },
+    {
+      config: { rateLimit: RATE_DRAFT },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Autosave an in-progress intake form draft for a booking',
+        params: orgBookingParamsSchema,
+        body: intakeDraftBodySchema,
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params
@@ -236,7 +534,33 @@ export const intakeRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string; bookingId: string } }>(
     '/marketplace/organizations/:orgId/bookings/:bookingId/intake',
-    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    {
+      config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['Booking'],
+        summary: "Get the parent's own intake draft and/or submission for a booking",
+        params: orgBookingParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'intakeStatus', 'intakeFormId', 'submission', 'draft'],
+            properties: {
+              ok: { type: 'boolean' },
+              intakeStatus: {
+                type: 'string',
+                enum: ['not_required', 'pending', 'submitted', 'reviewed'],
+              },
+              intakeFormId: { type: ['string', 'null'] },
+              submission: { anyOf: [intakeSubmissionResponseSchema, { type: 'null' }] },
+              draft: { anyOf: [intakeDraftResponseSchema, { type: 'null' }] },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params
@@ -267,7 +591,26 @@ export const intakeRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string; bookingId: string } }>(
     '/marketplace/organizations/:orgId/bookings/:bookingId/intake',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Submit a completed intake form for a booking',
+        params: orgBookingParamsSchema,
+        body: intakeSubmitBodySchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'alreadySubmitted'],
+            properties: { ok: { type: 'boolean' }, alreadySubmitted: { type: 'boolean' } },
+          },
+          201: okResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params
@@ -339,7 +682,32 @@ export const intakeRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string; bookingId: string } }>(
     '/orgs/:orgId/bookings/:bookingId/intake',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'View a submitted intake (client brief) for a booking',
+        params: orgBookingParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'intakeStatus', 'intake', 'review'],
+            properties: {
+              ok: { type: 'boolean' },
+              intakeStatus: {
+                type: 'string',
+                enum: ['not_required', 'pending', 'submitted', 'reviewed'],
+              },
+              intake: intakeSubmissionResponseSchema,
+              review: { anyOf: [intakeReviewResponseSchema, { type: 'null' }] },
+            },
+          },
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params
@@ -383,7 +751,21 @@ export const intakeRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { orgId: string; bookingId: string } }>(
     '/orgs/:orgId/bookings/:bookingId/intake/reviewed',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Mark a submitted intake as reviewed',
+        params: orgBookingParamsSchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params

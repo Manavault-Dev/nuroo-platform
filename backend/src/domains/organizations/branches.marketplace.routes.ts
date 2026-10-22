@@ -4,6 +4,31 @@ import { getFirestore } from '../../infrastructure/database/firebase.js'
 
 const RATE = { max: 120, timeWindow: '1 minute' }
 
+const orgIdParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const publicBranchSchema = {
+  type: 'object',
+  required: ['id', 'name', 'address', 'phone', 'description', 'photoUrl'],
+  properties: {
+    id: { type: 'string' },
+    name: { type: 'string' },
+    address: { type: ['string', 'null'] },
+    phone: { type: ['string', 'null'] },
+    description: { type: ['string', 'null'] },
+    photoUrl: { type: ['string', 'null'] },
+  },
+} as const
+
 function transformPublicBranch(doc: admin.firestore.QueryDocumentSnapshot) {
   const data = doc.data()
   return {
@@ -24,7 +49,25 @@ export const branchesMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{ Params: { orgId: string } }>(
     '/marketplace/orgs/:orgId/branches',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Organizations'],
+        summary: "List an organization's public branch cards for its marketplace profile",
+        params: orgIdParamsSchema,
+        response: {
+          200: {
+            type: 'object',
+            required: ['ok', 'branches'],
+            properties: {
+              ok: { type: 'boolean' },
+              branches: { type: 'array', items: publicBranchSchema },
+            },
+          },
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       const { orgId } = request.params
       const orgSnap = await db.doc(`organizations/${orgId}`).get()

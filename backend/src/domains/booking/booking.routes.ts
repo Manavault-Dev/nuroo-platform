@@ -6,6 +6,11 @@ import { canTransition, buildStatusUpdate, validateBookingInput } from './bookin
 import type { BookingDoc, Slot } from './types.js'
 import { eventDispatcher } from '../../modules/notifications/event.dispatcher.js'
 import { writeAudit } from '../../infrastructure/audit/audit.js'
+import {
+  getParentCalendarAuth,
+  upsertCalendarEvent,
+  deleteCalendarEvent,
+} from '../../infrastructure/calendar/calendarSync.service.js'
 
 const RATE = { max: 30, timeWindow: '1 minute' }
 const RATE_READ = { max: 120, timeWindow: '1 minute' }
@@ -51,8 +56,111 @@ async function listParentBookings(db: FirebaseFirestore.Firestore, parentId: str
     })
   )
 
-  return sortBookingsByDateDesc(freshDocs.filter((b): b is NonNullable<typeof b> => b !== null))
+  const bookings = freshDocs.filter((b): b is NonNullable<typeof b> => b !== null)
+
+  // Resolve org/specialist display names once per unique id — the card list
+  // needs "who/where" as the headline, not just a date, and the booking doc
+  // itself only stores ids.
+  const orgIds = [...new Set(bookings.map((b) => b.orgId).filter(Boolean))]
+  const specialistIds = [...new Set(bookings.map((b) => b.specialistId).filter(Boolean))]
+
+  const [orgSnaps, specialistSnaps] = await Promise.all([
+    Promise.all(orgIds.map((id) => db.doc(`organizations/${id}`).get())),
+    Promise.all(specialistIds.map((id) => db.doc(`users/${id}`).get())),
+  ])
+
+  const orgNames = new Map(
+    orgSnaps.map((snap, i) => [
+      orgIds[i],
+      (snap.data() as { name?: string } | undefined)?.name ?? null,
+    ])
+  )
+  const specialistNames = new Map(
+    specialistSnaps.map((snap, i) => [
+      specialistIds[i],
+      (snap.data() as { fullName?: string } | undefined)?.fullName ?? null,
+    ])
+  )
+
+  const enriched = bookings.map((b) => ({
+    ...b,
+    orgName: orgNames.get(b.orgId) ?? null,
+    specialistName: specialistNames.get(b.specialistId) ?? null,
+  }))
+
+  return sortBookingsByDateDesc(enriched)
 }
+
+const orgParamsSchema = {
+  type: 'object',
+  required: ['orgId'],
+  properties: { orgId: { type: 'string', description: 'Organization ID' } },
+} as const
+
+const bookingParamsSchema = {
+  type: 'object',
+  required: ['orgId', 'bookingId'],
+  properties: {
+    orgId: { type: 'string', description: 'Organization ID' },
+    bookingId: { type: 'string', description: 'Booking ID' },
+  },
+} as const
+
+const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+} as const
+
+const okResponseSchema = {
+  type: 'object',
+  required: ['ok'],
+  properties: { ok: { type: 'boolean' } },
+} as const
+
+const createBookingBodySchema = {
+  type: 'object',
+  required: ['specialistId', 'slotId', 'date', 'startTime', 'endTime'],
+  additionalProperties: true,
+  properties: {
+    specialistId: { type: 'string', minLength: 1 },
+    serviceId: { type: ['string', 'null'] },
+    slotId: { type: 'string', minLength: 1 },
+    date: { type: 'string', description: 'YYYY-MM-DD' },
+    startTime: { type: 'string', description: 'HH:MM' },
+    endTime: { type: 'string', description: 'HH:MM' },
+    childId: { type: ['string', 'null'] },
+    notes: { type: ['string', 'null'], maxLength: 1000 },
+  },
+} as const
+
+const cancelBookingBodySchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    reason: { type: 'string', maxLength: 500 },
+  },
+} as const
+
+const bookingsQuerystringSchema = {
+  type: 'object',
+  properties: {
+    status: { type: 'string' },
+    specialistId: { type: 'string' },
+    date: { type: 'string', description: 'YYYY-MM-DD' },
+    branchId: { type: 'string' },
+  },
+} as const
+
+const statusUpdateBodySchema = {
+  type: 'object',
+  required: ['status'],
+  additionalProperties: true,
+  properties: {
+    status: { type: 'string', enum: ['confirmed', 'completed', 'cancelled', 'no_show'] },
+    cancelReason: { type: 'string', maxLength: 500 },
+  },
+} as const
 
 export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   const db = getFirestore()
@@ -60,7 +168,30 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   // POST /marketplace/organizations/:orgId/bookings — parent creates a booking
   fastify.post<{ Params: { orgId: string } }>(
     '/marketplace/organizations/:orgId/bookings',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Create a new booking for a specialist slot',
+        params: orgParamsSchema,
+        body: createBookingBodySchema,
+        response: {
+          201: {
+            type: 'object',
+            required: ['ok', 'bookingId', 'intakeStatus', 'intakeFormId'],
+            properties: {
+              ok: { type: 'boolean' },
+              bookingId: { type: 'string' },
+              intakeStatus: { type: 'string', enum: ['not_required', 'pending'] },
+              intakeFormId: { type: ['string', 'null'] },
+            },
+          },
+          401: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId } = request.params
@@ -185,20 +316,25 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
       const orgData = orgSnap.data() as { name?: string } | undefined
       const parentUser = request.user
       void (async () => {
+        let specialistName = 'Специалист'
         try {
           const [specialistSnap, parentSnap] = await Promise.all([
             db.doc(`users/${specialistId}`).get(),
             db.doc(`users/${parentId}`).get(),
           ])
-          const specialistName: string =
+          specialistName =
             (specialistSnap.data() as { fullName?: string } | undefined)?.fullName ?? 'Специалист'
-          const parentEmail: string =
-            (parentSnap.data() as { email?: string } | undefined)?.email ?? parentUser?.email ?? ''
-          const parentName: string =
-            (parentSnap.data() as { fullName?: string } | undefined)?.fullName ?? 'Родитель'
+          const parentData = parentSnap.data() as
+            | { email?: string; fullName?: string; phoneNumber?: string }
+            | undefined
+          const parentEmail: string = parentData?.email ?? parentUser?.email ?? ''
+          const parentPhone: string | null = parentData?.phoneNumber ?? null
+          const parentName: string = parentData?.fullName ?? 'Родитель'
 
-          console.log(`[Booking] Sending booking_confirmed email to: "${parentEmail}"`)
-          if (parentEmail) {
+          console.log(
+            `[Booking] Sending booking_confirmed notification — email: "${parentEmail}", phone: "${parentPhone ?? ''}"`
+          )
+          if (parentEmail || parentPhone) {
             eventDispatcher.dispatch({
               type: 'booking_confirmed',
               bookingId: bookingRef.id,
@@ -206,7 +342,8 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
               orgName: orgData?.name ?? orgId,
               parentId,
               parentName,
-              parentEmail,
+              parentEmail: parentEmail || undefined,
+              parentPhone,
               specialistName,
               date,
               startTime,
@@ -215,6 +352,27 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
           }
         } catch (err) {
           console.error('[Booking] Notification dispatch failed:', err)
+        }
+
+        try {
+          const auth = await getParentCalendarAuth(parentId)
+          if (auth.connected && auth.refreshToken) {
+            const googleEventId = await upsertCalendarEvent(auth.refreshToken, {
+              title: `${specialistName} — ${orgData?.name ?? 'Nuroo'}`,
+              description: notes ?? undefined,
+              location: orgData?.name ?? undefined,
+              startDateTime: `${date}T${startTime}:00`,
+              endDateTime: `${date}T${endTime}:00`,
+            })
+            await Promise.all([
+              bookingRef.update({ googleCalendarEventId: googleEventId }),
+              db
+                .doc(`userBookings/${parentId}/items/${bookingRef.id}`)
+                .update({ googleCalendarEventId: googleEventId }),
+            ])
+          }
+        } catch (err) {
+          console.error('[Booking] Calendar sync failed:', err)
         }
       })()
 
@@ -227,7 +385,16 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   // GET /marketplace/bookings — parent's own bookings
   fastify.get(
     '/marketplace/bookings',
-    { config: { rateLimit: RATE_READ } },
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Booking'],
+        summary: "List the authenticated parent's own bookings",
+        response: {
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const bookings = await listParentBookings(db, request.user.uid)
@@ -238,7 +405,16 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   // GET /marketplace/my/bookings — backwards-compatible alias
   fastify.get(
     '/marketplace/my/bookings',
-    { config: { rateLimit: RATE_READ } },
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Booking'],
+        summary: "List the authenticated parent's own bookings (legacy alias)",
+        response: {
+          401: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const bookings = await listParentBookings(db, request.user.uid)
@@ -249,7 +425,19 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   // GET /marketplace/organizations/:orgId/bookings/:bookingId — parent views own booking
   fastify.get<{ Params: { orgId: string; bookingId: string } }>(
     '/marketplace/organizations/:orgId/bookings/:bookingId',
-    { config: { rateLimit: RATE_READ } },
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Get a single booking owned by the authenticated parent',
+        params: bookingParamsSchema,
+        response: {
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params
@@ -267,7 +455,22 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   // PUT /marketplace/organizations/:orgId/bookings/:bookingId/cancel — parent cancels
   fastify.put<{ Params: { orgId: string; bookingId: string } }>(
     '/marketplace/organizations/:orgId/bookings/:bookingId/cancel',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Cancel a booking owned by the authenticated parent',
+        params: bookingParamsSchema,
+        body: cancelBookingBodySchema,
+        response: {
+          200: okResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params
@@ -322,12 +525,12 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
             db.doc(`users/${parentId}`).get(),
             db.doc(`users/${booking.specialistId}`).get(),
           ])
-          const parentEmail: string =
-            (parentSnap.data() as { email?: string } | undefined)?.email ??
-            request.user?.email ??
-            ''
-          const parentName: string =
-            (parentSnap.data() as { fullName?: string } | undefined)?.fullName ?? 'Родитель'
+          const cancelParentData = parentSnap.data() as
+            | { email?: string; fullName?: string; phoneNumber?: string }
+            | undefined
+          const parentEmail: string = cancelParentData?.email ?? request.user?.email ?? ''
+          const parentPhone: string | null = cancelParentData?.phoneNumber ?? null
+          const parentName: string = cancelParentData?.fullName ?? 'Родитель'
           const specialistName: string =
             (specialistSnap.data() as { fullName?: string } | undefined)?.fullName ?? 'Специалист'
           eventDispatcher.dispatch({
@@ -336,7 +539,8 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
             orgId,
             parentId,
             parentName,
-            parentEmail,
+            parentEmail: parentEmail || undefined,
+            parentPhone,
             specialistName,
             date: booking.date,
             startTime: booking.startTime,
@@ -344,6 +548,17 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
           })
         } catch (err) {
           console.error('[Booking] Cancellation notification failed:', err)
+        }
+
+        if (booking.googleCalendarEventId) {
+          try {
+            const auth = await getParentCalendarAuth(parentId)
+            if (auth.connected && auth.refreshToken) {
+              await deleteCalendarEvent(auth.refreshToken, booking.googleCalendarEventId)
+            }
+          } catch (err) {
+            console.error('[Booking] Calendar event delete failed:', err)
+          }
         }
       })()
 
@@ -355,34 +570,69 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { orgId: string }
     Querystring: { status?: string; specialistId?: string; date?: string; branchId?: string }
-  }>('/orgs/:orgId/bookings', { config: { rateLimit: RATE_READ } }, async (request, reply) => {
-    if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
-    const { orgId } = request.params
-    const member = await requireOrgMember(request, reply, orgId)
-    if (reply.sent) return
-    if (member.role !== 'org_admin') return reply.code(403).send({ error: 'Forbidden' })
+  }>(
+    '/orgs/:orgId/bookings',
+    {
+      config: { rateLimit: RATE_READ },
+      schema: {
+        tags: ['Booking'],
+        summary: 'List bookings for an organization (admin), with optional filters',
+        params: orgParamsSchema,
+        querystring: bookingsQuerystringSchema,
+        response: {
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
+      const { orgId } = request.params
+      const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
+      if (member.role !== 'org_admin') return reply.code(403).send({ error: 'Forbidden' })
 
-    const { status, specialistId, date, branchId } = request.query as Record<string, string>
-    const scope = memberBranchScope(member)
-    const effectiveBranchId = scope ?? branchId
+      const { status, specialistId, date, branchId } = request.query as Record<string, string>
+      const scope = memberBranchScope(member)
+      const effectiveBranchId = scope ?? branchId
 
-    let bookingsQuery = db.collection(`organizations/${orgId}/bookings`) as FirebaseFirestore.Query
-    if (effectiveBranchId) bookingsQuery = bookingsQuery.where('branchId', '==', effectiveBranchId)
-    const snap = await bookingsQuery.limit(250).get()
+      let bookingsQuery = db.collection(
+        `organizations/${orgId}/bookings`
+      ) as FirebaseFirestore.Query
+      if (effectiveBranchId)
+        bookingsQuery = bookingsQuery.where('branchId', '==', effectiveBranchId)
+      const snap = await bookingsQuery.limit(250).get()
 
-    let bookings = snap.docs.map((d) => ({ id: d.id, ...(d.data() as BookingDoc) }))
-    if (specialistId) bookings = bookings.filter((b) => b.specialistId === specialistId)
-    if (date) bookings = bookings.filter((b) => b.date === date)
-    if (status) bookings = bookings.filter((b) => b.status === status)
-    bookings = sortBookingsByDateDesc(bookings).slice(0, 100)
+      let bookings = snap.docs.map((d) => ({ id: d.id, ...(d.data() as BookingDoc) }))
+      if (specialistId) bookings = bookings.filter((b) => b.specialistId === specialistId)
+      if (date) bookings = bookings.filter((b) => b.date === date)
+      if (status) bookings = bookings.filter((b) => b.status === status)
+      bookings = sortBookingsByDateDesc(bookings).slice(0, 100)
 
-    return { ok: true, bookings }
-  })
+      return { ok: true, bookings }
+    }
+  )
 
   // PUT /orgs/:orgId/bookings/:bookingId/status — org admin updates booking status
   fastify.put<{ Params: { orgId: string; bookingId: string } }>(
     '/orgs/:orgId/bookings/:bookingId/status',
-    { config: { rateLimit: RATE } },
+    {
+      config: { rateLimit: RATE },
+      schema: {
+        tags: ['Booking'],
+        summary: 'Update the status of a booking (admin)',
+        params: bookingParamsSchema,
+        body: statusUpdateBodySchema,
+        response: {
+          200: okResponseSchema,
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+        },
+      },
+    },
     async (request, reply) => {
       if (!request.user) return reply.code(401).send({ error: 'Unauthorized' })
       const { orgId, bookingId } = request.params
@@ -440,6 +690,24 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
         after: { status: parse.data.status },
         reason: parse.data.cancelReason ?? null,
       })
+
+      // Org-admin cancel/no-show also needs to remove the parent's calendar event
+      // (fire-and-forget) — parent self-cancel handles its own path above.
+      if (
+        (parse.data.status === 'cancelled' || parse.data.status === 'no_show') &&
+        booking.googleCalendarEventId
+      ) {
+        void (async () => {
+          try {
+            const auth = await getParentCalendarAuth(booking.parentId)
+            if (auth.connected && auth.refreshToken) {
+              await deleteCalendarEvent(auth.refreshToken, booking.googleCalendarEventId!)
+            }
+          } catch (err) {
+            console.error('[Booking] Calendar event delete failed:', err)
+          }
+        })()
+      }
 
       return { ok: true }
     }
