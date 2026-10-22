@@ -4,13 +4,7 @@ import admin from 'firebase-admin'
 const PAST_DUE_GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000
 
 export type BillingStatusValue =
-  | 'trialing'
-  | 'active'
-  | 'manual_active'
-  | 'past_due'
-  | 'expired'
-  | 'canceled'
-  | 'cancelled'
+  'trialing' | 'active' | 'manual_active' | 'past_due' | 'expired' | 'canceled' | 'cancelled'
 
 export interface SubscriptionAccess {
   allowed: boolean

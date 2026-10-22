@@ -12,13 +12,7 @@ export const PLAN_IDS = ['starter', 'growth', 'enterprise'] as const
 export type PlanId = (typeof PLAN_IDS)[number]
 export type SubscriptionAccessSource = 'subscription' | 'free_trial'
 export type BillingStatus =
-  | 'trialing'
-  | 'active'
-  | 'manual_active'
-  | 'past_due'
-  | 'expired'
-  | 'cancelled'
-  | 'canceled'
+  'trialing' | 'active' | 'manual_active' | 'past_due' | 'expired' | 'cancelled' | 'canceled'
 
 export const PLAN_DISPLAY_NAMES: Record<PlanId, string> = {
   starter: 'Nuroo Solo',

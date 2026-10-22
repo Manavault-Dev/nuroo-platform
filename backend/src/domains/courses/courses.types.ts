@@ -7,10 +7,7 @@ export type CourseAccessPolicy = 'FREE' | 'PAID' | 'VERIFIED_SPECIAL_NEEDS' | 'I
 export type EnrollmentStatus = 'ACTIVE' | 'COMPLETED' | 'REFUNDED'
 export type LegacyEnrollmentStatus = 'active' | 'completed' | 'refunded'
 export type CourseEntitlementSource =
-  | 'FREE_POLICY'
-  | 'PURCHASE'
-  | 'APPROVED_SPECIAL_NEEDS'
-  | 'INVITATION'
+  'FREE_POLICY' | 'PURCHASE' | 'APPROVED_SPECIAL_NEEDS' | 'INVITATION'
 export type CourseEntitlementStatus = 'ACTIVE' | 'REVOKED'
 export type ChildVerificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
 

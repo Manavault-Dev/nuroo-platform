@@ -23,11 +23,7 @@ interface Props {
 // ─── Templates ───────────────────────────────────────────────────────────────
 
 type SpecialistType =
-  | 'speech_therapist'
-  | 'psychologist'
-  | 'aba_specialist'
-  | 'defectologist'
-  | 'ot_specialist'
+  'speech_therapist' | 'psychologist' | 'aba_specialist' | 'defectologist' | 'ot_specialist'
 
 interface Section {
   id: string
