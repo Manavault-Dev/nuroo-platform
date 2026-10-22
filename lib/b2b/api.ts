@@ -2405,11 +2405,7 @@ export class ApiClient {
     periodStart: string
     periodEnd: string
     specialistType:
-      | 'speech_therapist'
-      | 'psychologist'
-      | 'aba_specialist'
-      | 'defectologist'
-      | 'ot_specialist'
+      'speech_therapist' | 'psychologist' | 'aba_specialist' | 'defectologist' | 'ot_specialist'
     language: 'ru' | 'en' | 'ky'
     selectedMetrics: Record<string, string[]>
     additionalNotes?: string
@@ -2429,11 +2425,7 @@ export class ApiClient {
     periodStart: string
     periodEnd: string
     specialistType:
-      | 'speech_therapist'
-      | 'psychologist'
-      | 'aba_specialist'
-      | 'defectologist'
-      | 'ot_specialist'
+      'speech_therapist' | 'psychologist' | 'aba_specialist' | 'defectologist' | 'ot_specialist'
     language: 'ru' | 'en' | 'ky'
     selectedMetrics: Record<string, string[]>
     additionalNotes?: string

@@ -397,11 +397,10 @@ export const parentAiRoute: FastifyPluginAsync = async (fastify) => {
         let priorTurns: ChatMessage[] = []
         try {
           const history = await loadChatHistory(uid, CHAT_CONTEXT_TURNS)
-          priorTurns = history.map(
-            (h): ChatMessage =>
-              h.role === 'assistant'
-                ? { role: 'assistant', content: h.content }
-                : { role: 'user', content: h.content }
+          priorTurns = history.map((h): ChatMessage =>
+            h.role === 'assistant'
+              ? { role: 'assistant', content: h.content }
+              : { role: 'user', content: h.content }
           )
         } catch (err) {
           fastify.log.warn(

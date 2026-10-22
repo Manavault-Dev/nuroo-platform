@@ -213,8 +213,7 @@ export const cohortsParticipantsRoute: FastifyPluginAsync = async (fastify) => {
           const specialistName: string = cohortData.instructorId
             ? ((
                 (await db.doc(`users/${cohortData.instructorId}`).get()).data() as
-                  | { fullName?: string }
-                  | undefined
+                  { fullName?: string } | undefined
               )?.fullName ?? 'Специалист')
             : 'Специалист'
 

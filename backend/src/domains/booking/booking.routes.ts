@@ -325,8 +325,7 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
           specialistName =
             (specialistSnap.data() as { fullName?: string } | undefined)?.fullName ?? 'Специалист'
           const parentData = parentSnap.data() as
-            | { email?: string; fullName?: string; phoneNumber?: string }
-            | undefined
+            { email?: string; fullName?: string; phoneNumber?: string } | undefined
           const parentEmail: string = parentData?.email ?? parentUser?.email ?? ''
           const parentPhone: string | null = parentData?.phoneNumber ?? null
           const parentName: string = parentData?.fullName ?? 'Родитель'
@@ -526,8 +525,7 @@ export const bookingRoute: FastifyPluginAsync = async (fastify) => {
             db.doc(`users/${booking.specialistId}`).get(),
           ])
           const cancelParentData = parentSnap.data() as
-            | { email?: string; fullName?: string; phoneNumber?: string }
-            | undefined
+            { email?: string; fullName?: string; phoneNumber?: string } | undefined
           const parentEmail: string = cancelParentData?.email ?? request.user?.email ?? ''
           const parentPhone: string | null = cancelParentData?.phoneNumber ?? null
           const parentName: string = cancelParentData?.fullName ?? 'Родитель'

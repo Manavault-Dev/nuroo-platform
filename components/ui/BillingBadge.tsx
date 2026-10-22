@@ -3,12 +3,7 @@
 import { Clock, CheckCircle, AlertTriangle, XCircle, CreditCard, ShieldOff } from 'lucide-react'
 
 export type BillingBadgeKey =
-  | 'freeTrial'
-  | 'active'
-  | 'pastDue'
-  | 'expired'
-  | 'cancelled'
-  | 'suspended'
+  'freeTrial' | 'active' | 'pastDue' | 'expired' | 'cancelled' | 'suspended'
 
 interface Props {
   badge: BillingBadgeKey

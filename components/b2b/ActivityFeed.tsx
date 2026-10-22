@@ -31,12 +31,7 @@ interface ActivityFeedProps {
 }
 
 type FilterType =
-  | 'all'
-  | 'specialist_note'
-  | 'assignment'
-  | 'progress_update'
-  | 'parent_comment'
-  | 'internal'
+  'all' | 'specialist_note' | 'assignment' | 'progress_update' | 'parent_comment' | 'internal'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
