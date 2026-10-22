@@ -198,6 +198,9 @@ async function buildServer() {
       return
     // Public branch cards on an org's marketplace profile (read-only, no auth)
     if (method === 'GET' && /^\/marketplace\/orgs\/[^/]+\/branches(\?.*)?$/.test(urlPath)) return
+    // Public org reviews — read-only, browsing reviews shouldn't require login
+    // (writing a review still goes through the POST route's own auth check).
+    if (method === 'GET' && /^\/marketplace\/orgs\/[^/]+\/reviews(\?.*)?$/.test(urlPath)) return
     // Public admission-request ("leave a request") form submission — no auth,
     // a prospective parent hasn't created a Nuroo account yet
     if (method === 'POST' && /^\/marketplace\/orgs\/[^/]+\/leads(\?.*)?$/.test(urlPath)) return
