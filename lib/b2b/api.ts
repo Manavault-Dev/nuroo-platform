@@ -1526,10 +1526,14 @@ export class ApiClient {
           childId: string
           childName: string
           age?: number
-          taskId: string | null
+          tasks: Array<{
+            taskId: string
+            title: string
+            submissionText: string | null
+            fileUrl: string | null
+            submittedAt: string | null
+          }>
           status: 'pending' | 'submitted' | 'graded'
-          submissionText: string | null
-          fileUrl: string | null
           submittedAt: string | null
           grade: 'approved' | 'needs_revision' | null
           feedback: string | null

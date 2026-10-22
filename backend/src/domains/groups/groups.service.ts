@@ -415,40 +415,52 @@ export async function getAssignmentDetail(
   const submissions = await Promise.all(
     childIds.map(async (childId) => {
       const childInfo = await fetchChildData(db, childId)
-      let taskId: string | null = null
-      let taskData: any = null
+      let taskDocs: FirebaseFirestore.QueryDocumentSnapshot[] = []
       try {
         const tasksSnap = await db
           .collection(`children/${childId}/tasks`)
           .where('groupAssignmentId', '==', assignmentId)
-          .limit(1)
           .get()
-        if (!tasksSnap.empty) {
-          taskId = tasksSnap.docs[0].id
-          taskData = tasksSnap.docs[0].data()
-        }
+        taskDocs = tasksSnap.docs
       } catch {}
 
-      const status = taskData
-        ? taskData.submittedAt
-          ? taskData.grade
+      const tasks = taskDocs.map((doc) => {
+        const d = doc.data()
+        return {
+          taskId: doc.id,
+          title: d.title || '',
+          submissionText: d.submissionText ?? null,
+          fileUrl: d.fileUrl ?? null,
+          submittedAt: d.submittedAt?.toDate?.()?.toISOString() ?? null,
+        }
+      })
+
+      // An assignment can bundle several tasks per child (one per content
+      // task/roadmap step) — the whole bundle only counts as submitted/graded
+      // once every task in it is, so a specialist can't grade a partial
+      // submission as if it were the whole assignment.
+      const status =
+        taskDocs.length === 0
+          ? 'pending'
+          : taskDocs.every((doc) => doc.data().grade)
             ? 'graded'
-            : 'submitted'
-          : 'pending'
-        : 'pending'
+            : taskDocs.every((doc) => doc.data().submittedAt)
+              ? 'submitted'
+              : 'pending'
+
+      const gradedDoc = taskDocs.find((doc) => doc.data().grade)
+      const submittedAts = tasks.map((t) => t.submittedAt).filter(Boolean) as string[]
 
       return {
         childId,
         childName: childInfo.name,
         age: childInfo.age,
-        taskId,
+        tasks,
         status,
-        submissionText: taskData?.submissionText ?? null,
-        fileUrl: taskData?.fileUrl ?? null,
-        submittedAt: taskData?.submittedAt?.toDate?.()?.toISOString() ?? null,
-        grade: taskData?.grade ?? null,
-        feedback: taskData?.feedback ?? null,
-        feedbackAt: taskData?.feedbackAt?.toDate?.()?.toISOString() ?? null,
+        submittedAt: submittedAts.length > 0 ? submittedAts.sort()[0] : null,
+        grade: gradedDoc?.data().grade ?? null,
+        feedback: gradedDoc?.data().feedback ?? null,
+        feedbackAt: gradedDoc?.data().feedbackAt?.toDate?.()?.toISOString() ?? null,
       }
     })
   )
@@ -709,7 +721,6 @@ export async function reviewSubmission(
   const tasksSnap = await db
     .collection(`children/${childId}/tasks`)
     .where('groupAssignmentId', '==', assignmentId)
-    .limit(1)
     .get()
 
   if (tasksSnap.empty) {
@@ -719,15 +730,23 @@ export async function reviewSubmission(
   }
 
   const now = admin.firestore.Timestamp.fromDate(new Date())
+  // An assignment can bundle several task docs per child (one per content
+  // task/roadmap step) — grade all of them together so none are silently
+  // left ungraded.
+  const batch = db.batch()
+  for (const doc of tasksSnap.docs) {
+    batch.update(doc.ref, {
+      grade,
+      feedback: feedback ?? null,
+      feedbackBy: reviewerUid,
+      feedbackAt: now,
+      submissionStatus: 'graded',
+      status: grade === 'approved' ? 'completed' : 'pending',
+      updatedAt: now,
+    })
+  }
+  await batch.commit()
   const taskDoc = tasksSnap.docs[0]
-  await taskDoc.ref.update({
-    grade,
-    feedback: feedback ?? null,
-    feedbackBy: reviewerUid,
-    feedbackAt: now,
-    status: grade === 'approved' ? 'completed' : 'pending',
-    updatedAt: now,
-  })
 
   try {
     const orgChildSnap = await db.doc(`${COLLECTIONS.ORG_CHILDREN(orgId)}/${childId}`).get()

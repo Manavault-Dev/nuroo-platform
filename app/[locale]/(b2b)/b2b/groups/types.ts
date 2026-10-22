@@ -29,14 +29,22 @@ export interface Assignment {
   status: 'active' | 'closed'
 }
 
+export interface SubmissionTask {
+  taskId: string
+  title: string
+  submissionText: string | null
+  fileUrl: string | null
+  submittedAt: string | null
+}
+
 export interface Submission {
   childId: string
   childName: string
   age?: number
-  taskId: string | null
+  /** One assignment can bundle several task docs per child (one per content
+   * task/roadmap step) — each with its own answer/attachment. */
+  tasks: SubmissionTask[]
   status: 'pending' | 'submitted' | 'graded'
-  submissionText: string | null
-  fileUrl: string | null
   submittedAt: string | null
   grade: 'approved' | 'needs_revision' | null
   feedback: string | null
