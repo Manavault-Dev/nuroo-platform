@@ -139,6 +139,9 @@ jobs:
             FIREBASE_CLIENT_EMAIL=FIREBASE_CLIENT_EMAIL:latest
             FIREBASE_PRIVATE_KEY=FIREBASE_PRIVATE_KEY:latest
             FIREBASE_STORAGE_BUCKET=FIREBASE_STORAGE_BUCKET:latest
+            NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID=GOOGLE_OAUTH_CLIENT_ID:latest
+            NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_SECRET=GOOGLE_OAUTH_CLIENT_SECRET:latest
+            NEXT_PUBLIC_GOOGLE_OAUTH_REDIRECT_URI=GOOGLE_OAUTH_REDIRECT_URI:latest
 
       - name: Output URL
         run: echo "Backend staging deployed to ${{ steps.deploy.outputs.url }}"
