@@ -80,6 +80,7 @@ export const childrenConnectionsRoute: import('fastify').FastifyPluginAsync = as
       try {
         const { orgId } = request.params
         const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         const { uid } = request.user!
         const role = member.role
 
@@ -135,6 +136,7 @@ export const childrenConnectionsRoute: import('fastify').FastifyPluginAsync = as
       try {
         const { orgId, parentUserId } = request.params
         const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         if (member.role !== 'org_admin') {
           return reply.code(403).send({ error: 'Only org admins can disconnect parents' })
         }

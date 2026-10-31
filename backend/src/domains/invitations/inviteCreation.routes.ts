@@ -68,6 +68,7 @@ export const inviteCreationRoute: FastifyPluginAsync = async (fastify) => {
       const { uid } = request.user
 
       const member = await requireOrgMember(request, reply, orgId)
+      if (reply.sent) return
 
       if (member.role !== 'org_admin') {
         return reply.code(403).send({ error: 'Only organization admins can create invite codes' })
@@ -142,6 +143,7 @@ export const inviteCreationRoute: FastifyPluginAsync = async (fastify) => {
         const { uid } = request.user
 
         const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
 
         if (member.role !== 'specialist' && member.role !== 'org_admin') {
           return reply.code(403).send({ error: 'Only specialists can create parent invite codes' })

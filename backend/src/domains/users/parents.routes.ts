@@ -311,6 +311,7 @@ export const parentsRoute: FastifyPluginAsync = async (fastify) => {
       try {
         const { orgId } = request.params
         await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
 
         const db = getFirestore()
 

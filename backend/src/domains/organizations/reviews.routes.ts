@@ -121,13 +121,10 @@ async function isOrgAdmin(
   orgId: string,
   userId: string
 ): Promise<boolean> {
-  const snap = await db
-    .collection(`organizations/${orgId}/members`)
-    .where('userId', '==', userId)
-    .where('role', '==', 'admin')
-    .limit(1)
-    .get()
-  return !snap.empty
+  const snap = await db.doc(`organizations/${orgId}/members/${userId}`).get()
+  if (!snap.exists) return false
+  const data = snap.data()
+  return data?.status === 'active' && (data.role === 'org_admin' || data.role === 'admin')
 }
 
 function nowIso() {

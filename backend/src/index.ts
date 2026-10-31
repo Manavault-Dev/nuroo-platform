@@ -159,14 +159,14 @@ async function buildServer() {
   fastify.addHook('preHandler', async (request, reply) => {
     const { url, method } = request
 
-    if (url === '/health' || method === 'OPTIONS') return
-    if (url.startsWith('/bootstrap/')) return
-    if (url.startsWith('/public/')) return
-    if (url.startsWith('/docs')) return // Swagger UI — public access
-
     // Strip optional /v1 prefix for whitelist matching — routes are versioned but
     // public-route checks are path-only (no auth needed regardless of version prefix).
     const urlPath = url.startsWith('/v1/') ? url.slice(3) : url
+
+    if (urlPath === '/health' || method === 'OPTIONS') return
+    if (urlPath.startsWith('/bootstrap/')) return
+    if (urlPath.startsWith('/public/')) return
+    if (urlPath.startsWith('/docs')) return
 
     if (urlPath.startsWith('/calendar/callback')) return // Google OAuth redirect — no Bearer token
     if (urlPath.startsWith('/api/organizations/public')) return

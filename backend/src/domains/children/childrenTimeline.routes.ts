@@ -82,7 +82,9 @@ export const childrenTimelineRoute: import('fastify').FastifyPluginAsync = async
         const days = parseTimelineDays(request.query.days)
 
         await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        if (reply.sent) return
 
         const db = getFirestore()
         const now = new Date()

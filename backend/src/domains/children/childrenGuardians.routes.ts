@@ -127,7 +127,9 @@ export const childrenGuardiansRoute: import('fastify').FastifyPluginAsync = asyn
       try {
         const { orgId, childId } = request.params
         await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        if (reply.sent) return
 
         const db = getFirestore()
         const guardians = await getChildGuardians(db, orgId, resolvedChildId)
@@ -168,7 +170,9 @@ export const childrenGuardiansRoute: import('fastify').FastifyPluginAsync = asyn
       try {
         const { orgId, childId } = request.params
         await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        if (reply.sent) return
 
         const parse = guardianCreateSchema.safeParse(request.body)
         if (!parse.success) {
@@ -226,7 +230,9 @@ export const childrenGuardiansRoute: import('fastify').FastifyPluginAsync = asyn
       try {
         const { orgId, childId, guardianId } = request.params
         await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        if (reply.sent) return
 
         const parse = guardianUpdateSchema.safeParse(request.body)
         if (!parse.success) {
@@ -284,7 +290,9 @@ export const childrenGuardiansRoute: import('fastify').FastifyPluginAsync = asyn
       try {
         const { orgId, childId, guardianId } = request.params
         await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        if (reply.sent) return
 
         const db = getFirestore()
         try {

@@ -107,7 +107,9 @@ export const childrenTasksRoute: import('fastify').FastifyPluginAsync = async (f
       try {
         const { orgId, childId } = request.params
         await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        if (reply.sent) return
 
         const db = getFirestore()
         const tasks = await listChildTasks(db, resolvedChildId)
@@ -167,7 +169,9 @@ export const childrenTasksRoute: import('fastify').FastifyPluginAsync = async (f
       try {
         const { orgId, childId } = request.params
         await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        if (reply.sent) return
         if (!request.user) return
 
         const parse = createTaskSchema.safeParse(request.body)
@@ -248,7 +252,9 @@ export const childrenTasksRoute: import('fastify').FastifyPluginAsync = async (f
       try {
         const { orgId, childId, taskId } = request.params
         await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        if (reply.sent) return
         if (!request.user) return
 
         const parse = reviewTaskSchema.safeParse(request.body)

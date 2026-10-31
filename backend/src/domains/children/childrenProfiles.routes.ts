@@ -137,7 +137,9 @@ export const childrenProfilesRoute: import('fastify').FastifyPluginAsync = async
       try {
         const { orgId, childId } = request.params
         await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        if (reply.sent) return
 
         const db = getFirestore()
         const profile = await getChildProfile(db, orgId, resolvedChildId)
@@ -186,7 +188,9 @@ export const childrenProfilesRoute: import('fastify').FastifyPluginAsync = async
       try {
         const { orgId, childId } = request.params
         const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        if (reply.sent) return
 
         const parse = childProfileUpdateSchema.safeParse(request.body)
         if (!parse.success) {

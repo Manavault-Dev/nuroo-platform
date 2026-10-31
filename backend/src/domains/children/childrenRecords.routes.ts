@@ -195,6 +195,7 @@ export const childrenRecordsRoute: import('fastify').FastifyPluginAsync = async 
       try {
         const { orgId } = request.params
         const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         const { uid } = request.user!
         const role = member.role
 
@@ -280,7 +281,9 @@ export const childrenRecordsRoute: import('fastify').FastifyPluginAsync = async 
         const { orgId, childId } = request.params
 
         await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        if (reply.sent) return
 
         const db = getFirestore()
 
@@ -423,6 +426,7 @@ export const childrenRecordsRoute: import('fastify').FastifyPluginAsync = async 
       try {
         const { orgId, childId } = request.params
         const member = await requireOrgMember(request, reply, orgId)
+        if (reply.sent) return
         if (member.role !== 'org_admin') {
           return reply.code(403).send({ error: 'Only organization admins can remove children' })
         }
@@ -430,6 +434,7 @@ export const childrenRecordsRoute: import('fastify').FastifyPluginAsync = async 
         const db = getFirestore()
 
         const resolvedChildId = await requireChildAccess(request, reply, orgId, childId)
+        if (reply.sent) return
 
         const scope = memberBranchScope(member)
         if (scope) {
