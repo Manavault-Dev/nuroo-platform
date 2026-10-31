@@ -1444,6 +1444,7 @@ export function EnrollModal({ cohort, onClose }: { cohort: PublicCohort; onClose
 function EventCard({ event }: { event: PublicEvent }) {
   const [registered, setRegistered] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const dateLabel = new Date(event.date).toLocaleDateString('ru-RU', {
     day: 'numeric',
@@ -1460,15 +1461,25 @@ function EventCard({ event }: { event: PublicEvent }) {
   const handleRegister = async () => {
     if (registered || saving) return
     setSaving(true)
+    setError(null)
     try {
       const token = await getIdToken()
+      if (!token) {
+        setError('Войдите в аккаунт, чтобы зарегистрироваться')
+        return
+      }
       const res = await fetch(`${API_URL}/marketplace/events/${event.id}/register`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       })
-      if (res.ok || res.status === 409) setRegistered(true)
+      if (res.ok || res.status === 409) {
+        setRegistered(true)
+      } else {
+        const d = await res.json().catch(() => ({}))
+        setError(d?.error ?? 'Не удалось зарегистрироваться')
+      }
     } catch {
-      // silent
+      setError('Произошла ошибка')
     } finally {
       setSaving(false)
     }
@@ -1536,6 +1547,12 @@ function EventCard({ event }: { event: PublicEvent }) {
             </div>
           )}
         </div>
+
+        {error && (
+          <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-2.5 py-1.5 rounded-lg mb-3">
+            {error}
+          </p>
+        )}
 
         <div className="mt-auto flex items-center justify-between gap-2">
           <span className="text-base font-bold text-gray-900 dark:text-white">

@@ -23,6 +23,8 @@ import {
   Loader2,
 } from 'lucide-react'
 import Link from 'next/link'
+import type { User as FirebaseUser } from 'firebase/auth'
+import { getIdToken, onAuthChange } from '@/lib/b2b/authClient'
 
 const API_URL = `${(process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3101').replace(/\/+$/, '')}/v1`
 
@@ -81,13 +83,8 @@ interface Slot {
 type Step = 'specialist' | 'service' | 'slot' | 'confirm' | 'success'
 
 function useUser() {
-  const [user, setUser] = useState<{ uid: string; token: string } | null>(null)
-  useEffect(() => {
-    // Try to get auth from b2b auth context via localStorage token
-    const token = localStorage.getItem('nuroo_auth_token')
-    const uid = localStorage.getItem('nuroo_uid')
-    if (token && uid) setUser({ uid, token })
-  }, [])
+  const [user, setUser] = useState<FirebaseUser | null>(null)
+  useEffect(() => onAuthChange(setUser), [])
   return user
 }
 
@@ -183,27 +180,47 @@ export default function OrgPage() {
   // Load services when specialist selected
   useEffect(() => {
     if (!selectedSpecialist) return
+    let cancelled = false
     setServicesLoading(true)
     apiFetch<{ ok: boolean; services: Service[] }>(
       `/marketplace/organizations/${orgId}/specialists/${selectedSpecialist.id}/services`
     )
-      .then((d) => setServices(d.services))
-      .catch(() => setServices([]))
-      .finally(() => setServicesLoading(false))
+      .then((d) => {
+        if (!cancelled) setServices(d.services)
+      })
+      .catch(() => {
+        if (!cancelled) setServices([])
+      })
+      .finally(() => {
+        if (!cancelled) setServicesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [selectedSpecialist, orgId])
 
   // Load slots when date selected
   useEffect(() => {
     if (!selectedDate || !selectedSpecialist) return
+    let cancelled = false
     setSlotsLoading(true)
     const params = new URLSearchParams({ date: selectedDate, days: '1' })
     if (selectedService) params.set('serviceId', selectedService.id)
     apiFetch<{ ok: boolean; slots: Slot[] }>(
       `/marketplace/organizations/${orgId}/specialists/${selectedSpecialist.id}/slots?${params}`
     )
-      .then((d) => setSlots(d.slots))
-      .catch(() => setSlots([]))
-      .finally(() => setSlotsLoading(false))
+      .then((d) => {
+        if (!cancelled) setSlots(d.slots)
+      })
+      .catch(() => {
+        if (!cancelled) setSlots([])
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [selectedDate, selectedSpecialist, selectedService, orgId])
 
   const handleSelectSpecialist = (spec: Specialist) => {
@@ -230,11 +247,16 @@ export default function OrgPage() {
     setBooking(true)
     setBookError(null)
     try {
+      const token = await getIdToken()
+      if (!token) {
+        setBookError(t('bookError'))
+        return
+      }
       await apiFetch(`/marketplace/organizations/${orgId}/bookings`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${user.token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           specialistId: selectedSpecialist.id,
@@ -793,7 +815,7 @@ export default function OrgPage() {
                         <div className="text-center">
                           <p className="text-gray-500 text-sm mb-3">{t('loginRequired')}</p>
                           <Link
-                            href={`/${locale}/(b2b)/login`}
+                            href={`/${locale}/b2b/login`}
                             className="inline-block px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-semibold transition-colors"
                           >
                             {t('loginBtn')}
