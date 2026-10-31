@@ -414,32 +414,56 @@ export const cohortsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
       const { randomUUID } = await import('crypto')
       const now = new Date().toISOString()
       const id = randomUUID()
+      const { default: admin } = await import('firebase-admin')
 
-      await db2.runTransaction(async (tx) => {
-        const participantRef = db2.doc(
-          `organizations/${orgId}/cohorts/${cohortId}/participants/${id}`
-        )
-        tx.set(participantRef, {
-          cohortId,
-          orgId,
-          childId: body.childId,
-          childName: body.childName,
-          parentId: request.user!.uid,
-          parentName,
-          parentPhone: body.parentPhone ?? null,
-          status: 'active',
-          paymentStatus: 'pending',
-          amountPaid: 0,
-          totalAmount: cohort.price,
-          currency: cohort.currency,
-          enrolledAt: now,
-          updatedAt: now,
+      try {
+        await db2.runTransaction(async (tx) => {
+          const freshCohortSnap = await tx.get(cohortRef)
+          const freshCohort = freshCohortSnap.data() as CohortDoc
+          if ((freshCohort.enrolledCount ?? 0) >= freshCohort.maxParticipants) {
+            throw Object.assign(new Error('Cohort is full'), { code: 'COHORT_FULL' })
+          }
+
+          const freshExistingSnap = await tx.get(
+            db2
+              .collection(`organizations/${orgId}/cohorts/${cohortId}/participants`)
+              .where('childId', '==', body.childId)
+              .limit(1)
+          )
+          if (!freshExistingSnap.empty) {
+            throw Object.assign(new Error('Child already enrolled'), { code: 'DUPLICATE_CHILD' })
+          }
+
+          const participantRef = db2.doc(
+            `organizations/${orgId}/cohorts/${cohortId}/participants/${id}`
+          )
+          tx.set(participantRef, {
+            cohortId,
+            orgId,
+            childId: body.childId,
+            childName: body.childName,
+            parentId: request.user!.uid,
+            parentName,
+            parentPhone: body.parentPhone ?? null,
+            status: 'active',
+            paymentStatus: 'pending',
+            amountPaid: 0,
+            totalAmount: cohort.price,
+            currency: cohort.currency,
+            enrolledAt: now,
+            updatedAt: now,
+          })
+          tx.update(cohortRef, {
+            enrolledCount: admin.firestore.FieldValue.increment(1),
+            updatedAt: now,
+          })
         })
-        tx.update(cohortRef, {
-          enrolledCount: (await import('firebase-admin')).default.firestore.FieldValue.increment(1),
-          updatedAt: now,
-        })
-      })
+      } catch (err: any) {
+        if (err.code === 'COHORT_FULL') return reply.code(409).send({ error: 'Cohort is full' })
+        if (err.code === 'DUPLICATE_CHILD')
+          return reply.code(409).send({ error: 'Child already enrolled' })
+        throw err
+      }
 
       return reply.code(201).send({ ok: true, enrollmentId: id })
     }

@@ -190,13 +190,23 @@ export const cohortsParticipantsRoute: FastifyPluginAsync = async (fastify) => {
         updatedAt: now,
       }
 
-      await db.runTransaction(async (tx) => {
-        tx.set(db.doc(COL.participant(orgId, cohortId, id)), doc)
-        tx.update(cohortRef, {
-          enrolledCount: admin.firestore.FieldValue.increment(1),
-          updatedAt: now,
+      try {
+        await db.runTransaction(async (tx) => {
+          const freshCohortSnap = await tx.get(cohortRef)
+          const freshCohort = freshCohortSnap.data() as CohortDoc
+          if ((freshCohort.enrolledCount ?? 0) >= freshCohort.maxParticipants) {
+            throw Object.assign(new Error('Cohort is full'), { code: 'COHORT_FULL' })
+          }
+          tx.set(db.doc(COL.participant(orgId, cohortId, id)), doc)
+          tx.update(cohortRef, {
+            enrolledCount: admin.firestore.FieldValue.increment(1),
+            updatedAt: now,
+          })
         })
-      })
+      } catch (err: any) {
+        if (err.code === 'COHORT_FULL') return reply.code(409).send({ error: 'Cohort is full' })
+        throw err
+      }
 
       // Create calendar events for every currently-scheduled session (fire-and-forget)
       void syncNewParticipantAcrossSessions(db, { id: cohortId, ...cohortData }, body.parentId)

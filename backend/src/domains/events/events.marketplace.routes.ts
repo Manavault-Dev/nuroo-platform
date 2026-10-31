@@ -239,19 +239,38 @@ export const eventsMarketplaceRoute: FastifyPluginAsync = async (fastify) => {
       const profileSnap = await db.doc(`users/${request.user.uid}`).get()
       const profile = profileSnap.data() ?? {}
 
-      await db.runTransaction(async (tx) => {
-        tx.set(registrationRef, {
-          uid: request.user!.uid,
-          email: request.user!.email ?? profile.email ?? null,
-          displayName: profile.displayName ?? profile.name ?? null,
-          phone: profile.phone ?? profile.phoneNumber ?? null,
-          registeredAt: now,
+      try {
+        await db.runTransaction(async (tx) => {
+          const [freshEventSnap, freshRegSnap] = await Promise.all([
+            tx.get(eventRef),
+            tx.get(registrationRef),
+          ])
+          if (freshRegSnap.exists) {
+            throw Object.assign(new Error('Already registered'), { code: 'ALREADY_REGISTERED' })
+          }
+          const freshEvent = freshEventSnap.data() as EventDoc
+          if (freshEvent.spotsTotal > 0 && freshEvent.registeredCount >= freshEvent.spotsTotal) {
+            throw Object.assign(new Error('Event is full'), { code: 'EVENT_FULL' })
+          }
+
+          tx.set(registrationRef, {
+            uid: request.user!.uid,
+            email: request.user!.email ?? profile.email ?? null,
+            displayName: profile.displayName ?? profile.name ?? null,
+            phone: profile.phone ?? profile.phoneNumber ?? null,
+            registeredAt: now,
+          })
+          tx.update(eventRef, {
+            registeredCount: FieldValue.increment(1),
+            updatedAt: now,
+          })
         })
-        tx.update(eventRef, {
-          registeredCount: FieldValue.increment(1),
-          updatedAt: now,
-        })
-      })
+      } catch (err: any) {
+        if (err.code === 'EVENT_FULL') return reply.code(409).send({ error: 'Event is full' })
+        if (err.code === 'ALREADY_REGISTERED')
+          return reply.code(409).send({ error: 'Already registered' })
+        throw err
+      }
 
       _cache = null
 
