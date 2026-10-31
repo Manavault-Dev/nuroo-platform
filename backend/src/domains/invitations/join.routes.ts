@@ -57,6 +57,7 @@ export const joinRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Body: z.infer<typeof joinSchema> }>(
     '/join',
     {
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
       schema: {
         tags: ['Invitations'],
         summary:

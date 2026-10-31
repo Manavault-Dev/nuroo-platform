@@ -134,9 +134,19 @@ export const parentInviteLinkRoute: FastifyPluginAsync = async (fastify) => {
     },
   }
 
+  const inviteCodeRateLimit = { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }
+
   // Register both /api/... (canonical) and /... (alias for legacy mobile builds)
-  fastify.post('/api/org/parent-invites/validate', { schema: validateRouteSchema }, handleValidate)
-  fastify.post('/org/parent-invites/validate', { schema: validateRouteSchema }, handleValidate)
+  fastify.post(
+    '/api/org/parent-invites/validate',
+    { ...inviteCodeRateLimit, schema: validateRouteSchema },
+    handleValidate
+  )
+  fastify.post(
+    '/org/parent-invites/validate',
+    { ...inviteCodeRateLimit, schema: validateRouteSchema },
+    handleValidate
+  )
 
   const _useInviteSchema = z.object({
     inviteCode: z.string().min(1).max(100).optional(),
@@ -279,8 +289,16 @@ export const parentInviteLinkRoute: FastifyPluginAsync = async (fastify) => {
     },
   }
 
-  fastify.post('/api/org/parent-invites/use', { schema: useRouteSchema }, handleUse)
-  fastify.post('/org/parent-invites/use', { schema: useRouteSchema }, handleUse)
+  fastify.post(
+    '/api/org/parent-invites/use',
+    { ...inviteCodeRateLimit, schema: useRouteSchema },
+    handleUse
+  )
+  fastify.post(
+    '/org/parent-invites/use',
+    { ...inviteCodeRateLimit, schema: useRouteSchema },
+    handleUse
+  )
 
   const handleAccept = async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.user) {
@@ -429,6 +447,14 @@ export const parentInviteLinkRoute: FastifyPluginAsync = async (fastify) => {
     },
   }
 
-  fastify.post('/api/org/parent-invites/accept', { schema: acceptRouteSchema }, handleAccept)
-  fastify.post('/org/parent-invites/accept', { schema: acceptRouteSchema }, handleAccept)
+  fastify.post(
+    '/api/org/parent-invites/accept',
+    { ...inviteCodeRateLimit, schema: acceptRouteSchema },
+    handleAccept
+  )
+  fastify.post(
+    '/org/parent-invites/accept',
+    { ...inviteCodeRateLimit, schema: acceptRouteSchema },
+    handleAccept
+  )
 }

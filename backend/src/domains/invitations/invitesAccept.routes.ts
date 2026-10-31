@@ -76,6 +76,7 @@ export const invitesAcceptRoute: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Body: z.infer<typeof acceptInviteSchema> }>(
     '/invites/accept',
     {
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
       schema: {
         tags: ['Invitations'],
         summary: 'Accept a staff invite code and join the organization as a specialist/org_admin',
