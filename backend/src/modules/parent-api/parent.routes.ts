@@ -16,6 +16,7 @@ import {
   uploadOrgMarketplaceImage,
   imageSourceSchema,
 } from '../../domains/organizations/orgs.routes.js'
+import { FREE_TRIAL_DAYS, FREE_TRIAL_PLAN_ID } from '../../domains/payments/planLimits.js'
 
 /** Deep link scheme used by the Nuroo mobile app */
 const MOBILE_DEEP_LINK_SCHEME = 'nuroo'
@@ -142,6 +143,13 @@ const createBasicOrgSchema = z
   .refine((body) => !!(body.contactPhone || body.whatsappNumber), {
     message: 'At least one contact method (contactPhone or whatsappNumber) is required',
   })
+
+const updateBasicOrgSchema = z.object({
+  name: z.string().trim().min(1).max(200).optional(),
+  contactPhone: phoneSchema.optional(),
+  whatsappNumber: phoneSchema.optional(),
+  logoUrl: imageSourceSchema.optional(),
+})
 
 export const parentApiRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get<{ Params: { childId: string } }>(
@@ -498,4 +506,197 @@ export const parentApiRoutes: FastifyPluginAsync = async (fastify) => {
         .send({ error: error instanceof Error ? error.message : 'Failed to list organizations' })
     }
   })
+
+  // PATCH /api/parent/organizations/:orgId — edit a basic-tier org, scoped by createdBy
+  // (not full org_admin RBAC — the creator has no membership doc until they claim-admin below)
+  fastify.patch<{ Params: { orgId: string }; Body: z.infer<typeof updateBasicOrgSchema> }>(
+    '/api/parent/organizations/:orgId',
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.code(401).send({ error: 'Unauthorized' })
+      }
+      const { uid } = request.user
+      const { orgId } = request.params
+
+      const parsed = updateBasicOrgSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request' })
+      }
+
+      try {
+        const db = getFirestore()
+        const orgRef = db.doc(`organizations/${orgId}`)
+        const snap = await orgRef.get()
+        if (!snap.exists) return reply.code(404).send({ error: 'Organization not found' })
+        const data = snap.data()!
+        if (data.createdBy !== uid) return reply.code(403).send({ error: 'Forbidden' })
+        if (data.tier !== 'basic') {
+          return reply
+            .code(400)
+            .send({ error: 'This organization is already managed from the dashboard' })
+        }
+
+        const update: Record<string, unknown> = {
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }
+        if (parsed.data.name !== undefined) update.name = parsed.data.name
+        if (parsed.data.contactPhone !== undefined)
+          update.contactPhone = parsed.data.contactPhone || null
+        if (parsed.data.whatsappNumber !== undefined)
+          update.whatsappNumber = parsed.data.whatsappNumber || null
+        if (parsed.data.logoUrl !== undefined) {
+          const parsedImage = parseDataImageUrl(parsed.data.logoUrl)
+          update.logoUrl = parsedImage
+            ? await uploadOrgMarketplaceImage(
+                orgId,
+                'logo',
+                parsedImage.buffer,
+                parsedImage.mimeType,
+                'logo'
+              )
+            : parsed.data.logoUrl
+        }
+
+        await orgRef.update(update)
+        return { ok: true }
+      } catch (error: unknown) {
+        console.error('Error updating basic organization:', error)
+        return reply
+          .code(500)
+          .send({ error: error instanceof Error ? error.message : 'Failed to update organization' })
+      }
+    }
+  )
+
+  // DELETE /api/parent/organizations/:orgId — only before admin claim (createdBy-scoped)
+  fastify.delete<{ Params: { orgId: string } }>(
+    '/api/parent/organizations/:orgId',
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.code(401).send({ error: 'Unauthorized' })
+      }
+      const { uid } = request.user
+      const { orgId } = request.params
+
+      try {
+        const db = getFirestore()
+        const orgRef = db.doc(`organizations/${orgId}`)
+        const snap = await orgRef.get()
+        if (!snap.exists) return reply.code(404).send({ error: 'Organization not found' })
+        const data = snap.data()!
+        if (data.createdBy !== uid) return reply.code(403).send({ error: 'Forbidden' })
+        if (data.tier !== 'basic') {
+          return reply
+            .code(400)
+            .send({ error: 'This organization is already managed from the dashboard' })
+        }
+
+        await orgRef.delete()
+        return { ok: true }
+      } catch (error: unknown) {
+        console.error('Error deleting basic organization:', error)
+        return reply
+          .code(500)
+          .send({ error: error instanceof Error ? error.message : 'Failed to delete organization' })
+      }
+    }
+  )
+
+  // POST /api/parent/organizations/:orgId/claim-admin — upgrade a basic-tier org to a
+  // fully-managed organization: grants the creator org_admin membership (same shape as
+  // POST /orgs) and starts their free trial. One-way — the creator's /me-derived role
+  // then flips to 'organizer' and the mobile role-gate redirects them to the web dashboard,
+  // the same mechanism as any other org admin.
+  fastify.post<{ Params: { orgId: string } }>(
+    '/api/parent/organizations/:orgId/claim-admin',
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.code(401).send({ error: 'Unauthorized' })
+      }
+      const { uid, email } = request.user
+      const { orgId } = request.params
+
+      try {
+        const db = getFirestore()
+        const orgRef = db.doc(`organizations/${orgId}`)
+        const snap = await orgRef.get()
+        if (!snap.exists) return reply.code(404).send({ error: 'Organization not found' })
+        const data = snap.data()!
+        if (data.createdBy !== uid) return reply.code(403).send({ error: 'Forbidden' })
+
+        const memberRef = orgRef.collection('members').doc(uid)
+        const memberSnap = await memberRef.get()
+        if (memberSnap.exists) {
+          return reply.code(409).send({ error: 'Already an admin of this organization' })
+        }
+
+        const now = new Date()
+        const trialExpiresAt = new Date(now)
+        trialExpiresAt.setDate(trialExpiresAt.getDate() + FREE_TRIAL_DAYS)
+
+        await orgRef.update({
+          nurooPlan: 'nuroo_business',
+          tier: admin.firestore.FieldValue.delete(),
+          billingPlan: null,
+          billing: {
+            provider: 'manual',
+            status: 'trialing',
+            plan: FREE_TRIAL_PLAN_ID,
+            trialEndsAt: admin.firestore.Timestamp.fromDate(trialExpiresAt),
+            currentPeriodEnd: null,
+            updatedAt: admin.firestore.Timestamp.fromDate(now),
+          },
+          freeTrial: {
+            planId: FREE_TRIAL_PLAN_ID,
+            startedAt: admin.firestore.Timestamp.fromDate(now),
+            expiresAt: admin.firestore.Timestamp.fromDate(trialExpiresAt),
+          },
+          updatedAt: admin.firestore.Timestamp.fromDate(now),
+        })
+
+        await memberRef.set({
+          uid,
+          role: 'org_admin',
+          status: 'active',
+          joinedAt: admin.firestore.Timestamp.fromDate(now),
+        })
+
+        await db.doc(`specialists/${uid}/organizations/${orgId}`).set({
+          orgId,
+          orgName: data.name,
+          country: data.country ?? null,
+          role: 'org_admin',
+          status: 'active',
+          updatedAt: admin.firestore.Timestamp.fromDate(now),
+        })
+
+        const specialistRef = db.doc(`specialists/${uid}`)
+        const specialistSnap = await specialistRef.get()
+        if (specialistSnap.exists) {
+          await specialistRef.update({
+            orgId,
+            role: 'org_admin',
+            updatedAt: admin.firestore.Timestamp.fromDate(now),
+          })
+        } else {
+          await specialistRef.set({
+            uid,
+            email: email || '',
+            fullName: email?.split('@')[0] || 'Specialist',
+            orgId,
+            role: 'org_admin',
+            createdAt: admin.firestore.Timestamp.fromDate(now),
+            updatedAt: admin.firestore.Timestamp.fromDate(now),
+          })
+        }
+
+        return { ok: true, orgId }
+      } catch (error: unknown) {
+        console.error('Error claiming organization admin:', error)
+        return reply
+          .code(500)
+          .send({ error: error instanceof Error ? error.message : 'Failed to claim organization' })
+      }
+    }
+  )
 }
