@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { apiClient } from '@/lib/b2b/api'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
+import { Link } from '@/i18n/navigation'
 import { Shield, FileText, CheckCircle, XCircle, AlertCircle, ExternalLink } from 'lucide-react'
 
 type ConsentStatus = {
@@ -165,7 +166,7 @@ export default function PrivacySettingsPage() {
                       )}
                       <span className="font-medium text-gray-900 text-sm">{meta.title}</span>
                       {meta.path && (
-                        <a
+                        <Link
                           href={meta.path}
                           target="_blank"
                           rel="noopener noreferrer"
@@ -173,7 +174,7 @@ export default function PrivacySettingsPage() {
                           aria-label={`Открыть документ ${meta.title}`}
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
+                        </Link>
                       )}
                     </div>
                     <p className="text-xs text-gray-500">{meta.description}</p>
@@ -288,7 +289,7 @@ export default function PrivacySettingsPage() {
             { href: '/legal/privacy', label: 'Политика конфиденциальности' },
             { href: '/legal/parental-consent', label: 'Согласие законного представителя' },
           ].map(({ href, label }) => (
-            <a
+            <Link
               key={href}
               href={href}
               target="_blank"
@@ -298,7 +299,7 @@ export default function PrivacySettingsPage() {
               <FileText className="w-4 h-4 shrink-0" />
               {label}
               <ExternalLink className="w-3 h-3 opacity-50" />
-            </a>
+            </Link>
           ))}
         </div>
       </section>

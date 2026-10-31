@@ -92,7 +92,7 @@ export function ChildrenImportModal({
   }
 
   const handleDownloadLinks = () => {
-    const header = 'Имя ребёнка,Ссылка\n'
+    const header = `${t('csvColChildName')},${t('csvColLink')}\n`
     const rows = created.map((c) => `"${c.childName.replace(/"/g, '""')}",${c.link}`).join('\n')
     const blob = new Blob(['﻿' + header + rows], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)

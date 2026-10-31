@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { register, signInWithGoogle, beginAuthAttempt, getAuthEpoch } from '@/lib/b2b/authClient'
 import { apiClient } from '@/lib/b2b/api'
 import { Link } from '@/i18n/navigation'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { UserPlus, Mail, Lock, User, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/lib/b2b/AuthContext'
 import { getWorkspacePath, type B2bOrgMembership } from '@/src/config/routes'
@@ -39,6 +39,7 @@ function GoogleLogo() {
 
 function RegisterForm() {
   const t = useTranslations('b2b.register')
+  const locale = useLocale()
   const router = useRouter()
   const searchParams = useSearchParams()
   const inviteCodeParam = searchParams.get('invite') || searchParams.get('code') || ''
@@ -57,9 +58,13 @@ function RegisterForm() {
   /** Record legal consent after successful auth */
   const recordLegalConsent = async () => {
     await Promise.allSettled([
-      apiClient.acceptConsent('PUBLIC_OFFER', CURRENT_VERSIONS.PUBLIC_OFFER, 'ru'),
-      apiClient.acceptConsent('PRIVACY_POLICY', CURRENT_VERSIONS.PRIVACY_POLICY, 'ru'),
-      apiClient.acceptConsent('LEGAL_REPRESENTATIVE', CURRENT_VERSIONS.LEGAL_REPRESENTATIVE, 'ru'),
+      apiClient.acceptConsent('PUBLIC_OFFER', CURRENT_VERSIONS.PUBLIC_OFFER, locale),
+      apiClient.acceptConsent('PRIVACY_POLICY', CURRENT_VERSIONS.PRIVACY_POLICY, locale),
+      apiClient.acceptConsent(
+        'LEGAL_REPRESENTATIVE',
+        CURRENT_VERSIONS.LEGAL_REPRESENTATIVE,
+        locale
+      ),
     ])
   }
 
@@ -340,7 +345,7 @@ function RegisterForm() {
                 />
                 <span className="text-sm text-gray-700 leading-relaxed">
                   Я прочитал(а) и принимаю{' '}
-                  <a
+                  <Link
                     href="/legal/terms"
                     target="_blank"
                     rel="noopener noreferrer"
@@ -348,9 +353,9 @@ function RegisterForm() {
                     onClick={(e) => e.stopPropagation()}
                   >
                     Публичную оферту
-                  </a>
+                  </Link>
                   ,{' '}
-                  <a
+                  <Link
                     href="/legal/privacy"
                     target="_blank"
                     rel="noopener noreferrer"
@@ -358,9 +363,9 @@ function RegisterForm() {
                     onClick={(e) => e.stopPropagation()}
                   >
                     Политику конфиденциальности
-                  </a>{' '}
+                  </Link>{' '}
                   и{' '}
-                  <a
+                  <Link
                     href="/legal/parental-consent"
                     target="_blank"
                     rel="noopener noreferrer"
@@ -368,7 +373,7 @@ function RegisterForm() {
                     onClick={(e) => e.stopPropagation()}
                   >
                     Согласие законного представителя
-                  </a>
+                  </Link>
                 </span>
               </label>
             </div>

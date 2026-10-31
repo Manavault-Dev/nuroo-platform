@@ -96,7 +96,7 @@ function CohortCard({
               )}
               {cohort.ageMin != null && (
                 <span className="text-xs text-gray-400">
-                  {cohort.ageMin}–{cohort.ageMax ?? '∞'} лет
+                  {cohort.ageMin}–{cohort.ageMax ?? '∞'} {t('yearsOld')}
                 </span>
               )}
               {branchName && (
@@ -192,7 +192,7 @@ function CohortCard({
                   className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1 transition-colors font-medium"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  Удалить
+                  {t('deleteCohortButton')}
                 </button>
               )}
             </div>
@@ -280,7 +280,7 @@ export default function CoursesPage() {
       setCohorts((prev) => prev.filter((c) => c.id !== deleteModal.id))
       setDeleteModal(null)
     } catch {
-      setError('Не удалось удалить набор')
+      setError(t('hardDeleteCohort.error'))
     } finally {
       setDeleting(false)
     }
@@ -322,13 +322,13 @@ export default function CoursesPage() {
       {branches.length > 0 && (
         <div className="mb-4 flex items-center gap-2">
           <GitBranch className="w-4 h-4 text-gray-400" />
-          <span className="text-sm text-gray-500">Филиал:</span>
+          <span className="text-sm text-gray-500">{t('branchFilterLabel')}</span>
           <select
             value={branchFilter}
             onChange={(e) => setBranchFilter(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
           >
-            <option value="">Все филиалы</option>
+            <option value="">{t('allBranches')}</option>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -384,7 +384,7 @@ export default function CoursesPage() {
           {archiveCohorts.length > 0 && (
             <div>
               <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                Архив
+                {t('archiveTitle')}
               </h2>
               <div className="grid gap-3 opacity-70">
                 {archiveCohorts.map((c) => (
@@ -409,12 +409,7 @@ export default function CoursesPage() {
         <ConfirmModal
           title={t('cancelCohort.title')}
           subtitle={t('cancelCohort.subtitle')}
-          description={
-            <span>
-              Набор <span className="font-semibold text-gray-900">«{cancelModal.title}»</span> будет
-              отмечен как отменённый. Участники останутся в системе.
-            </span>
-          }
+          description={t('cancelCohortDescription', { title: cancelModal.title })}
           confirmLabel={t('cancelCohort.confirm')}
           cancelLabel={t('cancelCohort.cancel')}
           loading={cancelling}
@@ -425,16 +420,11 @@ export default function CoursesPage() {
 
       {deleteModal && (
         <ConfirmModal
-          title="Удалить набор навсегда?"
-          subtitle="Это действие необратимо"
-          description={
-            <span>
-              Набор <span className="font-semibold text-gray-900">«{deleteModal.title}»</span> и все
-              связанные данные будут удалены без возможности восстановления.
-            </span>
-          }
-          confirmLabel="Удалить навсегда"
-          cancelLabel="Отмена"
+          title={t('hardDeleteCohort.title')}
+          subtitle={t('hardDeleteCohort.subtitle')}
+          description={t('hardDeleteCohort.description', { title: deleteModal.title })}
+          confirmLabel={t('hardDeleteCohort.confirm')}
+          cancelLabel={t('hardDeleteCohort.cancel')}
           loading={deleting}
           onConfirm={handleHardDelete}
           onCancel={() => setDeleteModal(null)}

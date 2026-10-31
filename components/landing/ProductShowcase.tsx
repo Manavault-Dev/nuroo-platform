@@ -392,10 +392,13 @@ function ProgramsSection({
   marketplace,
   locale,
 }: {
-  t: (key: string) => string
+  t: (key: string, values?: Record<string, string | number>) => string
   marketplace?: LandingMarketplaceData
   locale: string
 }) {
+  // react-day-picker/Intl lack a dedicated Kyrgyz formatting locale; fall back
+  // to Russian for number/date formatting the same way DateTimePicker does.
+  const intlLocale = locale === 'ky' ? 'ru-RU' : locale
   const realItems = [
     ...(marketplace?.cohorts ?? []).slice(0, 3).map((cohort) => ({
       href: `/${locale}/marketplace?tab=programs`,
@@ -404,22 +407,26 @@ function ProgramsSection({
       age:
         cohort.ageMin != null
           ? cohort.ageMax != null
-            ? `${cohort.ageMin}-${cohort.ageMax} лет`
-            : `от ${cohort.ageMin} лет`
+            ? t('ageRange', { min: cohort.ageMin, max: cohort.ageMax })
+            : t('ageFrom', { age: cohort.ageMin })
           : cohort.orgName,
       days: cohort.schedule || '',
-      spots: cohort.spotsLeft > 0 ? `${cohort.spotsLeft} мест` : 'Идет набор',
-      price: cohort.price === 0 ? 'Бесплатно' : `${cohort.price.toLocaleString('ru-RU')}`,
-      priceSuffix: cohort.price === 0 ? '' : ` ${cohort.currency}/мес`,
+      spots:
+        cohort.spotsLeft > 0 ? t('spotsLeft', { count: cohort.spotsLeft }) : t('enrollmentOpen'),
+      price: cohort.price === 0 ? t('free') : `${cohort.price.toLocaleString(intlLocale)}`,
+      priceSuffix: cohort.price === 0 ? '' : ` ${cohort.currency}${t('perMonthSuffix')}`,
     })),
     ...(marketplace?.events ?? []).slice(0, 1).map((event) => ({
       href: `/${locale}/marketplace?tab=events`,
       src: event.coverUrl || '/cat-events.png',
       name: event.title,
-      age: new Date(event.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }),
+      age: new Date(event.date).toLocaleDateString(intlLocale, { day: 'numeric', month: 'long' }),
       days: event.city || event.location,
-      spots: event.spotsLeft > 0 ? `Осталось ${event.spotsLeft}` : 'Регистрация открыта',
-      price: event.price === 0 ? 'Бесплатно' : `${event.price.toLocaleString('ru-RU')}`,
+      spots:
+        event.spotsLeft > 0
+          ? t('spotsLeftEvent', { count: event.spotsLeft })
+          : t('registrationOpen'),
+      price: event.price === 0 ? t('free') : `${event.price.toLocaleString(intlLocale)}`,
       priceSuffix: event.price === 0 ? '' : ` ${event.currency}`,
     })),
   ]
@@ -448,7 +455,7 @@ function ProgramsSection({
           href={`/${locale}/marketplace?tab=programs`}
           className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:border-teal-300 hover:text-teal-700 dark:border-gray-700 dark:text-gray-300"
         >
-          Смотреть все <ArrowRight className="h-4 w-4" />
+          {t('viewAll')} <ArrowRight className="h-4 w-4" />
         </Link>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -531,7 +538,7 @@ export function ProductShowcase({
               href={`/${locale}/marketplace?tab=centers`}
               className="mt-7 inline-flex items-center gap-2 rounded-xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-700"
             >
-              Смотреть все центры <ArrowRight className="h-4 w-4" />
+              {t('viewAllCenters')} <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
           <div>
@@ -578,7 +585,7 @@ export function ProductShowcase({
               href={`/${locale}/marketplace?tab=specialists`}
               className="mt-5 inline-flex items-center gap-2 rounded-xl border border-teal-200 px-5 py-3 text-sm font-semibold text-teal-700 transition-colors hover:border-teal-400 hover:bg-teal-50 dark:border-teal-800 dark:text-teal-300 dark:hover:bg-teal-950/40"
             >
-              Смотреть специалистов <ArrowRight className="h-4 w-4" />
+              {t('viewAllSpecialists')} <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         </div>

@@ -109,6 +109,7 @@ export function NotificationBell() {
     }
     if (item.metadata?.deepLink) {
       setOpen(false)
+      window.location.href = item.metadata.deepLink
     }
   }
 

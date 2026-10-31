@@ -93,7 +93,7 @@ export function InviteModal({ isOpen, onClose, inviteCode }: InviteModalProps) {
             onClick={onClose}
             className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
           >
-            Done
+            {t('close')}
           </button>
         </div>
       </div>

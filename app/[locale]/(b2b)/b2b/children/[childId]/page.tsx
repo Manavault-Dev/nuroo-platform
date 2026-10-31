@@ -1319,7 +1319,7 @@ function GuardianCard({
   t,
 }: {
   guardian: Guardian
-  onDelete: (id: string) => void
+  onDelete: (id: string) => Promise<void>
   t: ReturnType<typeof useTranslations>
 }) {
   const [deleting, setDeleting] = useState(false)
@@ -1330,7 +1330,11 @@ function GuardianCard({
   const handleDelete = async () => {
     if (!confirm(t('deleteGuardianConfirm', { name: guardian.fullName }))) return
     setDeleting(true)
-    onDelete(guardian.id)
+    try {
+      await onDelete(guardian.id)
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -1604,6 +1608,7 @@ function GuardiansTab({
 }) {
   const [guardians, setGuardians] = useState<Guardian[]>([])
   const [loading, setLoading] = useState(true)
+  const [deleteError, setDeleteError] = useState('')
   const parent = childDetail.parentInfo
 
   useEffect(() => {
@@ -1618,11 +1623,12 @@ function GuardiansTab({
 
   const handleAdded = (g: Guardian) => setGuardians((prev) => [g, ...prev])
   const handleDelete = async (id: string) => {
+    setDeleteError('')
     try {
       await apiClient.deleteChildGuardian(orgId, childId, id)
       setGuardians((prev) => prev.filter((g) => g.id !== id))
-    } catch {
-      /* ignore */
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : t('guardianDeleteError'))
     }
   }
 
@@ -1679,6 +1685,11 @@ function GuardiansTab({
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
           {t('guardiansContactsTitle')}
         </p>
+        {deleteError && (
+          <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">
+            {deleteError}
+          </div>
+        )}
         {loading ? (
           <div className="space-y-3">
             {[1, 2].map((i) => (

@@ -1,7 +1,44 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+
+const COPY = {
+  ru: {
+    title: 'Страница потерялась',
+    line1: 'Мы специализируемся на развитии детей, а не на поиске пропавших страниц.',
+    line2: 'Но если страницы нет — значит, впереди что-то лучшее.',
+    home: 'На главную',
+    dashboard: 'В кабинет',
+    footer: 'Nuroo · детская платформа развития',
+  },
+  en: {
+    title: 'This page wandered off',
+    line1: "We specialize in children's development, not in finding lost pages.",
+    line2: "But if the page isn't here, something better is ahead.",
+    home: 'Go home',
+    dashboard: 'Go to dashboard',
+    footer: 'Nuroo · child development platform',
+  },
+  ky: {
+    title: 'Бет табылбай калды',
+    line1: 'Биз балдардын өнүгүшүнө адистешкенбиз, жоголгон беттерди издебейбиз.',
+    line2: 'Бирок бул бет жок болсо — алдыда жакшыраак нерсе бар.',
+    home: 'Башкы бетке',
+    dashboard: 'Кабинетке',
+    footer: 'Nuroo · балдарды өнүктүрүү платформасы',
+  },
+} as const
+
+function useNotFoundCopy() {
+  const pathname = usePathname()
+  return useMemo(() => {
+    const match = pathname?.match(/^\/(en|ru|ky)(?:\/|$)/)
+    const locale = (match?.[1] as keyof typeof COPY | undefined) ?? 'ru'
+    return { locale, ...COPY[locale] }
+  }, [pathname])
+}
 
 // Deterministic particles — no hydration mismatch
 const PARTICLES = [
@@ -30,6 +67,7 @@ const ORBIT_DOTS = Array.from({ length: 8 }, (_, i) => ({
 
 export default function NotFound() {
   const [visible, setVisible] = useState(false)
+  const copy = useNotFoundCopy()
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 50)
@@ -187,19 +225,15 @@ export default function NotFound() {
           {/* Copy */}
           <div className="max-w-md">
             <h1 className="text-2xl sm:text-3xl font-bold text-white mb-3 tracking-tight">
-              Страница потерялась
+              {copy.title}
             </h1>
-            <p className="text-slate-400 text-base sm:text-lg leading-relaxed mb-2">
-              Мы специализируемся на развитии детей, а не на поиске пропавших страниц.
-            </p>
-            <p className="text-slate-500 text-sm mb-10">
-              Но если страницы нет — значит, впереди что-то лучшее.
-            </p>
+            <p className="text-slate-400 text-base sm:text-lg leading-relaxed mb-2">{copy.line1}</p>
+            <p className="text-slate-500 text-sm mb-10">{copy.line2}</p>
 
             {/* CTAs */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link
-                href="/"
+                href={`/${copy.locale}`}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-500 transition-colors duration-200 shadow-lg shadow-primary-900/40"
               >
                 <svg
@@ -215,10 +249,10 @@ export default function NotFound() {
                     d="M3 9.75L12 3l9 6.75V21a.75.75 0 01-.75.75H15v-5.25a.75.75 0 00-.75-.75h-4.5a.75.75 0 00-.75.75V21.75H3.75A.75.75 0 013 21V9.75z"
                   />
                 </svg>
-                На главную
+                {copy.home}
               </Link>
               <Link
-                href="/b2b"
+                href={`/${copy.locale}/b2b`}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-white/5 text-slate-300 border border-white/10 font-medium hover:bg-white/10 hover:text-white transition-colors duration-200"
               >
                 <svg
@@ -234,15 +268,13 @@ export default function NotFound() {
                     d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"
                   />
                 </svg>
-                В кабинет
+                {copy.dashboard}
               </Link>
             </div>
           </div>
 
           {/* Bottom hint */}
-          <p className="mt-12 text-xs text-slate-700 tracking-widest uppercase">
-            Nuroo · детская платформа развития
-          </p>
+          <p className="mt-12 text-xs text-slate-700 tracking-widest uppercase">{copy.footer}</p>
         </div>
       </div>
     </>

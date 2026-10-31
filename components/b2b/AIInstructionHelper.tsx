@@ -73,6 +73,7 @@ export function AIInstructionHelper({
   )
   const [roughText, setRoughText] = useState(initialText)
   const [error, setError] = useState<string | null>(null)
+  const [isValidationError, setIsValidationError] = useState(false)
   const [resultExpanded, setResultExpanded] = useState(true)
   const [applied, setApplied] = useState(false)
 
@@ -114,19 +115,23 @@ export function AIInstructionHelper({
 
     // Client-side validation — clear errors before API call
     if (!trimmed) {
+      setIsValidationError(true)
       setError(t('aiValidationEmpty'))
       return
     }
     if (trimmed.length < 10) {
+      setIsValidationError(true)
       setError(t('aiValidationTooShort'))
       return
     }
     if (charCount > AI_CHAR_LIMIT) {
+      setIsValidationError(true)
       setError(t('aiValidationTooLong', { max: AI_CHAR_LIMIT }))
       return
     }
 
     setError(null)
+    setIsValidationError(false)
     setPanelState('loading')
 
     try {
@@ -147,6 +152,7 @@ export function AIInstructionHelper({
       setPanelState('result')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t('aiHelperError')
+      setIsValidationError(false)
       setError(msg)
       setPanelState('input')
     }
@@ -268,18 +274,15 @@ export function AIInstructionHelper({
             <div className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg">
               <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-red-700 flex-1 leading-relaxed">{error}</p>
-              {/* Retry if it was a network/API error (not a validation error) */}
-              {!error.includes('символов') &&
-                !error.includes('characters') &&
-                !error.includes('words') && (
-                  <button
-                    type="button"
-                    onClick={handleRetry}
-                    className="text-xs text-red-600 hover:text-red-700 font-medium underline underline-offset-2 whitespace-nowrap"
-                  >
-                    {t('aiRetry')}
-                  </button>
-                )}
+              {!isValidationError && (
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="text-xs text-red-600 hover:text-red-700 font-medium underline underline-offset-2 whitespace-nowrap"
+                >
+                  {t('aiRetry')}
+                </button>
+              )}
             </div>
           )}
 

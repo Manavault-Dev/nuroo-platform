@@ -20,7 +20,23 @@
       "ctaSecondary": "Я специалист или организация",
       "trustLine": "Специалисты · Детские центры · Программы · Мастер-классы · Консультации",
       "eyebrow": "Nuroo Маркетплейс",
-      "headline": "Всё для развития ребёнка - в одном месте"
+      "headline": "Всё для развития ребёнка - в одном месте",
+      "searchPlaceholder": "Поиск центров, специалистов, программ...",
+      "cityBishkek": "Бишкек",
+      "tabCenters": "Центры",
+      "tabSpecialists": "Специалисты",
+      "tabPrograms": "Программы",
+      "tabEvents": "Мероприятия",
+      "selectTime": "Выберите время",
+      "bookCta": "Записаться",
+      "bookingConfirmed": "Запись подтверждена!",
+      "bookingConfirmedDetail": "17:30 · Сегодня · Айзада М. · Логопед",
+      "openMeeting": "Открыть встречу",
+      "addToCalendar": "Добавить в календарь",
+      "defaultRole": "Детский центр",
+      "priceFromPrefix": "от",
+      "onlineBooking": "Онлайн-запись",
+      "newBadge": "Новый"
     },
     "pricing": {
       "badge": "Простые тарифы",
@@ -219,7 +235,18 @@
       "s2tryCta": "Попробуйте интерактивный мокап: выберите дату и слот",
       "s3eyebrow": "Группы, программы и мероприятия",
       "s3title": "Развивающие занятия для каждого ребёнка",
-      "s3subtitle": "Записывайтесь в группы, на курсы и мастер-классы. Следите за расписанием и прогрессом."
+      "s3subtitle": "Записывайтесь в группы, на курсы и мастер-классы. Следите за расписанием и прогрессом.",
+      "viewAllCenters": "Смотреть все центры",
+      "viewAllSpecialists": "Смотреть специалистов",
+      "viewAll": "Смотреть все",
+      "free": "Бесплатно",
+      "perMonthSuffix": "/мес",
+      "ageFrom": "от {age} лет",
+      "ageRange": "{min}-{max} лет",
+      "spotsLeft": "{count} мест",
+      "enrollmentOpen": "Идет набор",
+      "spotsLeftEvent": "Осталось {count}",
+      "registrationOpen": "Регистрация открыта"
     },
     "dashboard": {
       "eyebrow": "Nuroo Business",
@@ -652,7 +679,12 @@
         "blockedCount": "{count} закрыто",
         "closeAll": "Закрыть всё",
         "openAll": "Открыть всё",
-        "noSlots": "Нет слотов"
+        "noSlots": "Нет слотов",
+        "branchFilterLabel": "Филиал:",
+        "allBranches": "Все филиалы",
+        "workingHoursHint": "Укажите дни и часы работы",
+        "partiallyBlockedLegend": "Частично",
+        "closedLegend": "Закрыт"
       },
       "children": {
         "title": "Ваши дети",
@@ -990,7 +1022,8 @@
             "teeth": "Чистить зубы"
           }
         },
-        "editName": "Изменить имя"
+        "editName": "Изменить имя",
+        "guardianDeleteError": "Не удалось удалить контакт. Попробуйте ещё раз."
       },
       "integrations": {
         "title": "Интеграции",
@@ -1189,6 +1222,7 @@
         "createParentInviteBtn": "Создать приглашение родителя",
         "parent": "Родитель",
         "shareWithParents": "Поделитесь кодом с родителями для подключения к организации",
+        "brandedParentLink": "Фирменная ссылка для родителей",
         "inviteCodeForApp": "Код приглашения (для приложения):",
         "copyCodeBtn": "Копировать код",
         "failedCreateInvite": "Не удалось создать приглашение",
@@ -1241,7 +1275,9 @@
           "importFromExcel": "Импорт из Excel",
           "planLimitGeneric": "Превышен лимит детей по текущему тарифу.",
           "previewFailed": "Не удалось прочитать файл",
-          "commitFailed": "Не удалось выполнить импорт"
+          "commitFailed": "Не удалось выполнить импорт",
+          "csvColChildName": "Имя ребёнка",
+          "csvColLink": "Ссылка"
         }
       },
       "onboarding": {
@@ -1643,6 +1679,7 @@
         "errorSelectOne": "Выберите хотя бы один пункт оценки",
         "errorGenerate": "Не удалось сгенерировать отчёт. Попробуйте ещё раз.",
         "errorSend": "Не удалось отправить отчёт. Попробуйте ещё раз.",
+        "errorSaveDraft": "Не удалось сохранить черновик. Попробуйте ещё раз.",
         "buttonLabel": "AI Отчёт",
         "sentSuccess": "Отчёт отправлен родителю"
       },
@@ -1659,6 +1696,15 @@
         "trialExpires": "Пробный период заканчивается",
         "trialActive": "Активен",
         "trialExpired": "Пробный период истёк",
+        "billingBadge": {
+          "freeTrial": "Бесплатный период",
+          "active": "Активен",
+          "pastDue": "Требуется оплата",
+          "expired": "Пробный период истёк",
+          "cancelled": "Отменена",
+          "suspended": "Приостановлена",
+          "daysLeft": "осталось {days} дн."
+        },
         "loadingStatus": "Проверяем статус оплаты...",
         "trialIncludes": "Входит в пробный период",
         "upgradePlan": "Обновить план",
@@ -1792,7 +1838,14 @@
         "deleteConfirm": "Удалить этот филиал?",
         "loadError": "Не удалось загрузить филиалы.",
         "saveError": "Не удалось сохранить филиал.",
-        "deleteError": "Не удалось удалить филиал."
+        "deleteError": "Не удалось удалить филиал.",
+        "revenueThisMonthLabel": "Выручка за месяц",
+        "unpaidInvoicesLabel": "Неоплаченные счета",
+        "teamInBranchesLabel": "Сотрудников в филиалах",
+        "leadsStat": "{leads} заявок · {rate}%",
+        "activeProgramsStat": "{count} активных программ",
+        "unpaidStat": "{count} неоплачено",
+        "teamStat": "{count} сотрудников"
       },
       "finance": {
         "title": "Посещаемость и платежи",
@@ -1905,7 +1958,75 @@
         "noProfile": "Нет плана оплаты",
         "perMonth": "мес",
         "showAllInvoices": "Показать все {count, plural, one {счёт} few {счёта} other {счетов}}",
-        "hideInvoices": "Свернуть"
+        "hideInvoices": "Свернуть",
+        "invoiceDetail": {
+          "backToInvoices": "К списку счетов",
+          "titlePaid": "Оплата получена",
+          "messagePaid": "Платёж успешно проведён. Статус счёта обновлён.",
+          "titlePending": "Ожидание подтверждения",
+          "messagePending": "Платёж обрабатывается. Статус обновится автоматически.",
+          "titleFailed": "Платёж не прошёл",
+          "messageFailed": "Произошла ошибка при обработке платежа. Попробуйте ещё раз.",
+          "titleExpired": "Срок оплаты истёк",
+          "messageExpired": "Время для оплаты этого счёта истекло. Обратитесь в организацию.",
+          "titleCanceled": "Счёт отменён",
+          "messageCanceled": "Этот счёт был отменён.",
+          "titleDefault": "Детали счёта",
+          "labelDescription": "Описание",
+          "labelPaidAt": "Оплачено",
+          "loadFailed": "Не удалось загрузить данные счёта.",
+          "waitingBankConfirmation": "Ожидаем подтверждения от банка…",
+          "refreshStatus": "Обновить статус"
+        }
+      },
+      "leads": {
+        "title": "Заявки",
+        "subtitle": "Воронка обращений от родителей — из маркетплейса и вручную",
+        "addLead": "Добавить заявку",
+        "totalLeads": "Всего заявок",
+        "conversionRate": "Конверсия",
+        "branchLabel": "Филиал:",
+        "allBranches": "Все филиалы",
+        "noBranch": "Без филиала",
+        "empty": "Пусто",
+        "loadFailed": "Не удалось загрузить заявки",
+        "statusChangeFailed": "Не удалось изменить статус",
+        "childPrefix": "Ребёнок",
+        "interestedPrefix": "Интересует",
+        "statuses": {
+          "new": "Новые",
+          "contacted": "Связались",
+          "trial_booked": "Пробное занятие",
+          "active_client": "Активный клиент",
+          "lost": "Отказ"
+        },
+        "sources": {
+          "marketplace": "Маркетплейс",
+          "manual": "Вручную",
+          "referral": "Рекомендация"
+        },
+        "modal": {
+          "statusLabel": "Статус",
+          "branchLabel": "Филиал",
+          "notesLabel": "Заметки",
+          "cancel": "Отмена",
+          "save": "Сохранить"
+        },
+        "newLead": {
+          "title": "Новая заявка",
+          "parentNameLabel": "Имя родителя *",
+          "phoneLabel": "Телефон *",
+          "phonePlaceholder": "+996 XXX XXX XXX",
+          "emailLabel": "Email",
+          "childLabel": "Ребёнок",
+          "branchLabel": "Филиал",
+          "programInterestLabel": "Интересует программа",
+          "notesLabel": "Заметки",
+          "errorRequired": "Укажите имя родителя и телефон",
+          "errorCreateFailed": "Не удалось создать заявку",
+          "cancel": "Отмена",
+          "create": "Создать"
+        }
       },
       "common": {
         "loading": "Загрузка...",
@@ -2256,7 +2377,21 @@
           "cancel": "Назад"
         },
         "errorOpenEnrollment": "Не удалось открыть набор. Попробуйте ещё раз.",
-        "errorCancelCohort": "Не удалось отменить набор"
+        "errorCancelCohort": "Не удалось отменить набор",
+        "branchFilterLabel": "Филиал:",
+        "allBranches": "Все филиалы",
+        "archiveTitle": "Архив",
+        "deleteCohortButton": "Удалить",
+        "hardDeleteCohort": {
+          "title": "Удалить набор навсегда?",
+          "subtitle": "Это действие необратимо",
+          "description": "Набор «{title}» и все связанные данные будут удалены без возможности восстановления.",
+          "confirm": "Удалить навсегда",
+          "cancel": "Отмена",
+          "error": "Не удалось удалить набор"
+        },
+        "cancelCohortDescription": "Набор «{title}» будет отмечен как отменённый. Участники останутся в системе.",
+        "yearsOld": "лет"
       },
       "brand": {
         "title": "Настройки бренда",
@@ -2352,6 +2487,10 @@
     "common": {
       "loading": "Загрузка...",
       "checkingAuth": "Проверка входа...",
+      "upgradeScreen": {
+        "tryCta": "Попробовать Nuroo Business →",
+        "includesNote": "Включает все возможности Nuroo + инструменты для организации"
+      },
       "alertDialog": {
         "ok": "OK",
         "confirmTitle": "Подтверждение",
@@ -2479,7 +2618,12 @@
     "locale": "Язык",
     "en": "English",
     "ru": "Русский",
-    "ky": "Кыргызча"
+    "ky": "Кыргызча",
+    "dateTimePicker": {
+      "selectDateTime": "Выберите дату и время",
+      "time": "Время",
+      "done": "Готово"
+    }
   },
   "legalPage": {
     "terms": {

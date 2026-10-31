@@ -34,11 +34,18 @@ type HeroCard = {
   href: string
 }
 
+type HeroCardLabels = {
+  defaultRole: string
+  priceFromPrefix: string
+  onlineBooking: string
+  newBadge: string
+}
+
 const MARKETPLACE_TABS = [
-  { id: 'centers', label: 'Центры' },
-  { id: 'specialists', label: 'Специалисты' },
-  { id: 'programs', label: 'Программы' },
-  { id: 'events', label: 'Мероприятия' },
+  { id: 'centers', labelKey: 'tabCenters' },
+  { id: 'specialists', labelKey: 'tabSpecialists' },
+  { id: 'programs', labelKey: 'tabPrograms' },
+  { id: 'events', labelKey: 'tabEvents' },
 ] as const
 
 const HERO_CENTER_CARDS: Array<Omit<HeroCard, 'href'>> = [
@@ -70,7 +77,7 @@ const HERO_CENTER_CARDS: Array<Omit<HeroCard, 'href'>> = [
 
 const SLOTS = ['10:00', '11:30', '16:00', '17:30']
 
-function getHeroCards(orgs: LandingOrg[]): HeroCard[] {
+function getHeroCards(orgs: LandingOrg[], locale: string, labels: HeroCardLabels): HeroCard[] {
   const centers = orgs.filter((org) => org.plan !== 'nuroo')
   const realCards = centers.slice(0, 3).map((org) => {
     const hasCover = Boolean(org.coverImageUrl)
@@ -79,11 +86,11 @@ function getHeroCards(orgs: LandingOrg[]): HeroCard[] {
       src: org.coverImageUrl || org.logoUrl || '/hero-center.png',
       imageMode: hasCover ? 'cover' : 'logo',
       name: org.name,
-      role: org.categories?.[0] || 'Детский центр',
+      role: org.categories?.[0] || labels.defaultRole,
       price: org.priceFrom
-        ? `от ${org.priceFrom.toLocaleString('ru-RU')} ${org.currency || 'KGS'}`
-        : 'Онлайн-запись',
-      rating: org.averageRating > 0 ? org.averageRating.toFixed(1) : 'Новый',
+        ? `${labels.priceFromPrefix} ${org.priceFrom.toLocaleString(locale)} ${org.currency || 'KGS'}`
+        : labels.onlineBooking,
+      rating: org.averageRating > 0 ? org.averageRating.toFixed(1) : labels.newBadge,
       href: `/marketplace/${org.id}`,
     } satisfies HeroCard
   })
@@ -126,7 +133,12 @@ function HeroImage({
 export async function Hero({ marketplace }: { marketplace?: LandingMarketplaceData }) {
   const t = await getTranslations('landing.hero')
   const locale = await getLocale()
-  const heroCards = getHeroCards(marketplace?.orgs ?? [])
+  const heroCards = getHeroCards(marketplace?.orgs ?? [], locale, {
+    defaultRole: t('defaultRole'),
+    priceFromPrefix: t('priceFromPrefix'),
+    onlineBooking: t('onlineBooking'),
+    newBadge: t('newBadge'),
+  })
 
   return (
     <section className="relative pt-28 pb-0 md:pt-32 bg-white dark:bg-gray-950 overflow-hidden">
@@ -184,11 +196,9 @@ export async function Hero({ marketplace }: { marketplace?: LandingMarketplaceDa
             {/* Search bar */}
             <div className="w-full bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-800 px-4 py-3 flex items-center gap-3">
               <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
-              <span className="text-sm text-gray-400 flex-1">
-                Поиск центров, специалистов, программ...
-              </span>
+              <span className="text-sm text-gray-400 flex-1">{t('searchPlaceholder')}</span>
               <span className="hidden sm:inline-flex items-center px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-semibold">
-                Бишкек
+                {t('cityBishkek')}
               </span>
             </div>
 
@@ -205,7 +215,7 @@ export async function Hero({ marketplace }: { marketplace?: LandingMarketplaceDa
                       : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-900 hover:border-teal-300 hover:text-teal-600'
                   }`}
                 >
-                  {tab.label}
+                  {t(tab.labelKey)}
                 </Link>
               ))}
             </div>
@@ -265,7 +275,7 @@ export async function Hero({ marketplace }: { marketplace?: LandingMarketplaceDa
               {/* Booking calendar */}
               <div className="w-[140px] flex-shrink-0 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-3 shadow-sm">
                 <div className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 mb-2">
-                  Выберите время
+                  {t('selectTime')}
                 </div>
                 {/* Mini calendar header */}
                 <div className="flex items-center justify-between mb-1.5">
@@ -309,7 +319,7 @@ export async function Hero({ marketplace }: { marketplace?: LandingMarketplaceDa
                   ))}
                 </div>
                 <button className="w-full mt-2 py-1.5 rounded-lg bg-teal-600 text-white text-[9px] font-semibold">
-                  Записаться
+                  {t('bookCta')}
                 </button>
               </div>
             </div>
@@ -321,15 +331,13 @@ export async function Hero({ marketplace }: { marketplace?: LandingMarketplaceDa
               </div>
               <div>
                 <div className="text-xs font-semibold text-gray-900 dark:text-white">
-                  Запись подтверждена!
+                  {t('bookingConfirmed')}
                 </div>
-                <div className="text-[10px] text-gray-400">
-                  17:30 · Сегодня · Айзада М. · Логопед
-                </div>
+                <div className="text-[10px] text-gray-400">{t('bookingConfirmedDetail')}</div>
               </div>
               <div className="ml-2 flex flex-col gap-1">
-                <div className="text-[9px] text-teal-600 font-medium">Открыть встречу</div>
-                <div className="text-[9px] text-gray-400">Добавить в календарь</div>
+                <div className="text-[9px] text-teal-600 font-medium">{t('openMeeting')}</div>
+                <div className="text-[9px] text-gray-400">{t('addToCalendar')}</div>
               </div>
             </div>
           </div>

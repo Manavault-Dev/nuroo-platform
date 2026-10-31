@@ -524,7 +524,7 @@ export default function InvitesPage() {
                         <div className="space-y-2">
                           <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
                             <Smartphone className="w-3.5 h-3.5" />
-                            Branded parent link
+                            {t('brandedParentLink')}
                           </p>
                           <div className="flex gap-2">
                             <input

@@ -20,7 +20,23 @@
       "ctaSecondary": "I'm a specialist or organization",
       "trustLine": "Specialists · Child Centers · Programs · Workshops · Consultations",
       "eyebrow": "Nuroo Marketplace",
-      "headline": "Everything for your child's development — in one place"
+      "headline": "Everything for your child's development — in one place",
+      "searchPlaceholder": "Search centers, specialists, programs...",
+      "cityBishkek": "Bishkek",
+      "tabCenters": "Centers",
+      "tabSpecialists": "Specialists",
+      "tabPrograms": "Programs",
+      "tabEvents": "Events",
+      "selectTime": "Select time",
+      "bookCta": "Book",
+      "bookingConfirmed": "Booking confirmed!",
+      "bookingConfirmedDetail": "17:30 · Today · Aizada M. · Speech therapist",
+      "openMeeting": "Open meeting",
+      "addToCalendar": "Add to calendar",
+      "defaultRole": "Child center",
+      "priceFromPrefix": "from",
+      "onlineBooking": "Online booking",
+      "newBadge": "New"
     },
     "pricing": {
       "badge": "Simple pricing",
@@ -219,7 +235,18 @@
       "s2tryCta": "Try the interactive mockup: choose a date and time slot",
       "s3eyebrow": "Groups, programs & events",
       "s3title": "Development activities for every child",
-      "s3subtitle": "Join groups, courses and workshops. Track the schedule and your child's progress."
+      "s3subtitle": "Join groups, courses and workshops. Track the schedule and your child's progress.",
+      "viewAllCenters": "View all centers",
+      "viewAllSpecialists": "View specialists",
+      "viewAll": "View all",
+      "free": "Free",
+      "perMonthSuffix": "/mo",
+      "ageFrom": "from {age} y.o.",
+      "ageRange": "{min}-{max} y.o.",
+      "spotsLeft": "{count} spots left",
+      "enrollmentOpen": "Enrollment open",
+      "spotsLeftEvent": "{count} left",
+      "registrationOpen": "Registration open"
     },
     "dashboard": {
       "eyebrow": "Nuroo Business",
@@ -652,7 +679,12 @@
         "blockedCount": "{count} blocked",
         "closeAll": "Close all",
         "openAll": "Open all",
-        "noSlots": "No slots"
+        "noSlots": "No slots",
+        "branchFilterLabel": "Branch:",
+        "allBranches": "All branches",
+        "workingHoursHint": "Set working days and hours",
+        "partiallyBlockedLegend": "Partial",
+        "closedLegend": "Closed"
       },
       "children": {
         "title": "Your children",
@@ -990,7 +1022,8 @@
             "teeth": "Brush their teeth"
           }
         },
-        "editName": "Edit name"
+        "editName": "Edit name",
+        "guardianDeleteError": "Failed to delete the contact. Please try again."
       },
       "integrations": {
         "title": "Integrations",
@@ -1189,6 +1222,7 @@
         "createParentInviteBtn": "Create Parent Invite",
         "parent": "Parent",
         "shareWithParents": "Share this code with parents to connect them to your organization",
+        "brandedParentLink": "Branded parent link",
         "inviteCodeForApp": "Invite Code (for mobile app):",
         "copyCodeBtn": "Copy Code",
         "failedCreateInvite": "Failed to create invite code",
@@ -1241,7 +1275,9 @@
           "importFromExcel": "Import from Excel",
           "planLimitGeneric": "This exceeds your plan's child limit.",
           "previewFailed": "Failed to read the file",
-          "commitFailed": "Failed to import"
+          "commitFailed": "Failed to import",
+          "csvColChildName": "Child name",
+          "csvColLink": "Link"
         }
       },
       "onboarding": {
@@ -1643,6 +1679,7 @@
         "errorSelectOne": "Select at least one assessment item",
         "errorGenerate": "Failed to generate report. Please try again.",
         "errorSend": "Failed to send report. Please try again.",
+        "errorSaveDraft": "Failed to save draft. Please try again.",
         "buttonLabel": "AI Report",
         "sentSuccess": "Report sent to parent"
       },
@@ -1659,6 +1696,15 @@
         "trialExpires": "Trial ends",
         "trialActive": "Active",
         "trialExpired": "Free trial expired",
+        "billingBadge": {
+          "freeTrial": "Free Trial",
+          "active": "Active",
+          "pastDue": "Payment Required",
+          "expired": "Trial Expired",
+          "cancelled": "Cancelled",
+          "suspended": "Suspended",
+          "daysLeft": "{days}d left"
+        },
         "loadingStatus": "Checking billing status...",
         "trialIncludes": "Included in your trial",
         "upgradePlan": "Upgrade Plan",
@@ -1792,7 +1838,14 @@
         "deleteConfirm": "Delete this branch?",
         "loadError": "Failed to load branches.",
         "saveError": "Failed to save branch.",
-        "deleteError": "Failed to delete branch."
+        "deleteError": "Failed to delete branch.",
+        "revenueThisMonthLabel": "Revenue this month",
+        "unpaidInvoicesLabel": "Unpaid invoices",
+        "teamInBranchesLabel": "Staff across branches",
+        "leadsStat": "{leads} leads · {rate}%",
+        "activeProgramsStat": "{count} active programs",
+        "unpaidStat": "{count} unpaid",
+        "teamStat": "{count} team members"
       },
       "finance": {
         "title": "Attendance and payments",
@@ -1905,7 +1958,75 @@
         "noProfile": "No payment plan",
         "perMonth": "mo",
         "showAllInvoices": "Show all {count, plural, one {invoice} other {invoices}}",
-        "hideInvoices": "Collapse"
+        "hideInvoices": "Collapse",
+        "invoiceDetail": {
+          "backToInvoices": "Back to invoices",
+          "titlePaid": "Payment received",
+          "messagePaid": "The payment was processed successfully. The invoice status has been updated.",
+          "titlePending": "Awaiting confirmation",
+          "messagePending": "The payment is being processed. The status will update automatically.",
+          "titleFailed": "Payment failed",
+          "messageFailed": "An error occurred while processing the payment. Please try again.",
+          "titleExpired": "Payment deadline passed",
+          "messageExpired": "The payment window for this invoice has expired. Please contact the organization.",
+          "titleCanceled": "Invoice canceled",
+          "messageCanceled": "This invoice was canceled.",
+          "titleDefault": "Invoice details",
+          "labelDescription": "Description",
+          "labelPaidAt": "Paid at",
+          "loadFailed": "Failed to load invoice details.",
+          "waitingBankConfirmation": "Waiting for bank confirmation…",
+          "refreshStatus": "Refresh status"
+        }
+      },
+      "leads": {
+        "title": "Leads",
+        "subtitle": "Inquiry pipeline from parents — from the marketplace and added manually",
+        "addLead": "Add Lead",
+        "totalLeads": "Total Leads",
+        "conversionRate": "Conversion",
+        "branchLabel": "Branch:",
+        "allBranches": "All branches",
+        "noBranch": "No branch",
+        "empty": "Empty",
+        "loadFailed": "Failed to load leads",
+        "statusChangeFailed": "Failed to change status",
+        "childPrefix": "Child",
+        "interestedPrefix": "Interested in",
+        "statuses": {
+          "new": "New",
+          "contacted": "Contacted",
+          "trial_booked": "Trial Booked",
+          "active_client": "Active Client",
+          "lost": "Lost"
+        },
+        "sources": {
+          "marketplace": "Marketplace",
+          "manual": "Manual",
+          "referral": "Referral"
+        },
+        "modal": {
+          "statusLabel": "Status",
+          "branchLabel": "Branch",
+          "notesLabel": "Notes",
+          "cancel": "Cancel",
+          "save": "Save"
+        },
+        "newLead": {
+          "title": "New Lead",
+          "parentNameLabel": "Parent's name *",
+          "phoneLabel": "Phone *",
+          "phonePlaceholder": "+996 XXX XXX XXX",
+          "emailLabel": "Email",
+          "childLabel": "Child",
+          "branchLabel": "Branch",
+          "programInterestLabel": "Program of interest",
+          "notesLabel": "Notes",
+          "errorRequired": "Enter the parent's name and phone number",
+          "errorCreateFailed": "Failed to create lead",
+          "cancel": "Cancel",
+          "create": "Create"
+        }
       },
       "common": {
         "loading": "Loading...",
@@ -2256,7 +2377,21 @@
           "cancel": "Back"
         },
         "errorOpenEnrollment": "Failed to open enrollment. Please try again.",
-        "errorCancelCohort": "Failed to cancel enrollment"
+        "errorCancelCohort": "Failed to cancel enrollment",
+        "branchFilterLabel": "Branch:",
+        "allBranches": "All branches",
+        "archiveTitle": "Archive",
+        "deleteCohortButton": "Delete",
+        "hardDeleteCohort": {
+          "title": "Delete this cohort permanently?",
+          "subtitle": "This action cannot be undone",
+          "description": "The cohort \"{title}\" and all related data will be permanently deleted.",
+          "confirm": "Delete permanently",
+          "cancel": "Cancel",
+          "error": "Failed to delete the cohort"
+        },
+        "cancelCohortDescription": "The cohort \"{title}\" will be marked as cancelled. Enrolled participants will remain in the system.",
+        "yearsOld": "yo"
       },
       "brand": {
         "title": "Brand Settings",
@@ -2352,6 +2487,10 @@
     "common": {
       "loading": "Loading...",
       "checkingAuth": "Checking authentication...",
+      "upgradeScreen": {
+        "tryCta": "Try Nuroo Business →",
+        "includesNote": "Includes everything in Nuroo + tools for your organization"
+      },
       "alertDialog": {
         "ok": "OK",
         "confirmTitle": "Confirmation",
@@ -2479,7 +2618,12 @@
     "locale": "Language",
     "en": "English",
     "ru": "Русский",
-    "ky": "Кыргызча"
+    "ky": "Кыргызча",
+    "dateTimePicker": {
+      "selectDateTime": "Select date and time",
+      "time": "Time",
+      "done": "Done"
+    }
   },
   "legalPage": {
     "terms": {

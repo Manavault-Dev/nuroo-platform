@@ -324,11 +324,22 @@ function BookingsTab({
   ]
 
   useEffect(() => {
+    let cancelled = false
     setLoading(true)
     apiClient
       .getOrgBookings(orgId, filter || undefined, specialistId, branchFilter || undefined)
-      .then((res) => setBookings(res.bookings as Booking[]))
-      .finally(() => setLoading(false))
+      .then((res) => {
+        if (!cancelled) setBookings(res.bookings as Booking[])
+      })
+      .catch(() => {
+        if (!cancelled) setBookings([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [orgId, filter, specialistId, branchFilter])
 
   useEffect(() => {
@@ -401,13 +412,13 @@ function BookingsTab({
       {isAdmin && branches.length > 0 && (
         <div className="flex items-center gap-2">
           <GitBranch className="w-4 h-4 text-gray-400" />
-          <span className="text-sm text-gray-500">Филиал:</span>
+          <span className="text-sm text-gray-500">{t('branchFilterLabel')}</span>
           <select
             value={branchFilter}
             onChange={(e) => setBranchFilter(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
           >
-            <option value="">Все филиалы</option>
+            <option value="">{t('allBranches')}</option>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -556,7 +567,11 @@ function ServicesTab({
       setTeam([])
       return
     }
-    await apiClient.getTeam(orgId).then(setTeam)
+    try {
+      await apiClient.getTeam(orgId).then(setTeam)
+    } catch {
+      setTeam([])
+    }
   }, [orgId, isAdmin])
 
   const loadServices = useCallback(async () => {
@@ -1299,6 +1314,7 @@ function ScheduleTab({
   specialistId?: string
 }) {
   const t = useTranslations('b2b.pages.bookings')
+  const locale = useLocale()
 
   // ── Schedule state ───────────────────────────────────────────────────────────
   const [team, setTeam] = useState<TeamMember[]>([])
@@ -1418,7 +1434,7 @@ function ScheduleTab({
   const nextMonth = () =>
     viewMonth === 11 ? (setViewYear((y) => y + 1), setViewMonth(0)) : setViewMonth((m) => m + 1)
 
-  const monthLabel = new Intl.DateTimeFormat('ru', {
+  const monthLabel = new Intl.DateTimeFormat(locale, {
     month: 'long',
     year: 'numeric',
   }).format(new Date(viewYear, viewMonth, 1))
@@ -1482,7 +1498,7 @@ function ScheduleTab({
 
   const selectedSlots = selectedDate ? slotsForDate(selectedDate) : null
   const selectedDayLabel = selectedDate
-    ? new Intl.DateTimeFormat('ru', {
+    ? new Intl.DateTimeFormat(locale, {
         weekday: 'long',
         day: 'numeric',
         month: 'long',
@@ -1544,7 +1560,7 @@ function ScheduleTab({
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
                 <h3 className="text-sm font-bold text-gray-900">{t('workingHoursTitle')}</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Укажите дни и часы работы</p>
+                <p className="text-xs text-gray-400 mt-0.5">{t('workingHoursHint')}</p>
               </div>
               <div className="flex items-center gap-3">
                 {saved && (
@@ -1753,10 +1769,11 @@ function ScheduleTab({
                     <div className="flex gap-4 mt-4 pt-3 border-t border-gray-100">
                       <span className="flex items-center gap-1.5 text-[11px] text-gray-400">
                         <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />{' '}
-                        Частично
+                        {t('partiallyBlockedLegend')}
                       </span>
                       <span className="flex items-center gap-1.5 text-[11px] text-gray-400">
-                        <span className="w-2 h-2 rounded-full bg-red-400 flex-shrink-0" /> Закрыт
+                        <span className="w-2 h-2 rounded-full bg-red-400 flex-shrink-0" />{' '}
+                        {t('closedLegend')}
                       </span>
                     </div>
                   </div>
@@ -1766,8 +1783,8 @@ function ScheduleTab({
                     {!selectedDate ? (
                       <div className="flex flex-col items-center justify-center h-full min-h-[180px] rounded-2xl border-2 border-dashed border-gray-100 text-center px-6">
                         <Calendar className="w-8 h-8 text-gray-200 mb-2" />
-                        <p className="text-sm font-semibold text-gray-400">Выберите дату</p>
-                        <p className="text-xs text-gray-300 mt-1">Нажмите на рабочий день</p>
+                        <p className="text-sm font-semibold text-gray-400">{t('selectDateHint')}</p>
+                        <p className="text-xs text-gray-300 mt-1">{t('selectDateSubhint')}</p>
                       </div>
                     ) : (
                       <div className="space-y-3">

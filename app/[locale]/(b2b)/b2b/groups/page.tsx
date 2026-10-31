@@ -162,14 +162,21 @@ export default function GroupsPage() {
   // ─── Auth ───────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!authLoading && !profile) {
+    if (authLoading) return
+    if (!profile) {
       router.push('/b2b/login')
       return
     }
-    if (!authLoading && profile && resolvedOrgId) {
-      setOrgId(resolvedOrgId)
-      loadGroups(resolvedOrgId).finally(() => setLoading(false))
+    if (!resolvedOrgId) {
+      if (!profile.organizations?.length) {
+        router.push('/b2b/onboarding')
+      } else {
+        setLoading(false)
+      }
+      return
     }
+    setOrgId(resolvedOrgId)
+    loadGroups(resolvedOrgId).finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, profile, resolvedOrgId, router])
 

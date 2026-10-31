@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useState } from 'react'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { apiClient } from '@/lib/b2b/api'
 import { useAlert } from '@/components/ui/AlertDialog'
 import { Select } from '@/components/ui/Select'
@@ -84,6 +84,8 @@ export function ContentManagement({
   pageSubtitle,
 }: ContentManagementProps) {
   const t = useTranslations('b2b.pages.assignments')
+  const locale = useLocale()
+  const dateLocale = locale === 'ru' ? 'ru-RU' : locale === 'ky' ? 'ky-KG' : 'en-US'
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<ContentType>('tasks')
   const [visibleItemCount, setVisibleItemCount] = useState(ITEMS_PAGE_SIZE)
@@ -1391,7 +1393,7 @@ export function ContentManagement({
                   {item.createdAt && (
                     <div className="pt-2 border-t border-gray-100">
                       <span className="font-medium">{t('createdLabel')}:</span>{' '}
-                      {new Date(item.createdAt).toLocaleDateString()}
+                      {new Date(item.createdAt).toLocaleDateString(dateLocale)}
                     </div>
                   )}
                 </div>

@@ -441,6 +441,7 @@ function LessonModal({
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const set =
     (k: keyof Lesson) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
@@ -478,8 +479,11 @@ function LessonModal({
   const handleSave = async () => {
     if (!form.title?.trim()) return
     setSaving(true)
+    setSaveError(null)
     try {
       await onSave(moduleId, form)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Не удалось сохранить урок')
     } finally {
       setSaving(false)
     }
@@ -596,6 +600,9 @@ function LessonModal({
               onUpload={(file) => handleUpload(file, 'lesson-pdf', 20)}
               onClear={() => setForm((p) => ({ ...p, pdfUrl: '', pdfName: '' }))}
             />
+          )}
+          {saveError && (
+            <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{saveError}</p>
           )}
         </div>
         <div className="flex gap-3 p-5 border-t border-gray-100">
@@ -855,11 +862,15 @@ function ModuleModal({
 }) {
   const [form, setForm] = useState({ title: mod?.title ?? '', description: mod?.description ?? '' })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const handleSave = async () => {
     if (!form.title.trim()) return
     setSaving(true)
+    setError(null)
     try {
       await onSave({ ...mod, ...form })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось сохранить модуль')
     } finally {
       setSaving(false)
     }
@@ -895,6 +906,7 @@ function ModuleModal({
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"
             />
           </div>
+          {error && <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
         </div>
         <div className="flex gap-3 p-5 border-t border-gray-100">
           <button
@@ -1034,10 +1046,14 @@ export default function CourseEditorPage() {
     if (!orgId) return
     const ok = await confirm(`Удалить модуль «${mod.title}» и все его уроки?`)
     if (!ok) return
-    await apiClient.deleteCourseModule(orgId, courseId, mod.id)
-    setCourse((prev) =>
-      prev ? { ...prev, modules: prev.modules.filter((m) => m.id !== mod.id) } : prev
-    )
+    try {
+      await apiClient.deleteCourseModule(orgId, courseId, mod.id)
+      setCourse((prev) =>
+        prev ? { ...prev, modules: prev.modules.filter((m) => m.id !== mod.id) } : prev
+      )
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Не удалось удалить модуль', { type: 'error' })
+    }
   }
 
   const handleReorderModules = async (modules: (CourseModule & { lessons: Lesson[] })[]) => {
@@ -1138,22 +1154,26 @@ export default function CourseEditorPage() {
     if (!orgId) return
     const ok = await confirm(`Удалить урок «${lesson.title}»?`)
     if (!ok) return
-    await apiClient.deleteCourseLesson(orgId, courseId, moduleId, lesson.id)
-    setCourse((prev) =>
-      prev
-        ? {
-            ...prev,
-            modules: prev.modules.map((m) =>
-              m.id === moduleId
-                ? {
-                    ...m,
-                    lessons: m.lessons.filter((l) => l.id !== lesson.id),
-                  }
-                : m
-            ),
-          }
-        : prev
-    )
+    try {
+      await apiClient.deleteCourseLesson(orgId, courseId, moduleId, lesson.id)
+      setCourse((prev) =>
+        prev
+          ? {
+              ...prev,
+              modules: prev.modules.map((m) =>
+                m.id === moduleId
+                  ? {
+                      ...m,
+                      lessons: m.lessons.filter((l) => l.id !== lesson.id),
+                    }
+                  : m
+              ),
+            }
+          : prev
+      )
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Не удалось удалить урок', { type: 'error' })
+    }
   }
 
   if (isLoading || loading) return <PageSpinner />

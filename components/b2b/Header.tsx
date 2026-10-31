@@ -46,8 +46,12 @@ export function Header({ profile, isSidebarOpen = false, onMenuClick }: HeaderPr
   const t = useTranslations('b2b.header')
 
   const handleSignOut = async () => {
-    await logout()
-    router.push('/b2b/login')
+    try {
+      await logout()
+    } catch {
+    } finally {
+      router.push('/b2b/login')
+    }
   }
 
   const pathForMatch = pathname.replace(/^\/[a-z]{2}(?=\/|$)/, '') || pathname

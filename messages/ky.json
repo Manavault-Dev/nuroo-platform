@@ -20,7 +20,23 @@
       "ctaSecondary": "Мен адиспин же уюмман",
       "trustLine": "Адистер · Балдар борборлору · Программалар · Мастер-класстар",
       "eyebrow": "Nuroo Маркетплейс",
-      "headline": "Баланын өнүгүүсү үчүн баары — бир жерде"
+      "headline": "Баланын өнүгүүсү үчүн баары — бир жерде",
+      "searchPlaceholder": "Борборлордон, адистерден, программалардан издөө...",
+      "cityBishkek": "Бишкек",
+      "tabCenters": "Борборлор",
+      "tabSpecialists": "Адистер",
+      "tabPrograms": "Программалар",
+      "tabEvents": "Иш-чаралар",
+      "selectTime": "Убакытты тандаңыз",
+      "bookCta": "Жазылуу",
+      "bookingConfirmed": "Жазылуу ырасталды!",
+      "bookingConfirmedDetail": "17:30 · Бүгүн · Айзада М. · Логопед",
+      "openMeeting": "Жолугушууну ачуу",
+      "addToCalendar": "Календарга кошуу",
+      "defaultRole": "Балдар борбору",
+      "priceFromPrefix": "баасы",
+      "onlineBooking": "Онлайн жазылуу",
+      "newBadge": "Жаңы"
     },
     "pricing": {
       "badge": "Жөнөкөй баалоо",
@@ -219,7 +235,18 @@
       "s2tryCta": "Интерактивдик мокапты сынаңыз: күн жана убакыт тандаңыз",
       "s3eyebrow": "Топтор, программалар жана иш-чаралар",
       "s3title": "Ар бир бала үчүн өнүктүрүүчү сабактар",
-      "s3subtitle": "Топторго, курстарга жана мастер-кластарга жазылыңыз. Расписаниени жана прогрессти байкаңыз."
+      "s3subtitle": "Топторго, курстарга жана мастер-кластарга жазылыңыз. Расписаниени жана прогрессти байкаңыз.",
+      "viewAllCenters": "Бардык борборлорду көрүү",
+      "viewAllSpecialists": "Адистерди көрүү",
+      "viewAll": "Баарын көрүү",
+      "free": "Бекер",
+      "perMonthSuffix": "/ай",
+      "ageFrom": "{age} жаштан",
+      "ageRange": "{min}-{max} жашар",
+      "spotsLeft": "{count} орун",
+      "enrollmentOpen": "Жазылуу жүрөт",
+      "spotsLeftEvent": "{count} орун калды",
+      "registrationOpen": "Каттоо ачык"
     },
     "dashboard": {
       "eyebrow": "Nuroo Business",
@@ -652,7 +679,12 @@
         "blockedCount": "{count} жабык",
         "closeAll": "Баарын жабуу",
         "openAll": "Баарын ачуу",
-        "noSlots": "Слоттор жок"
+        "noSlots": "Слоттор жок",
+        "branchFilterLabel": "Филиал:",
+        "allBranches": "Бардык филиалдар",
+        "workingHoursHint": "Иш күндөрүн жана саатын көрсөтүңүз",
+        "partiallyBlockedLegend": "Жарым-жартылай",
+        "closedLegend": "Жабык"
       },
       "children": {
         "title": "Сиздин балдарыңыз",
@@ -990,7 +1022,8 @@
             "teeth": "Тиш чистит"
           }
         },
-        "editName": "Атын өзгөртүү"
+        "editName": "Атын өзгөртүү",
+        "guardianDeleteError": "Байланышты өчүрүү мүмкүн болбоду. Кайра аракет кылыңыз."
       },
       "integrations": {
         "title": "Интеграциялар",
@@ -1189,6 +1222,7 @@
         "createParentInviteBtn": "Ата-эне чакыруусун түзүү",
         "parent": "Ата-эне",
         "shareWithParents": "Уюмга туташтыруу үчүн ата-энелер менен бөлүшүңүз",
+        "brandedParentLink": "Ата-энелер үчүн фирмалык шилтеме",
         "inviteCodeForApp": "Чакыруу коду (тиркеме үчүн):",
         "copyCodeBtn": "Кодду көчүрүү",
         "failedCreateInvite": "Чакыруу түзүлбөдү",
@@ -1241,7 +1275,9 @@
           "importFromExcel": "Excel'ден импорттоо",
           "planLimitGeneric": "Учурдагы тарифте балдардын чеги ашты.",
           "previewFailed": "Файлды окуу мүмкүн болгон жок",
-          "commitFailed": "Импорттоо ишке ашкан жок"
+          "commitFailed": "Импорттоо ишке ашкан жок",
+          "csvColChildName": "Баланын аты",
+          "csvColLink": "Шилтеме"
         }
       },
       "onboarding": {
@@ -1643,6 +1679,7 @@
         "errorSelectOne": "Жок дегенде бир баалоо пунктун тандаңыз",
         "errorGenerate": "Отчёт жаратуу мүмкүн болмоду. Кайра аракет кылыңыз.",
         "errorSend": "Отчёт жөнөтүү мүмкүн болмоду. Кайра аракет кылыңыз.",
+        "errorSaveDraft": "Болжолду сактоо мүмкүн болмоду. Кайра аракет кылыңыз.",
         "buttonLabel": "AI Отчёт",
         "sentSuccess": "Отчёт ата-энеге жөнөтүлдү"
       },
@@ -1659,6 +1696,15 @@
         "trialExpires": "Сыноо мөөнөтү бүтөт",
         "trialActive": "Активдүү",
         "trialExpired": "Сыноо мөөнөтү бүттү",
+        "billingBadge": {
+          "freeTrial": "Акысыз мөөнөт",
+          "active": "Активдүү",
+          "pastDue": "Төлөм талап кылынат",
+          "expired": "Сыноо мөөнөтү бүттү",
+          "cancelled": "Жокко чыгарылды",
+          "suspended": "Токтотулду",
+          "daysLeft": "{days} күн калды"
+        },
         "loadingStatus": "Төлөм статусу текшерилип жатат...",
         "trialIncludes": "Сыноо мөөнөтүнө кирет",
         "upgradePlan": "Планды жаңылоо",
@@ -1792,7 +1838,14 @@
         "deleteConfirm": "Бул филиалды өчүрүүбү?",
         "loadError": "Филиалдарды жүктөө ишке ашкан жок.",
         "saveError": "Филиалды сактоо ишке ашкан жок.",
-        "deleteError": "Филиалды өчүрүү ишке ашкан жок."
+        "deleteError": "Филиалды өчүрүү ишке ашкан жок.",
+        "revenueThisMonthLabel": "Айлык кирешe",
+        "unpaidInvoicesLabel": "Төлөнбөгөн эсептер",
+        "teamInBranchesLabel": "Филиалдардагы кызматкерлер",
+        "leadsStat": "{leads} арыз · {rate}%",
+        "activeProgramsStat": "{count} активдүү программа",
+        "unpaidStat": "{count} төлөнбөгөн",
+        "teamStat": "{count} кызматкер"
       },
       "finance": {
         "title": "Катышуу жана төлөмдөр",
@@ -1905,7 +1958,75 @@
         "noProfile": "Төлөм планы жок",
         "perMonth": "ай",
         "showAllInvoices": "Бардык {count} эсепти көрсөтүү",
-        "hideInvoices": "Жыйноо"
+        "hideInvoices": "Жыйноо",
+        "invoiceDetail": {
+          "backToInvoices": "Эсептер тизмесине",
+          "titlePaid": "Төлөм алынды",
+          "messagePaid": "Төлөм ийгиликтүү аткарылды. Эсептин статусу жаңырды.",
+          "titlePending": "Ырастоону күтүү",
+          "messagePending": "Төлөм иштетилип жатат. Статус автоматтык түрдө жаңырат.",
+          "titleFailed": "Төлөм өтпөдү",
+          "messageFailed": "Төлөмдү иштетүүдө ката кетти. Кайра аракет кылыңыз.",
+          "titleExpired": "Төлөө мөөнөтү бүттү",
+          "messageExpired": "Бул эсеп үчүн төлөө мөөнөтү бүттү. Уюм менен байланышыңыз.",
+          "titleCanceled": "Эсеп жокко чыгарылды",
+          "messageCanceled": "Бул эсеп жокко чыгарылды.",
+          "titleDefault": "Эсеп тууралуу маалымат",
+          "labelDescription": "Сүрөттөмө",
+          "labelPaidAt": "Төлөнгөн күнү",
+          "loadFailed": "Эсеп маалыматын жүктөө ишке ашпады.",
+          "waitingBankConfirmation": "Банктан ырастоону күтөбүз…",
+          "refreshStatus": "Статусту жаңыртуу"
+        }
+      },
+      "leads": {
+        "title": "Арыздар",
+        "subtitle": "Ата-энелерден келген арыздардын тобокелдиги — маркетплейстен жана кол менен",
+        "addLead": "Арыз кошуу",
+        "totalLeads": "Бардык арыздар",
+        "conversionRate": "Конверсия",
+        "branchLabel": "Филиал:",
+        "allBranches": "Бардык филиалдар",
+        "noBranch": "Филиалсыз",
+        "empty": "Бош",
+        "loadFailed": "Арыздарды жүктөө ишке ашпады",
+        "statusChangeFailed": "Статусту өзгөртүү ишке ашпады",
+        "childPrefix": "Бала",
+        "interestedPrefix": "Кызыкдар",
+        "statuses": {
+          "new": "Жаңы",
+          "contacted": "Байланышылды",
+          "trial_booked": "Сынак сабак",
+          "active_client": "Активдүү кардар",
+          "lost": "Баш тартуу"
+        },
+        "sources": {
+          "marketplace": "Маркетплейс",
+          "manual": "Кол менен",
+          "referral": "Сунуштоо"
+        },
+        "modal": {
+          "statusLabel": "Статус",
+          "branchLabel": "Филиал",
+          "notesLabel": "Эскертүүлөр",
+          "cancel": "Жокко чыгаруу",
+          "save": "Сактоо"
+        },
+        "newLead": {
+          "title": "Жаңы арыз",
+          "parentNameLabel": "Ата-эненин аты *",
+          "phoneLabel": "Телефон *",
+          "phonePlaceholder": "+996 XXX XXX XXX",
+          "emailLabel": "Email",
+          "childLabel": "Бала",
+          "branchLabel": "Филиал",
+          "programInterestLabel": "Кызыктырган программа",
+          "notesLabel": "Эскертүүлөр",
+          "errorRequired": "Ата-эненин атын жана телефонун көрсөтүңүз",
+          "errorCreateFailed": "Арыз түзүлбөдү",
+          "cancel": "Жокко чыгаруу",
+          "create": "Түзүү"
+        }
       },
       "common": {
         "loading": "Жүктөлүп жатат...",
@@ -2256,7 +2377,21 @@
           "cancel": "Артка"
         },
         "errorOpenEnrollment": "Топтоону ачуу мүмкүн болгон жок. Кайра аракет кылыңыз.",
-        "errorCancelCohort": "Топтоону жокко чыгаруу мүмкүн болгон жок"
+        "errorCancelCohort": "Топтоону жокко чыгаруу мүмкүн болгон жок",
+        "branchFilterLabel": "Филиал:",
+        "allBranches": "Бардык филиалдар",
+        "archiveTitle": "Архив",
+        "deleteCohortButton": "Өчүрүү",
+        "hardDeleteCohort": {
+          "title": "Топту биротоло өчүрөсүзбү?",
+          "subtitle": "Бул аракетти артка кайтарууга болбойт",
+          "description": "«{title}» тобу жана анын бардык маалыматтары биротоло өчүрүлөт.",
+          "confirm": "Биротоло өчүрүү",
+          "cancel": "Жокко чыгаруу",
+          "error": "Топту өчүрүү мүмкүн болбоду"
+        },
+        "cancelCohortDescription": "«{title}» тобу жокко чыгарылган деп белгиленет. Катышуучулар тутумда калат.",
+        "yearsOld": "жашар"
       },
       "brand": {
         "title": "Бренд жөндөөлөр",
@@ -2352,6 +2487,10 @@
     "common": {
       "loading": "Жүктөлүп жатат...",
       "checkingAuth": "Кирүү текшерилип жатат...",
+      "upgradeScreen": {
+        "tryCta": "Nuroo Business байкап көрүү →",
+        "includesNote": "Nuroo мүмкүнчүлүктөрүнүн баарын + уюм үчүн каражаттарды камтыйт"
+      },
       "alertDialog": {
         "ok": "OK",
         "confirmTitle": "Ырастоо",
@@ -2479,7 +2618,12 @@
     "locale": "Тил",
     "en": "English",
     "ru": "Русский",
-    "ky": "Кыргызча"
+    "ky": "Кыргызча",
+    "dateTimePicker": {
+      "selectDateTime": "Дата жана убакытты тандаңыз",
+      "time": "Убакыт",
+      "done": "Даяр"
+    }
   },
   "legalPage": {
     "terms": {

@@ -227,7 +227,7 @@ export default function BranchesPage() {
             <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
               <div className="flex items-center gap-2 text-gray-500 text-xs font-medium mb-1.5">
                 <Wallet className="w-4 h-4 text-primary-500" />
-                Выручка за месяц
+                {t('revenueThisMonthLabel')}
               </div>
               <p className="text-xl font-bold text-gray-900">
                 {totals.revenueThisMonth.toLocaleString('ru-RU')} KGS
@@ -236,7 +236,7 @@ export default function BranchesPage() {
             <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
               <div className="flex items-center gap-2 text-gray-500 text-xs font-medium mb-1.5">
                 <AlertCircle className="w-4 h-4 text-amber-500" />
-                Неоплаченные счета
+                {t('unpaidInvoicesLabel')}
               </div>
               <p className="text-xl font-bold text-gray-900">
                 {totals.unpaidCount}{' '}
@@ -248,7 +248,7 @@ export default function BranchesPage() {
             <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
               <div className="flex items-center gap-2 text-gray-500 text-xs font-medium mb-1.5">
                 <Users className="w-4 h-4 text-teal-500" />
-                Сотрудников в филиалах
+                {t('teamInBranchesLabel')}
               </div>
               <p className="text-xl font-bold text-gray-900">{totals.teamCount}</p>
             </div>
@@ -332,12 +332,17 @@ export default function BranchesPage() {
                     <div className="flex items-center gap-1.5 text-xs text-gray-500">
                       <UserPlus className="w-3.5 h-3.5 text-primary-400 shrink-0" />
                       <span>
-                        {stats[branch.id].leads} заявок · {stats[branch.id].conversionRate}%
+                        {t('leadsStat', {
+                          leads: stats[branch.id].leads,
+                          rate: stats[branch.id].conversionRate,
+                        })}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-gray-500">
                       <BookOpen className="w-3.5 h-3.5 text-primary-400 shrink-0" />
-                      <span>{stats[branch.id].activePrograms} активных программ</span>
+                      <span>
+                        {t('activeProgramsStat', { count: stats[branch.id].activePrograms })}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-gray-500">
                       <Wallet className="w-3.5 h-3.5 text-primary-400 shrink-0" />
@@ -345,11 +350,11 @@ export default function BranchesPage() {
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-gray-500">
                       <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span>{stats[branch.id].unpaidCount} неоплачено</span>
+                      <span>{t('unpaidStat', { count: stats[branch.id].unpaidCount })}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 col-span-2">
                       <Users className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-                      <span>{stats[branch.id].teamCount} сотрудников</span>
+                      <span>{t('teamStat', { count: stats[branch.id].teamCount })}</span>
                     </div>
                   </div>
                 )}

@@ -1212,6 +1212,8 @@ export function AIReportBuilder({
   }
 
   async function handleSaveDraft() {
+    setSending(true)
+    setError('')
     try {
       await apiClient.saveAIReport({
         orgId,
@@ -1227,9 +1229,9 @@ export function AIReportBuilder({
         status: 'draft',
       })
       onClose()
-    } catch {
-      // silently ignore draft save failure
-      onClose()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t('errorSaveDraft'))
+      setSending(false)
     }
   }
 
