@@ -44,11 +44,12 @@ export function AmplitudeProvider() {
     if (!shouldLoadAmplitude()) return
     if (amplitudeInitialized || window.__nurooAmplitudeInitialized) return
 
-    const apiKey = AMPLITUDE_API_KEY!
-    amplitudeInitialized = true
-    window.__nurooAmplitudeInitialized = true
-
     return runAfterStartup(() => {
+      if (amplitudeInitialized || window.__nurooAmplitudeInitialized) return
+      const apiKey = AMPLITUDE_API_KEY!
+      amplitudeInitialized = true
+      window.__nurooAmplitudeInitialized = true
+
       void import('@amplitude/unified').then((amplitude) =>
         amplitude
           .initAll(apiKey, {

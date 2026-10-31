@@ -1239,6 +1239,7 @@ export class ApiClient {
     formData.append('kind', kind)
     formData.append('media', file)
 
+    if (!this.token) await this.resolveToken(false)
     const headers = new Headers()
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
 
@@ -1343,6 +1344,7 @@ export class ApiClient {
     const formData = new FormData()
     formData.append('file', file)
 
+    if (!this.token) await this.resolveToken(false)
     const headers = new Headers()
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
 
@@ -1896,6 +1898,7 @@ export class ApiClient {
     if (options.instructions?.length)
       formData.append('instructions', JSON.stringify(options.instructions))
     formData.append('media', file)
+    if (!this.token) await this.resolveToken(false)
     const headers = new Headers()
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
     const response = await fetch(`${this.baseUrl}/orgs/${orgId}/content/tasks/upload`, {
@@ -1991,6 +1994,7 @@ export class ApiClient {
       formData.append('instructions', JSON.stringify(options.instructions))
     formData.append('media', file)
 
+    if (!this.token) await this.resolveToken(false)
     const headers = new Headers()
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
 
@@ -2674,6 +2678,7 @@ export class ApiClient {
     const formData = new FormData()
     formData.append('cover', file)
 
+    if (!this.token) await this.resolveToken(false)
     const headers = new Headers()
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
 
@@ -2959,6 +2964,7 @@ export class ApiClient {
     formData.append('media', file)
     formData.append('kind', kind)
 
+    if (!this.token) await this.resolveToken(false)
     const headers = new Headers()
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
 
