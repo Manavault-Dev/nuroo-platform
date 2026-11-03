@@ -100,6 +100,27 @@ export function BookingPanel({
   const [booking, setBooking] = useState(false)
   const [bookedSlot, setBookedSlot] = useState<Slot | null>(null)
   const [bookError, setBookError] = useState<string | null>(null)
+  const [readiness, setReadiness] = useState<{
+    isBookable: boolean
+    hasSpecialist: boolean
+    hasService: boolean
+    hasSlot: boolean
+  } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${API}/marketplace/organizations/${org.id}/booking-readiness`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setReadiness(d)
+      })
+      .catch(() => {
+        if (!cancelled) setReadiness(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [org.id])
 
   useEffect(() => {
     let cancelled = false
@@ -366,7 +387,21 @@ export function BookingPanel({
           )}
 
           {/* PICK — specialist + service + calendar + slots */}
-          {step === 'pick' && (
+          {step === 'pick' && readiness && !readiness.isBookable && (
+            <div className="p-6 text-center">
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-1">
+                Онлайн-запись пока недоступна
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {!readiness.hasSpecialist
+                  ? 'Организация ещё не добавила специалистов — свяжитесь по телефону или WhatsApp.'
+                  : !readiness.hasService
+                    ? 'Специалисты ещё не настроили услуги — свяжитесь по телефону или WhatsApp.'
+                    : 'Нет свободного времени в ближайшие 30 дней — свяжитесь по телефону или WhatsApp.'}
+              </p>
+            </div>
+          )}
+          {step === 'pick' && (!readiness || readiness.isBookable) && (
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {/* Specialist */}
               {specialists.length > 1 && (

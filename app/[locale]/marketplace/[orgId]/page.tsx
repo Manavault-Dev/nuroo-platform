@@ -46,6 +46,13 @@ interface Org {
   averageRating: number
 }
 
+interface BookingReadiness {
+  isBookable: boolean
+  hasSpecialist: boolean
+  hasService: boolean
+  hasSlot: boolean
+}
+
 interface Specialist {
   id: string
   fullName: string
@@ -98,6 +105,18 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return r.json()
 }
 
+// Defense-in-depth: the backend now rejects non-http(s) website URLs at
+// write time, but this still guards against rows written before that fix —
+// never render a stored URL as a clickable href without checking its scheme.
+function isSafeHttpUrl(value: string): boolean {
+  try {
+    const protocol = new URL(value).protocol
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 // Formats YYYY-MM-DD to locale-aware display string
 function formatDate(dateStr: string, locale: string): string {
   const [y, m, d] = dateStr.split('-').map(Number)
@@ -132,6 +151,16 @@ export default function OrgPage() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [readiness, setReadiness] = useState<BookingReadiness | null>(null)
+
+  // "Connect this organization to Nuroo" — only shown to a signed-in user,
+  // and only for listings that are actually unclaimed. Submitting a claim
+  // never grants admin access by itself (reviewed internally later).
+  const [claimState, setClaimState] = useState<{
+    claimable: boolean
+    myClaim: { id: string; status: string } | null
+  } | null>(null)
+  const [claimSubmitting, setClaimSubmitting] = useState(false)
 
   // Admission request ("leave a request") form state
   const [requestModal, setRequestModal] = useState<{ branch: Branch | null } | null>(null)
@@ -151,7 +180,7 @@ export default function OrgPage() {
   const [booking, setBooking] = useState(false)
   const [bookError, setBookError] = useState<string | null>(null)
 
-  // Load org + specialists + branches
+  // Load org + specialists + branches + booking readiness
   useEffect(() => {
     Promise.all([
       apiFetch<{ organizations?: Org[] }>('/api/organizations/public').then(
@@ -163,8 +192,11 @@ export default function OrgPage() {
       apiFetch<{ ok: boolean; branches: Branch[] }>(`/marketplace/orgs/${orgId}/branches`)
         .then((d) => d.branches)
         .catch(() => [] as Branch[]),
+      apiFetch<BookingReadiness>(`/marketplace/organizations/${orgId}/booking-readiness`).catch(
+        () => null
+      ),
     ])
-      .then(([orgData, specs, branchList]) => {
+      .then(([orgData, specs, branchList, readinessData]) => {
         if (!orgData) {
           setLoadError(t('loadError'))
           return
@@ -172,10 +204,56 @@ export default function OrgPage() {
         setOrg(orgData)
         setSpecialists(specs)
         setBranches(branchList)
+        setReadiness(readinessData)
       })
       .catch(() => setLoadError(t('loadError')))
       .finally(() => setLoading(false))
   }, [orgId, t])
+
+  // Load claim CTA state once the org id and the signed-in user are known
+  useEffect(() => {
+    if (!orgId || !user) {
+      setClaimState(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const token = await getIdToken()
+      if (!token) return
+      try {
+        const res = await apiFetch<{
+          claimable: boolean
+          myClaim: { id: string; status: string } | null
+        }>(`/orgs/${orgId}/claim`, { headers: { Authorization: `Bearer ${token}` } })
+        if (!cancelled) setClaimState(res)
+      } catch {
+        if (!cancelled) setClaimState(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [orgId, user])
+
+  const handleClaimOrg = useCallback(async () => {
+    if (!user) return
+    if (!window.confirm(t('claimConfirm'))) return
+    setClaimSubmitting(true)
+    try {
+      const token = await getIdToken()
+      if (!token) return
+      const res = await apiFetch<{ claimId: string; status: string }>(`/orgs/${orgId}/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({}),
+      })
+      setClaimState({ claimable: false, myClaim: { id: res.claimId, status: res.status } })
+    } catch {
+      window.alert(t('claimError'))
+    } finally {
+      setClaimSubmitting(false)
+    }
+  }, [user, orgId, t])
 
   // Load services when specialist selected
   useEffect(() => {
@@ -438,7 +516,7 @@ export default function OrgPage() {
                 {org.contactPhone}
               </a>
             )}
-            {org.websiteUrl && (
+            {org.websiteUrl && isSafeHttpUrl(org.websiteUrl) && (
               <a
                 href={org.websiteUrl}
                 target="_blank"
@@ -474,6 +552,38 @@ export default function OrgPage() {
             </div>
           )}
         </div>
+
+        {/* Claim this organization */}
+        {claimState?.myClaim?.status === 'pending' ? (
+          <div className="mb-6 rounded-2xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 p-5 flex items-start gap-3">
+            <Building2 className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                {t('claimPendingTitle')}
+              </p>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+                {t('claimPendingSub')}
+              </p>
+            </div>
+          </div>
+        ) : claimState?.claimable ? (
+          <div className="mb-6 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 flex items-start gap-3">
+            <Building2 className="w-5 h-5 text-gray-500 dark:text-gray-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                {t('claimTitle')}
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('claimSub')}</p>
+            </div>
+            <button
+              onClick={handleClaimOrg}
+              disabled={claimSubmitting}
+              className="shrink-0 px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-60"
+            >
+              {claimSubmitting ? t('claimSubmitting') : t('claimBtn')}
+            </button>
+          </div>
+        ) : null}
 
         {/* Branches */}
         {branches.length > 0 && (
@@ -538,6 +648,24 @@ export default function OrgPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {readiness && !readiness.isBookable && (
+          <div className="mb-6 rounded-2xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 p-5 flex items-start gap-3">
+            <Calendar className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                {t('bookingUnavailableTitle')}
+              </p>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+                {!readiness.hasSpecialist
+                  ? t('bookingUnavailableNoSpecialist')
+                  : !readiness.hasService
+                    ? t('bookingUnavailableNoService')
+                    : t('bookingUnavailableNoSlot')}
+              </p>
             </div>
           </div>
         )}
