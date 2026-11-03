@@ -15,8 +15,10 @@ import {
   parseDataImageUrl,
   uploadOrgMarketplaceImage,
   imageSourceSchema,
+  safeHttpUrlSchema,
 } from '../../domains/organizations/orgs.routes.js'
 import { FREE_TRIAL_DAYS, FREE_TRIAL_PLAN_ID } from '../../domains/payments/planLimits.js'
+import { geocodeAddress } from '../../infrastructure/geocoding/googleGeocoding.service.js'
 
 /** Deep link scheme used by the Nuroo mobile app */
 const MOBILE_DEEP_LINK_SCHEME = 'nuroo'
@@ -126,6 +128,11 @@ async function lazyUpgradeInvoices(
   )
 }
 
+// Covers the two routes below, which accept base64 logo/cover/gallery
+// images (up to 15MB body) — keeps repeated-upload storage-write/cost abuse
+// in check without blocking a normal "fill out my org profile" session.
+const RATE_PROFILE_WRITE = { max: 10, timeWindow: '1 minute' }
+
 const phoneSchema = z
   .string()
   .trim()
@@ -136,19 +143,43 @@ const createBasicOrgSchema = z
   .object({
     name: z.string().trim().min(1).max(200),
     country: z.string().trim().max(100).optional(),
+    description: z.string().trim().max(1000).optional(),
+    address: z.string().trim().max(300).optional(),
     contactPhone: phoneSchema.optional(),
     whatsappNumber: phoneSchema.optional(),
+    websiteUrl: safeHttpUrlSchema(500).optional().or(z.literal('')),
+    categories: z.array(z.string().trim().max(100)).max(20).optional(),
     logoUrl: imageSourceSchema.optional(),
+    coverImageUrl: imageSourceSchema.optional().or(z.literal('')),
+    photos: z.array(imageSourceSchema).max(8).optional(),
   })
   .refine((body) => !!(body.contactPhone || body.whatsappNumber), {
     message: 'At least one contact method (contactPhone or whatsappNumber) is required',
   })
 
+const imagePositionSchema = z.number().min(0).max(100).optional().nullable()
+const imageScaleSchema = z.number().min(1).max(2).optional().nullable()
+
 const updateBasicOrgSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
+  description: z.string().trim().max(1000).optional(),
+  address: z.string().trim().max(300).optional(),
   contactPhone: phoneSchema.optional(),
   whatsappNumber: phoneSchema.optional(),
+  websiteUrl: safeHttpUrlSchema(500).optional().or(z.literal('')),
+  categories: z.array(z.string().trim().max(100)).max(20).optional(),
   logoUrl: imageSourceSchema.optional(),
+  coverImageUrl: imageSourceSchema.optional().or(z.literal('')),
+  logoPositionX: imagePositionSchema,
+  logoPositionY: imagePositionSchema,
+  logoScale: imageScaleSchema,
+  coverPositionX: imagePositionSchema,
+  coverPositionY: imagePositionSchema,
+  coverScale: imageScaleSchema,
+  // Full-replace, not incremental — the client always sends the complete
+  // desired gallery, same as how the basic-org creator has no membership
+  // doc to authorize the org-admin-only incremental /media endpoints.
+  photos: z.array(imageSourceSchema).max(8).optional(),
 })
 
 export const parentApiRoutes: FastifyPluginAsync = async (fastify) => {
@@ -399,80 +430,114 @@ export const parentApiRoutes: FastifyPluginAsync = async (fastify) => {
   // organizations/{orgId}/members/{uid} or specialists/{uid} — doing so would
   // flip the creator's role to 'specialist'/'organizer' on their next /me
   // call and lock them out of the parent-facing mobile UI.
-  fastify.post('/api/parent/organizations', async (request, reply) => {
-    if (!request.user) {
-      return reply.code(401).send({ error: 'Unauthorized' })
-    }
-    const { uid } = request.user
-
-    const parsed = createBasicOrgSchema.safeParse(request.body)
-    if (!parsed.success) {
-      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request' })
-    }
-    const { name, country, contactPhone, whatsappNumber, logoUrl } = parsed.data
-
-    try {
-      const db = getFirestore()
-
-      const dupSnap = await db
-        .collection('organizations')
-        .where('createdBy', '==', uid)
-        .where('name', '==', name)
-        .limit(1)
-        .get()
-      if (!dupSnap.empty) {
-        return reply.code(409).send({ error: 'You already have an organization with this name' })
+  fastify.post(
+    '/api/parent/organizations',
+    // Base64 cover/gallery images can push the JSON body well past Fastify's
+    // 1 MiB default — see the same note on the PATCH route below.
+    { bodyLimit: 15 * 1024 * 1024, config: { rateLimit: RATE_PROFILE_WRITE } },
+    async (request, reply) => {
+      if (!request.user) {
+        return reply.code(401).send({ error: 'Unauthorized' })
       }
+      const { uid } = request.user
 
-      const orgRef = db.collection('organizations').doc()
+      const parsed = createBasicOrgSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request' })
+      }
+      const {
+        name,
+        country,
+        description,
+        address,
+        contactPhone,
+        whatsappNumber,
+        websiteUrl,
+        categories,
+        logoUrl,
+        coverImageUrl,
+        photos,
+      } = parsed.data
 
-      let uploadedLogoUrl: string | null = null
-      if (logoUrl) {
-        const parsedImage = parseDataImageUrl(logoUrl)
-        if (parsedImage) {
-          uploadedLogoUrl = await uploadOrgMarketplaceImage(
-            orgRef.id,
-            'logo',
-            parsedImage.buffer,
-            parsedImage.mimeType,
-            'logo'
-          )
-        } else {
-          // Already a plain URL (not a data: upload) — store as-is.
-          uploadedLogoUrl = logoUrl
+      try {
+        const db = getFirestore()
+
+        const dupSnap = await db
+          .collection('organizations')
+          .where('createdBy', '==', uid)
+          .where('name', '==', name)
+          .limit(1)
+          .get()
+        if (!dupSnap.empty) {
+          return reply.code(409).send({ error: 'You already have an organization with this name' })
         }
-      }
 
-      await orgRef.set({
-        name,
-        country: country ?? null,
-        contactPhone: contactPhone ?? null,
-        whatsappNumber: whatsappNumber ?? null,
-        logoUrl: uploadedLogoUrl,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdBy: uid,
-        isActive: true,
-        isPublicMarketplaceEnabled: true,
-        tier: 'basic',
-        createdVia: 'mobile_basic',
-      })
+        const orgRef = db.collection('organizations').doc()
 
-      return {
-        ok: true,
-        orgId: orgRef.id,
-        name,
-        logoUrl: uploadedLogoUrl,
-        contactPhone: contactPhone ?? null,
-        whatsappNumber: whatsappNumber ?? null,
-        isPublicMarketplaceEnabled: true,
+        const uploadImageField = async (value: string, kind: 'logo' | 'cover' | 'photo') => {
+          const parsedImage = parseDataImageUrl(value)
+          return parsedImage
+            ? uploadOrgMarketplaceImage(
+                orgRef.id,
+                kind,
+                parsedImage.buffer,
+                parsedImage.mimeType,
+                kind
+              )
+            : value
+        }
+
+        const uploadedLogoUrl = logoUrl ? await uploadImageField(logoUrl, 'logo') : null
+        const uploadedCoverUrl = coverImageUrl
+          ? await uploadImageField(coverImageUrl, 'cover')
+          : null
+        const uploadedPhotos = photos
+          ? await Promise.all(photos.map((photo) => uploadImageField(photo, 'photo')))
+          : []
+
+        const geocoded = address
+          ? await geocodeAddress(address, { country: country ?? null })
+          : null
+
+        await orgRef.set({
+          name,
+          country: country ?? null,
+          description: description ?? null,
+          address: address ?? null,
+          lat: geocoded?.lat ?? null,
+          lng: geocoded?.lng ?? null,
+          contactPhone: contactPhone ?? null,
+          whatsappNumber: whatsappNumber ?? null,
+          websiteUrl: websiteUrl ?? null,
+          categories: categories ?? [],
+          logoUrl: uploadedLogoUrl,
+          coverImageUrl: uploadedCoverUrl,
+          photos: uploadedPhotos,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdBy: uid,
+          isActive: true,
+          isPublicMarketplaceEnabled: true,
+          tier: 'basic',
+          createdVia: 'mobile_basic',
+        })
+
+        return {
+          ok: true,
+          orgId: orgRef.id,
+          name,
+          logoUrl: uploadedLogoUrl,
+          contactPhone: contactPhone ?? null,
+          whatsappNumber: whatsappNumber ?? null,
+          isPublicMarketplaceEnabled: true,
+        }
+      } catch (error: unknown) {
+        console.error('Error creating basic organization:', error)
+        return reply
+          .code(500)
+          .send({ error: error instanceof Error ? error.message : 'Failed to create organization' })
       }
-    } catch (error: unknown) {
-      console.error('Error creating basic organization:', error)
-      return reply
-        .code(500)
-        .send({ error: error instanceof Error ? error.message : 'Failed to create organization' })
     }
-  })
+  )
 
   // GET /api/parent/organizations/basic — basic-tier orgs this parent created
   fastify.get('/api/parent/organizations/basic', async (request, reply) => {
@@ -491,9 +556,15 @@ export const parentApiRoutes: FastifyPluginAsync = async (fastify) => {
         .map(({ id, data }) => ({
           orgId: id,
           name: data.name as string,
+          description: (data.description as string | null) ?? null,
+          address: (data.address as string | null) ?? null,
+          categories: Array.isArray(data.categories) ? (data.categories as string[]) : [],
           logoUrl: (data.logoUrl as string | null) ?? null,
+          coverImageUrl: (data.coverImageUrl as string | null) ?? null,
+          photos: Array.isArray(data.photos) ? (data.photos as string[]) : [],
           contactPhone: (data.contactPhone as string | null) ?? null,
           whatsappNumber: (data.whatsappNumber as string | null) ?? null,
+          websiteUrl: (data.websiteUrl as string | null) ?? null,
           isPublicMarketplaceEnabled: !!data.isPublicMarketplaceEnabled,
           createdAt: data.createdAt ?? null,
         }))
@@ -511,6 +582,10 @@ export const parentApiRoutes: FastifyPluginAsync = async (fastify) => {
   // (not full org_admin RBAC — the creator has no membership doc until they claim-admin below)
   fastify.patch<{ Params: { orgId: string }; Body: z.infer<typeof updateBasicOrgSchema> }>(
     '/api/parent/organizations/:orgId',
+    // Base64 cover/gallery images can push the JSON body well past Fastify's
+    // 1 MiB default — mobile already sends the logo this way (no multipart
+    // upload route exists for a creator who isn't an org member yet).
+    { bodyLimit: 15 * 1024 * 1024, config: { rateLimit: RATE_PROFILE_WRITE } },
     async (request, reply) => {
       if (!request.user) {
         return reply.code(401).send({ error: 'Unauthorized' })
@@ -540,21 +615,59 @@ export const parentApiRoutes: FastifyPluginAsync = async (fastify) => {
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         }
         if (parsed.data.name !== undefined) update.name = parsed.data.name
+        if (parsed.data.description !== undefined)
+          update.description = parsed.data.description || null
+        if (parsed.data.address !== undefined) {
+          update.address = parsed.data.address || null
+          if (parsed.data.address) {
+            const geocoded = await geocodeAddress(parsed.data.address, {
+              country: (data.country as string | null) ?? null,
+            })
+            update.lat = geocoded?.lat ?? null
+            update.lng = geocoded?.lng ?? null
+          } else {
+            update.lat = null
+            update.lng = null
+          }
+        }
         if (parsed.data.contactPhone !== undefined)
           update.contactPhone = parsed.data.contactPhone || null
         if (parsed.data.whatsappNumber !== undefined)
           update.whatsappNumber = parsed.data.whatsappNumber || null
+        if (parsed.data.websiteUrl !== undefined) update.websiteUrl = parsed.data.websiteUrl || null
+        if (parsed.data.categories !== undefined) update.categories = parsed.data.categories
+        if (parsed.data.logoPositionX !== undefined)
+          update.logoPositionX = parsed.data.logoPositionX
+        if (parsed.data.logoPositionY !== undefined)
+          update.logoPositionY = parsed.data.logoPositionY
+        if (parsed.data.logoScale !== undefined) update.logoScale = parsed.data.logoScale
+        if (parsed.data.coverPositionX !== undefined)
+          update.coverPositionX = parsed.data.coverPositionX
+        if (parsed.data.coverPositionY !== undefined)
+          update.coverPositionY = parsed.data.coverPositionY
+        if (parsed.data.coverScale !== undefined) update.coverScale = parsed.data.coverScale
+
+        const uploadImageField = async (value: string, kind: 'logo' | 'cover' | 'photo') => {
+          const parsedImage = parseDataImageUrl(value)
+          return parsedImage
+            ? uploadOrgMarketplaceImage(orgId, kind, parsedImage.buffer, parsedImage.mimeType, kind)
+            : value
+        }
+
         if (parsed.data.logoUrl !== undefined) {
-          const parsedImage = parseDataImageUrl(parsed.data.logoUrl)
-          update.logoUrl = parsedImage
-            ? await uploadOrgMarketplaceImage(
-                orgId,
-                'logo',
-                parsedImage.buffer,
-                parsedImage.mimeType,
-                'logo'
-              )
-            : parsed.data.logoUrl
+          update.logoUrl = parsed.data.logoUrl
+            ? await uploadImageField(parsed.data.logoUrl, 'logo')
+            : null
+        }
+        if (parsed.data.coverImageUrl !== undefined) {
+          update.coverImageUrl = parsed.data.coverImageUrl
+            ? await uploadImageField(parsed.data.coverImageUrl, 'cover')
+            : null
+        }
+        if (parsed.data.photos !== undefined) {
+          update.photos = await Promise.all(
+            parsed.data.photos.map((photo) => uploadImageField(photo, 'photo'))
+          )
         }
 
         await orgRef.update(update)
