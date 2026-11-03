@@ -189,6 +189,15 @@ async function buildServer() {
       )
     )
       return
+    // Public booking-readiness check (read-only, no auth) — same org-scoped
+    // prefix as the specialists/services/slots routes above, kept separate
+    // rather than folded into that regex to keep each whitelist entry easy
+    // to audit on its own.
+    if (
+      method === 'GET' &&
+      /^\/marketplace\/organizations\/[^/]+\/booking-readiness(\?.*)?$/.test(urlPath)
+    )
+      return
     // Public read routes — explicit list to avoid accidentally exposing future endpoints
     if (
       method === 'GET' &&
