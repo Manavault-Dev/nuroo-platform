@@ -15,6 +15,7 @@ import {
   User,
   ExternalLink,
 } from 'lucide-react'
+import { getIdToken } from '@/lib/b2b/authClient'
 
 const API = `${(process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3101').replace(/\/+$/, '')}/v1`
 
@@ -98,39 +99,84 @@ export function BookingPanel({
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null)
   const [booking, setBooking] = useState(false)
   const [bookedSlot, setBookedSlot] = useState<Slot | null>(null)
+  const [bookError, setBookError] = useState<string | null>(null)
+  const [readiness, setReadiness] = useState<{
+    isBookable: boolean
+    hasSpecialist: boolean
+    hasService: boolean
+    hasSlot: boolean
+  } | null>(null)
 
   useEffect(() => {
+    let cancelled = false
+    fetch(`${API}/marketplace/organizations/${org.id}/booking-readiness`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setReadiness(d)
+      })
+      .catch(() => {
+        if (!cancelled) setReadiness(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [org.id])
+
+  useEffect(() => {
+    let cancelled = false
     fetch(`${API}/marketplace/organizations/${org.id}/specialists`)
       .then((r) => r.json())
       .then((d) => {
+        if (cancelled) return
         const list: Specialist[] = Array.isArray(d) ? d : (d?.specialists ?? [])
         setSpecialists(list)
         if (list.length > 0) setSelectedSpec(list[0])
       })
       .catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [org.id])
 
   useEffect(() => {
     if (!selectedSpec) return
+    let cancelled = false
     setServices([])
     setSelectedService(null)
     fetch(`${API}/marketplace/organizations/${org.id}/specialists/${selectedSpec.id}/services`)
       .then((r) => r.json())
-      .then((d) => setServices(Array.isArray(d) ? d : (d?.services ?? [])))
+      .then((d) => {
+        if (cancelled) return
+        setServices(Array.isArray(d) ? d : (d?.services ?? []))
+      })
       .catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [selectedSpec, org.id])
 
   useEffect(() => {
     if (!selectedSpec || !selectedDate) return
+    let cancelled = false
     setSlotsLoading(true)
     const sq = selectedService ? `&serviceId=${selectedService.id}` : ''
     fetch(
       `${API}/marketplace/organizations/${org.id}/specialists/${selectedSpec.id}/slots?date=${selectedDate}&days=1${sq}`
     )
       .then((r) => r.json())
-      .then((d) => setSlots(d?.slots ?? []))
-      .catch(() => setSlots([]))
-      .finally(() => setSlotsLoading(false))
+      .then((d) => {
+        if (cancelled) return
+        setSlots(d?.slots ?? [])
+      })
+      .catch(() => {
+        if (!cancelled) setSlots([])
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [selectedSpec, selectedDate, selectedService, org.id])
 
   const calDays = useMemo(() => {
@@ -165,10 +211,41 @@ export function BookingPanel({
   const handleBook = async () => {
     if (!selectedSlot) return
     setBooking(true)
-    await new Promise((r) => setTimeout(r, 800))
-    setBookedSlot(selectedSlot)
-    setStep('done')
-    setBooking(false)
+    setBookError(null)
+    try {
+      const token = await getIdToken()
+      if (!token) {
+        setBookError('Войдите в аккаунт, чтобы записаться')
+        return
+      }
+      const res = await fetch(`${API}/marketplace/organizations/${org.id}/bookings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          specialistId: selectedSpec?.id,
+          serviceId: selectedService?.id ?? null,
+          slotId: selectedSlot.id,
+          date: selectedSlot.date,
+          startTime: selectedSlot.startTime,
+          endTime: selectedSlot.endTime,
+        }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(
+          res.status === 409 ? 'Это время уже занято' : d?.error || 'Не удалось оформить запись'
+        )
+      }
+      setBookedSlot(selectedSlot)
+      setStep('done')
+    } catch (e: any) {
+      setBookError(e?.message ?? 'Произошла ошибка')
+    } finally {
+      setBooking(false)
+    }
   }
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -310,7 +387,21 @@ export function BookingPanel({
           )}
 
           {/* PICK — specialist + service + calendar + slots */}
-          {step === 'pick' && (
+          {step === 'pick' && readiness && !readiness.isBookable && (
+            <div className="p-6 text-center">
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-1">
+                Онлайн-запись пока недоступна
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {!readiness.hasSpecialist
+                  ? 'Организация ещё не добавила специалистов — свяжитесь по телефону или WhatsApp.'
+                  : !readiness.hasService
+                    ? 'Специалисты ещё не настроили услуги — свяжитесь по телефону или WhatsApp.'
+                    : 'Нет свободного времени в ближайшие 30 дней — свяжитесь по телефону или WhatsApp.'}
+              </p>
+            </div>
+          )}
+          {step === 'pick' && (!readiness || readiness.isBookable) && (
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {/* Specialist */}
               {specialists.length > 1 && (
@@ -539,6 +630,11 @@ export function BookingPanel({
                   />
                 )}
               </div>
+              {bookError && (
+                <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+                  {bookError}
+                </p>
+              )}
             </div>
           )}
         </div>
