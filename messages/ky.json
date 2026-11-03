@@ -1772,7 +1772,16 @@
         "ctaChoosePlan": "Тариф тандоо",
         "ctaUpdateBilling": "Төлөмдү жаңыртуу",
         "ctaManageBilling": "Жазылууну башкаруу",
-        "ctaContactSupport": "Колдоо менен байланышуу"
+        "ctaContactSupport": "Колдоо менен байланышуу",
+        "billingBadge": {
+          "freeTrial": "Акысыз мөөнөт",
+          "active": "Активдүү",
+          "pastDue": "Төлөм талап кылынат",
+          "expired": "Сыноо мөөнөтү бүттү",
+          "cancelled": "Жокко чыгарылды",
+          "suspended": "Токтотулду",
+          "daysLeft": "{days} күн калды"
+        }
       },
       "branches": {
         "title": "Жайгашкан жерлер",
@@ -1905,7 +1914,26 @@
         "noProfile": "Төлөм планы жок",
         "perMonth": "ай",
         "showAllInvoices": "Бардык {count} эсепти көрсөтүү",
-        "hideInvoices": "Жыйноо"
+        "hideInvoices": "Жыйноо",
+        "invoiceDetail": {
+          "backToInvoices": "Эсептер тизмесине",
+          "titlePaid": "Төлөм алынды",
+          "messagePaid": "Төлөм ийгиликтүү аткарылды. Эсептин статусу жаңырды.",
+          "titlePending": "Ырастоону күтүү",
+          "messagePending": "Төлөм иштетилип жатат. Статус автоматтык түрдө жаңырат.",
+          "titleFailed": "Төлөм өтпөдү",
+          "messageFailed": "Төлөмдү иштетүүдө ката кетти. Кайра аракет кылыңыз.",
+          "titleExpired": "Төлөө мөөнөтү бүттү",
+          "messageExpired": "Бул эсеп үчүн төлөө мөөнөтү бүттү. Уюм менен байланышыңыз.",
+          "titleCanceled": "Эсеп жокко чыгарылды",
+          "messageCanceled": "Бул эсеп жокко чыгарылды.",
+          "titleDefault": "Эсеп тууралуу маалымат",
+          "labelDescription": "Сүрөттөмө",
+          "labelPaidAt": "Төлөнгөн күнү",
+          "loadFailed": "Эсеп маалыматын жүктөө ишке ашпады.",
+          "waitingBankConfirmation": "Банктан ырастоону күтөбүз…",
+          "refreshStatus": "Статусту жаңыртуу"
+        }
       },
       "common": {
         "loading": "Жүктөлүп жатат...",
@@ -2323,6 +2351,55 @@
         "previewChildren": "Балдар",
         "previewReports": "Отчёттор",
         "previewBrandSettings": "Бренд жөндөөлөр"
+      },
+      "leads": {
+        "title": "Арыздар",
+        "subtitle": "Ата-энелерден келген арыздардын тобокелдиги — маркетплейстен жана кол менен",
+        "addLead": "Арыз кошуу",
+        "totalLeads": "Бардык арыздар",
+        "conversionRate": "Конверсия",
+        "branchLabel": "Филиал:",
+        "allBranches": "Бардык филиалдар",
+        "noBranch": "Филиалсыз",
+        "empty": "Бош",
+        "loadFailed": "Арыздарды жүктөө ишке ашпады",
+        "statusChangeFailed": "Статусту өзгөртүү ишке ашпады",
+        "childPrefix": "Бала",
+        "interestedPrefix": "Кызыкдар",
+        "statuses": {
+          "new": "Жаңы",
+          "contacted": "Байланышылды",
+          "trial_booked": "Сынак сабак",
+          "active_client": "Активдүү кардар",
+          "lost": "Баш тартуу"
+        },
+        "sources": {
+          "marketplace": "Маркетплейс",
+          "manual": "Кол менен",
+          "referral": "Сунуштоо"
+        },
+        "modal": {
+          "statusLabel": "Статус",
+          "branchLabel": "Филиал",
+          "notesLabel": "Эскертүүлөр",
+          "cancel": "Жокко чыгаруу",
+          "save": "Сактоо"
+        },
+        "newLead": {
+          "title": "Жаңы арыз",
+          "parentNameLabel": "Ата-эненин аты *",
+          "phoneLabel": "Телефон *",
+          "phonePlaceholder": "+996 XXX XXX XXX",
+          "emailLabel": "Email",
+          "childLabel": "Бала",
+          "branchLabel": "Филиал",
+          "programInterestLabel": "Кызыктырган программа",
+          "notesLabel": "Эскертүүлөр",
+          "errorRequired": "Ата-эненин атын жана телефонун көрсөтүңүз",
+          "errorCreateFailed": "Арыз түзүлбөдү",
+          "cancel": "Жокко чыгаруу",
+          "create": "Түзүү"
+        }
       }
     },
     "notifications": {
@@ -2361,6 +2438,10 @@
         "error": "Ката",
         "warning": "Эскертүү",
         "info": "Маалымат"
+      },
+      "upgradeScreen": {
+        "tryCta": "Nuroo Business байкап көрүү →",
+        "includesNote": "Nuroo мүмкүнчүлүктөрүнүн баарын + уюм үчүн каражаттарды камтыйт"
       }
     },
     "activityFeed": {
@@ -2479,7 +2560,12 @@
     "locale": "Тил",
     "en": "English",
     "ru": "Русский",
-    "ky": "Кыргызча"
+    "ky": "Кыргызча",
+    "dateTimePicker": {
+      "selectDateTime": "Дата жана убакытты тандаңыз",
+      "time": "Убакыт",
+      "done": "Даяр"
+    }
   },
   "legalPage": {
     "terms": {

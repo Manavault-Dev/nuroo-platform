@@ -1772,7 +1772,16 @@
         "ctaChoosePlan": "Choose Plan",
         "ctaUpdateBilling": "Update Billing",
         "ctaManageBilling": "Manage Billing",
-        "ctaContactSupport": "Contact Support"
+        "ctaContactSupport": "Contact Support",
+        "billingBadge": {
+          "freeTrial": "Free Trial",
+          "active": "Active",
+          "pastDue": "Payment Required",
+          "expired": "Trial Expired",
+          "cancelled": "Cancelled",
+          "suspended": "Suspended",
+          "daysLeft": "{days}d left"
+        }
       },
       "branches": {
         "title": "Locations",
@@ -1905,7 +1914,26 @@
         "noProfile": "No payment plan",
         "perMonth": "mo",
         "showAllInvoices": "Show all {count, plural, one {invoice} other {invoices}}",
-        "hideInvoices": "Collapse"
+        "hideInvoices": "Collapse",
+        "invoiceDetail": {
+          "backToInvoices": "Back to invoices",
+          "titlePaid": "Payment received",
+          "messagePaid": "The payment was processed successfully. The invoice status has been updated.",
+          "titlePending": "Awaiting confirmation",
+          "messagePending": "The payment is being processed. The status will update automatically.",
+          "titleFailed": "Payment failed",
+          "messageFailed": "An error occurred while processing the payment. Please try again.",
+          "titleExpired": "Payment deadline passed",
+          "messageExpired": "The payment window for this invoice has expired. Please contact the organization.",
+          "titleCanceled": "Invoice canceled",
+          "messageCanceled": "This invoice was canceled.",
+          "titleDefault": "Invoice details",
+          "labelDescription": "Description",
+          "labelPaidAt": "Paid at",
+          "loadFailed": "Failed to load invoice details.",
+          "waitingBankConfirmation": "Waiting for bank confirmation…",
+          "refreshStatus": "Refresh status"
+        }
       },
       "common": {
         "loading": "Loading...",
@@ -2323,6 +2351,55 @@
         "previewChildren": "Children",
         "previewReports": "Reports",
         "previewBrandSettings": "Brand Settings"
+      },
+      "leads": {
+        "title": "Leads",
+        "subtitle": "Inquiry pipeline from parents — from the marketplace and added manually",
+        "addLead": "Add Lead",
+        "totalLeads": "Total Leads",
+        "conversionRate": "Conversion",
+        "branchLabel": "Branch:",
+        "allBranches": "All branches",
+        "noBranch": "No branch",
+        "empty": "Empty",
+        "loadFailed": "Failed to load leads",
+        "statusChangeFailed": "Failed to change status",
+        "childPrefix": "Child",
+        "interestedPrefix": "Interested in",
+        "statuses": {
+          "new": "New",
+          "contacted": "Contacted",
+          "trial_booked": "Trial Booked",
+          "active_client": "Active Client",
+          "lost": "Lost"
+        },
+        "sources": {
+          "marketplace": "Marketplace",
+          "manual": "Manual",
+          "referral": "Referral"
+        },
+        "modal": {
+          "statusLabel": "Status",
+          "branchLabel": "Branch",
+          "notesLabel": "Notes",
+          "cancel": "Cancel",
+          "save": "Save"
+        },
+        "newLead": {
+          "title": "New Lead",
+          "parentNameLabel": "Parent's name *",
+          "phoneLabel": "Phone *",
+          "phonePlaceholder": "+996 XXX XXX XXX",
+          "emailLabel": "Email",
+          "childLabel": "Child",
+          "branchLabel": "Branch",
+          "programInterestLabel": "Program of interest",
+          "notesLabel": "Notes",
+          "errorRequired": "Enter the parent's name and phone number",
+          "errorCreateFailed": "Failed to create lead",
+          "cancel": "Cancel",
+          "create": "Create"
+        }
       }
     },
     "notifications": {
@@ -2361,6 +2438,10 @@
         "error": "Error",
         "warning": "Warning",
         "info": "Information"
+      },
+      "upgradeScreen": {
+        "tryCta": "Try Nuroo Business →",
+        "includesNote": "Includes everything in Nuroo + tools for your organization"
       }
     },
     "activityFeed": {
@@ -2479,7 +2560,12 @@
     "locale": "Language",
     "en": "English",
     "ru": "Русский",
-    "ky": "Кыргызча"
+    "ky": "Кыргызча",
+    "dateTimePicker": {
+      "selectDateTime": "Select date and time",
+      "time": "Time",
+      "done": "Done"
+    }
   },
   "legalPage": {
     "terms": {

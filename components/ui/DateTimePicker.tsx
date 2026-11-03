@@ -2,8 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { DayPicker } from 'react-day-picker'
-import { ru } from 'react-day-picker/locale'
+import { ru, enUS } from 'react-day-picker/locale'
 import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { useLocale, useTranslations } from 'next-intl'
+
+// react-day-picker ships no Kyrgyz locale; fall back to Russian for `ky`.
+const DAY_PICKER_LOCALES = { en: enUS, ru, ky: ru } as const
 
 interface Props {
   value: string
@@ -29,11 +33,11 @@ function toISO(date: Date, hh: string, mm: string): string {
   return `${y}-${mo}-${d}T${hh}:${mm}`
 }
 
-function formatDisplay(iso: string): string {
+function formatDisplay(iso: string, intlLocale: string): string {
   if (!iso) return ''
   const d = new Date(iso)
   if (isNaN(d.getTime())) return ''
-  return d.toLocaleString('ru-RU', {
+  return d.toLocaleString(intlLocale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -42,7 +46,12 @@ function formatDisplay(iso: string): string {
   })
 }
 
-export function DateTimePicker({ value, onChange, placeholder = 'Выберите дату и время' }: Props) {
+export function DateTimePicker({ value, onChange, placeholder }: Props) {
+  const t = useTranslations('common.dateTimePicker')
+  const locale = useLocale() as keyof typeof DAY_PICKER_LOCALES
+  // Kyrgyz has no Intl date formatting support in most engines; fall back to Russian.
+  const intlLocale = locale === 'ky' ? 'ru-RU' : `${locale}-${locale.toUpperCase()}`
+  const resolvedPlaceholder = placeholder ?? t('selectDateTime')
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<Date | undefined>()
   const [hh, setHh] = useState('12')
@@ -106,7 +115,7 @@ export function DateTimePicker({ value, onChange, placeholder = 'Выберит�
         <span
           className={`flex-1 truncate ${value ? 'text-gray-900 dark:text-white' : 'text-gray-400'}`}
         >
-          {value ? formatDisplay(value) : placeholder}
+          {value ? formatDisplay(value, intlLocale) : resolvedPlaceholder}
         </span>
         {value && (
           <span
@@ -126,7 +135,7 @@ export function DateTimePicker({ value, onChange, placeholder = 'Выберит�
               mode="single"
               selected={selected}
               onSelect={handleDaySelect}
-              locale={ru}
+              locale={DAY_PICKER_LOCALES[locale] ?? enUS}
               showOutsideDays
               classNames={{
                 root: 'w-full',
@@ -162,7 +171,7 @@ export function DateTimePicker({ value, onChange, placeholder = 'Выберит�
 
           {/* Time row */}
           <div className="flex items-center gap-3 px-3 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60">
-            <span className="text-xs font-semibold text-gray-400">Время</span>
+            <span className="text-xs font-semibold text-gray-400">{t('time')}</span>
             <input
               type="time"
               value={`${hh}:${mm}`}
@@ -174,7 +183,7 @@ export function DateTimePicker({ value, onChange, placeholder = 'Выберит�
               onClick={() => setOpen(false)}
               className="ml-auto px-4 py-1.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold transition-colors"
             >
-              Готово
+              {t('done')}
             </button>
           </div>
         </div>

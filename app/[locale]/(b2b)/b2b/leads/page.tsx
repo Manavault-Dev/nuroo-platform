@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
 import {
   apiClient,
@@ -26,19 +27,17 @@ import {
   Trash2,
 } from 'lucide-react'
 
-const STATUS_COLUMNS: { id: LeadStatus; label: string; accent: string }[] = [
-  { id: 'new', label: 'Новые', accent: 'bg-blue-500' },
-  { id: 'contacted', label: 'Связались', accent: 'bg-amber-500' },
-  { id: 'trial_booked', label: 'Пробное занятие', accent: 'bg-purple-500' },
-  { id: 'active_client', label: 'Активный клиент', accent: 'bg-green-500' },
-  { id: 'lost', label: 'Отказ', accent: 'bg-gray-400' },
+type LeadsT = (key: string, values?: Record<string, string | number>) => string
+
+const STATUS_COLUMN_IDS: { id: LeadStatus; accent: string }[] = [
+  { id: 'new', accent: 'bg-blue-500' },
+  { id: 'contacted', accent: 'bg-amber-500' },
+  { id: 'trial_booked', accent: 'bg-purple-500' },
+  { id: 'active_client', accent: 'bg-green-500' },
+  { id: 'lost', accent: 'bg-gray-400' },
 ]
 
-const SOURCE_LABELS: Record<string, string> = {
-  marketplace: 'Маркетплейс',
-  manual: 'Вручную',
-  referral: 'Рекомендация',
-}
+const KNOWN_SOURCES = ['marketplace', 'manual', 'referral']
 
 function formatShortDate(iso: string | null): string {
   if (!iso) return ''
@@ -53,6 +52,7 @@ function LeadCard({
   onDragStart,
   onDragEnd,
   onClick,
+  t,
 }: {
   lead: Lead
   branchName: string | null
@@ -61,6 +61,7 @@ function LeadCard({
   onDragStart: () => void
   onDragEnd: () => void
   onClick: () => void
+  t: LeadsT
 }) {
   return (
     <div
@@ -81,7 +82,11 @@ function LeadCard({
           {formatShortDate(lead.createdAt)}
         </span>
       </div>
-      {lead.childName && <p className="text-xs text-gray-500 mb-1">Ребёнок: {lead.childName}</p>}
+      {lead.childName && (
+        <p className="text-xs text-gray-500 mb-1">
+          {t('childPrefix')}: {lead.childName}
+        </p>
+      )}
       <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-1">
         <Phone className="w-3 h-3 shrink-0" /> {lead.phone}
       </div>
@@ -95,7 +100,7 @@ function LeadCard({
           </span>
         )}
         <span className="text-[10px] px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded-full">
-          {SOURCE_LABELS[lead.source] ?? lead.source}
+          {KNOWN_SOURCES.includes(lead.source) ? t(`sources.${lead.source}`) : lead.source}
         </span>
       </div>
     </div>
@@ -108,6 +113,7 @@ function LeadModal({
   onSave,
   onDelete,
   onClose,
+  t,
 }: {
   lead: Lead
   branches: Branch[]
@@ -117,6 +123,7 @@ function LeadModal({
   ) => Promise<void>
   onDelete: (leadId: string) => Promise<void>
   onClose: () => void
+  t: LeadsT
 }) {
   const [status, setStatus] = useState<LeadStatus>(lead.status)
   const [branchId, setBranchId] = useState(lead.branchId ?? '')
@@ -167,34 +174,46 @@ function LeadModal({
                 </a>
               </div>
             )}
-            {lead.childName && <p>Ребёнок: {lead.childName}</p>}
-            {lead.programInterest && <p>Интересует: {lead.programInterest}</p>}
+            {lead.childName && (
+              <p>
+                {t('childPrefix')}: {lead.childName}
+              </p>
+            )}
+            {lead.programInterest && (
+              <p>
+                {t('interestedPrefix')}: {lead.programInterest}
+              </p>
+            )}
             {lead.message && <p className="italic text-gray-500">«{lead.message}»</p>}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Статус</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('modal.statusLabel')}
+            </label>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as LeadStatus)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
             >
-              {STATUS_COLUMNS.map((c) => (
+              {STATUS_COLUMN_IDS.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.label}
+                  {t(`statuses.${c.id}`)}
                 </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Филиал</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('modal.branchLabel')}
+            </label>
             <select
               value={branchId}
               onChange={(e) => setBranchId(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
             >
-              <option value="">Без филиала</option>
+              <option value="">{t('noBranch')}</option>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
@@ -204,7 +223,9 @@ function LeadModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Заметки</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('modal.notesLabel')}
+            </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -229,7 +250,7 @@ function LeadModal({
             onClick={onClose}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
           >
-            Отмена
+            {t('modal.cancel')}
           </button>
           <button
             onClick={handleSave}
@@ -237,7 +258,7 @@ function LeadModal({
             className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-60 transition-colors"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Сохранить
+            {t('modal.save')}
           </button>
         </div>
       </div>
@@ -249,6 +270,7 @@ function NewLeadModal({
   branches,
   onSave,
   onClose,
+  t,
 }: {
   branches: Branch[]
   onSave: (data: {
@@ -261,6 +283,7 @@ function NewLeadModal({
     notes?: string
   }) => Promise<void>
   onClose: () => void
+  t: LeadsT
 }) {
   const [form, setForm] = useState({
     branchId: '',
@@ -281,7 +304,7 @@ function NewLeadModal({
 
   const handleSave = async () => {
     if (!form.parentName.trim() || !form.phone.trim()) {
-      setError('Укажите имя родителя и телефон')
+      setError(t('newLead.errorRequired'))
       return
     }
     setSaving(true)
@@ -297,7 +320,7 @@ function NewLeadModal({
         notes: form.notes.trim() || undefined,
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось создать заявку')
+      setError(err instanceof Error ? err.message : t('newLead.errorCreateFailed'))
     } finally {
       setSaving(false)
     }
@@ -307,14 +330,16 @@ function NewLeadModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
-          <h3 className="font-semibold text-gray-900">Новая заявка</h3>
+          <h3 className="font-semibold text-gray-900">{t('newLead.title')}</h3>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
             <X className="w-4 h-4" />
           </button>
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Имя родителя *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('newLead.parentNameLabel')}
+            </label>
             <input
               value={form.parentName}
               onChange={set('parentName')}
@@ -322,16 +347,20 @@ function NewLeadModal({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Телефон *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('newLead.phoneLabel')}
+            </label>
             <input
               value={form.phone}
               onChange={set('phone')}
-              placeholder="+996 XXX XXX XXX"
+              placeholder={t('newLead.phonePlaceholder')}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('newLead.emailLabel')}
+            </label>
             <input
               value={form.email}
               onChange={set('email')}
@@ -339,7 +368,9 @@ function NewLeadModal({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Ребёнок</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('newLead.childLabel')}
+            </label>
             <input
               value={form.childName}
               onChange={set('childName')}
@@ -348,13 +379,15 @@ function NewLeadModal({
           </div>
           {branches.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Филиал</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {t('newLead.branchLabel')}
+              </label>
               <select
                 value={form.branchId}
                 onChange={set('branchId')}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
               >
-                <option value="">Без филиала</option>
+                <option value="">{t('noBranch')}</option>
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
@@ -365,7 +398,7 @@ function NewLeadModal({
           )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Интересует программа
+              {t('newLead.programInterestLabel')}
             </label>
             <input
               value={form.programInterest}
@@ -374,7 +407,9 @@ function NewLeadModal({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Заметки</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('newLead.notesLabel')}
+            </label>
             <textarea
               value={form.notes}
               onChange={set('notes')}
@@ -389,7 +424,7 @@ function NewLeadModal({
             onClick={onClose}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
           >
-            Отмена
+            {t('newLead.cancel')}
           </button>
           <button
             onClick={handleSave}
@@ -397,7 +432,7 @@ function NewLeadModal({
             className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-60 transition-colors"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Создать
+            {t('newLead.create')}
           </button>
         </div>
       </div>
@@ -406,6 +441,7 @@ function NewLeadModal({
 }
 
 function LeadsBoard() {
+  const t = useTranslations('b2b.pages.leads') as LeadsT
   const { orgId, isAdmin, isLoading } = usePageAuth()
   const { alert } = useAlert()
 
@@ -443,12 +479,12 @@ function LeadsBoard() {
           })
         }
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Не удалось загрузить заявки', { type: 'error' })
+        alert(err instanceof Error ? err.message : t('loadFailed'), { type: 'error' })
       } finally {
         setLoading(false)
       }
     },
-    [branchFilter, alert]
+    [branchFilter, alert, t]
   )
 
   useEffect(() => {
@@ -473,7 +509,7 @@ function LeadsBoard() {
       )
     } catch (err) {
       setLeads(prev)
-      alert(err instanceof Error ? err.message : 'Не удалось изменить статус', { type: 'error' })
+      alert(err instanceof Error ? err.message : t('statusChangeFailed'), { type: 'error' })
     }
   }
 
@@ -538,18 +574,16 @@ function LeadsBoard() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <UserPlus className="w-7 h-7 text-primary-600" />
-            Заявки
+            {t('title')}
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Воронка обращений от родителей — из маркетплейса и вручную
-          </p>
+          <p className="text-sm text-gray-500 mt-1">{t('subtitle')}</p>
         </div>
         {isAdmin && (
           <button
             onClick={() => setNewLeadOpen(true)}
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium"
           >
-            <Plus className="w-4 h-4" /> Добавить заявку
+            <Plus className="w-4 h-4" /> {t('addLead')}
           </button>
         )}
       </div>
@@ -559,13 +593,13 @@ function LeadsBoard() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
-              <Users className="w-3.5 h-3.5" /> Всего заявок
+              <Users className="w-3.5 h-3.5" /> {t('totalLeads')}
             </div>
             <p className="text-xl font-bold text-gray-900">{analytics.total}</p>
           </div>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
-              <TrendingUp className="w-3.5 h-3.5" /> Конверсия
+              <TrendingUp className="w-3.5 h-3.5" /> {t('conversionRate')}
             </div>
             <p className="text-xl font-bold text-gray-900">{analytics.conversionRate}%</p>
           </div>
@@ -590,13 +624,13 @@ function LeadsBoard() {
       {/* Branch filter */}
       {branches.length > 0 && (
         <div className="mb-4 flex items-center gap-2">
-          <span className="text-sm text-gray-500">Филиал:</span>
+          <span className="text-sm text-gray-500">{t('branchLabel')}</span>
           <select
             value={branchFilter}
             onChange={(e) => setBranchFilter(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
           >
-            <option value="">Все филиалы</option>
+            <option value="">{t('allBranches')}</option>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -608,7 +642,7 @@ function LeadsBoard() {
 
       {/* Kanban board */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {STATUS_COLUMNS.map((col) => {
+        {STATUS_COLUMN_IDS.map((col) => {
           const colLeads = leads.filter((l) => l.status === col.id)
           return (
             <div
@@ -630,7 +664,7 @@ function LeadsBoard() {
             >
               <div className="flex items-center gap-2 mb-3">
                 <span className={`w-2 h-2 rounded-full ${col.accent}`} />
-                <h3 className="text-sm font-semibold text-gray-700">{col.label}</h3>
+                <h3 className="text-sm font-semibold text-gray-700">{t(`statuses.${col.id}`)}</h3>
                 <span className="text-xs text-gray-400 ml-auto">{colLeads.length}</span>
               </div>
               <div className="space-y-2">
@@ -649,10 +683,11 @@ function LeadsBoard() {
                       setDragOverStatus(null)
                     }}
                     onClick={() => setSelectedLead(lead)}
+                    t={t}
                   />
                 ))}
                 {colLeads.length === 0 && (
-                  <p className="text-xs text-gray-300 text-center py-6">Пусто</p>
+                  <p className="text-xs text-gray-300 text-center py-6">{t('empty')}</p>
                 )}
               </div>
             </div>
@@ -665,6 +700,7 @@ function LeadsBoard() {
           branches={branches}
           onSave={handleCreateLead}
           onClose={() => setNewLeadOpen(false)}
+          t={t}
         />
       )}
       {selectedLead && (
@@ -674,6 +710,7 @@ function LeadsBoard() {
           onSave={handleSaveLead}
           onDelete={handleDeleteLead}
           onClose={() => setSelectedLead(null)}
+          t={t}
         />
       )}
     </div>

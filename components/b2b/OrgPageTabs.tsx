@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import { Link } from '@/i18n/navigation'
+import { useTranslations } from 'next-intl'
 import { Building2, Palette } from 'lucide-react'
 
 interface Props {
@@ -10,13 +11,14 @@ interface Props {
 
 export function OrgPageTabs({ orgId }: Props) {
   const pathname = usePathname()
+  const t = useTranslations('b2b.sidebar')
 
   const base = orgId ? `?orgId=${orgId}` : ''
   const isBrand = pathname.includes('/b2b/brand')
 
   const tabs = [
-    { href: `/b2b/organization${base}`, label: 'Профиль', icon: Building2, active: !isBrand },
-    { href: `/b2b/brand${base}`, label: 'Брендинг', icon: Palette, active: isBrand },
+    { href: `/b2b/organization${base}`, label: t('profile'), icon: Building2, active: !isBrand },
+    { href: `/b2b/brand${base}`, label: t('brandSettings'), icon: Palette, active: isBrand },
   ]
 
   return (
