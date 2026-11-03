@@ -27,6 +27,10 @@ export type AuditAction =
   | 'participant.payment_updated'
   | 'recommendation.created'
   | 'recommendation.updated'
+  | 'organization.imported'
+  | 'organization.claim_submitted'
+  | 'organization.claim_approved'
+  | 'organization.claim_rejected'
 
 export interface WriteAuditOptions {
   db: Firestore
