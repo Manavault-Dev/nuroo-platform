@@ -6,9 +6,13 @@ function isAllowedUrl(parsed: URL): boolean {
   const host = parsed.hostname.toLowerCase()
   const isPrivate =
     host === 'localhost' ||
+    host === '0.0.0.0' ||
     host.endsWith('.local') ||
-    /^127\.|^10\.|^192\.168\.|^169\.254\.|^::1$/.test(host)
-  if (isPrivate) return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+    host.endsWith('.internal') ||
+    /^127\.|^10\.|^192\.168\.|^169\.254\.|^172\.(1[6-9]|2\d|3[0-1])\.|^::1$|^fc00:|^fd00:|^fe80:/.test(
+      host
+    )
+  if (isPrivate) return false
   return parsed.protocol === 'https:'
 }
 

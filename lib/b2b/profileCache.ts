@@ -66,7 +66,9 @@ export function writeCachedProfile(
     expiresAt: Date.now() + PROFILE_CACHE_TTL_MS,
   }
 
-  window.localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(payload))
+  try {
+    window.localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(payload))
+  } catch {}
 }
 
 export function clearCachedProfile() {

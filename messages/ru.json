@@ -1772,7 +1772,16 @@
         "ctaChoosePlan": "Выбрать тариф",
         "ctaUpdateBilling": "Обновить оплату",
         "ctaManageBilling": "Управлять подпиской",
-        "ctaContactSupport": "Связаться с поддержкой"
+        "ctaContactSupport": "Связаться с поддержкой",
+        "billingBadge": {
+          "freeTrial": "Бесплатный период",
+          "active": "Активен",
+          "pastDue": "Требуется оплата",
+          "expired": "Пробный период истёк",
+          "cancelled": "Отменена",
+          "suspended": "Приостановлена",
+          "daysLeft": "осталось {days} дн."
+        }
       },
       "branches": {
         "title": "Локации",
@@ -1905,7 +1914,26 @@
         "noProfile": "Нет плана оплаты",
         "perMonth": "мес",
         "showAllInvoices": "Показать все {count, plural, one {счёт} few {счёта} other {счетов}}",
-        "hideInvoices": "Свернуть"
+        "hideInvoices": "Свернуть",
+        "invoiceDetail": {
+          "backToInvoices": "К списку счетов",
+          "titlePaid": "Оплата получена",
+          "messagePaid": "Платёж успешно проведён. Статус счёта обновлён.",
+          "titlePending": "Ожидание подтверждения",
+          "messagePending": "Платёж обрабатывается. Статус обновится автоматически.",
+          "titleFailed": "Платёж не прошёл",
+          "messageFailed": "Произошла ошибка при обработке платежа. Попробуйте ещё раз.",
+          "titleExpired": "Срок оплаты истёк",
+          "messageExpired": "Время для оплаты этого счёта истекло. Обратитесь в организацию.",
+          "titleCanceled": "Счёт отменён",
+          "messageCanceled": "Этот счёт был отменён.",
+          "titleDefault": "Детали счёта",
+          "labelDescription": "Описание",
+          "labelPaidAt": "Оплачено",
+          "loadFailed": "Не удалось загрузить данные счёта.",
+          "waitingBankConfirmation": "Ожидаем подтверждения от банка…",
+          "refreshStatus": "Обновить статус"
+        }
       },
       "common": {
         "loading": "Загрузка...",
@@ -2323,6 +2351,55 @@
         "previewChildren": "Дети",
         "previewReports": "Отчёты",
         "previewBrandSettings": "Настройки бренда"
+      },
+      "leads": {
+        "title": "Заявки",
+        "subtitle": "Воронка обращений от родителей — из маркетплейса и вручную",
+        "addLead": "Добавить заявку",
+        "totalLeads": "Всего заявок",
+        "conversionRate": "Конверсия",
+        "branchLabel": "Филиал:",
+        "allBranches": "Все филиалы",
+        "noBranch": "Без филиала",
+        "empty": "Пусто",
+        "loadFailed": "Не удалось загрузить заявки",
+        "statusChangeFailed": "Не удалось изменить статус",
+        "childPrefix": "Ребёнок",
+        "interestedPrefix": "Интересует",
+        "statuses": {
+          "new": "Новые",
+          "contacted": "Связались",
+          "trial_booked": "Пробное занятие",
+          "active_client": "Активный клиент",
+          "lost": "Отказ"
+        },
+        "sources": {
+          "marketplace": "Маркетплейс",
+          "manual": "Вручную",
+          "referral": "Рекомендация"
+        },
+        "modal": {
+          "statusLabel": "Статус",
+          "branchLabel": "Филиал",
+          "notesLabel": "Заметки",
+          "cancel": "Отмена",
+          "save": "Сохранить"
+        },
+        "newLead": {
+          "title": "Новая заявка",
+          "parentNameLabel": "Имя родителя *",
+          "phoneLabel": "Телефон *",
+          "phonePlaceholder": "+996 XXX XXX XXX",
+          "emailLabel": "Email",
+          "childLabel": "Ребёнок",
+          "branchLabel": "Филиал",
+          "programInterestLabel": "Интересует программа",
+          "notesLabel": "Заметки",
+          "errorRequired": "Укажите имя родителя и телефон",
+          "errorCreateFailed": "Не удалось создать заявку",
+          "cancel": "Отмена",
+          "create": "Создать"
+        }
       }
     },
     "notifications": {
@@ -2361,6 +2438,10 @@
         "error": "Ошибка",
         "warning": "Предупреждение",
         "info": "Информация"
+      },
+      "upgradeScreen": {
+        "tryCta": "Попробовать Nuroo Business →",
+        "includesNote": "Включает все возможности Nuroo + инструменты для организации"
       }
     },
     "activityFeed": {
@@ -2479,7 +2560,12 @@
     "locale": "Язык",
     "en": "English",
     "ru": "Русский",
-    "ky": "Кыргызча"
+    "ky": "Кыргызча",
+    "dateTimePicker": {
+      "selectDateTime": "Выберите дату и время",
+      "time": "Время",
+      "done": "Готово"
+    }
   },
   "legalPage": {
     "terms": {

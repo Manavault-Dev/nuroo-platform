@@ -124,6 +124,19 @@ export default function NewCohortPage() {
     setSaving(true)
 
     try {
+      const ageMin = form.ageMin ? parseInt(form.ageMin) : null
+      const ageMax = form.ageMax ? parseInt(form.ageMax) : null
+      if (ageMin !== null && ageMax !== null && ageMin > ageMax) {
+        setError('Возраст "от" не может быть больше возраста "до"')
+        setSaving(false)
+        return
+      }
+      if (form.endDate && form.startDate && form.endDate < form.startDate) {
+        setError('Дата окончания не может быть раньше даты начала')
+        setSaving(false)
+        return
+      }
+
       const body: Record<string, unknown> = {
         title: form.title.trim(),
         description: form.description.trim(),
@@ -136,8 +149,8 @@ export default function NewCohortPage() {
         price: parseFloat(form.price) || 0,
         currency: form.currency,
         maxParticipants: parseInt(form.maxParticipants) || 20,
-        ageMin: form.ageMin ? parseInt(form.ageMin) : null,
-        ageMax: form.ageMax ? parseInt(form.ageMax) : null,
+        ageMin,
+        ageMax,
         scheduleType: form.scheduleType,
       }
 

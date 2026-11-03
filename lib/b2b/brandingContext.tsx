@@ -98,9 +98,12 @@ export function BrandingProvider({
     setIsLoading(true)
     setError(null)
 
+    let stale = false
+
     apiClient
       .getOrgBranding(orgId)
       .then(({ branding: remote }) => {
+        if (stale) return
         if (remote) {
           setBranding(normalizeBranding(remote))
           writeCache(orgId, normalizeBranding(remote))
@@ -110,10 +113,17 @@ export function BrandingProvider({
         }
       })
       .catch(() => {
+        if (stale) return
         // API failed — use cache silently
         if (!cached) setError(null)
       })
-      .finally(() => setIsLoading(false))
+      .finally(() => {
+        if (!stale) setIsLoading(false)
+      })
+
+    return () => {
+      stale = true
+    }
   }, [orgId])
 
   const updateBranding = useCallback(
@@ -121,14 +131,21 @@ export function BrandingProvider({
       if (!orgId) return
 
       // Optimistic update
+      const previous = branding
       const next = { ...(branding ?? {}), ...updates }
       setBranding(next)
       writeCache(orgId, next)
 
-      const { branding: saved } = await apiClient.updateOrgBranding(orgId, updates)
-      if (saved) {
-        setBranding(normalizeBranding(saved))
-        writeCache(orgId, normalizeBranding(saved))
+      try {
+        const { branding: saved } = await apiClient.updateOrgBranding(orgId, updates)
+        if (saved) {
+          setBranding(normalizeBranding(saved))
+          writeCache(orgId, normalizeBranding(saved))
+        }
+      } catch (err) {
+        setBranding(previous)
+        if (previous) writeCache(orgId, previous)
+        throw err
       }
     },
     [orgId, branding]
