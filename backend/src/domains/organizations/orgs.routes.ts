@@ -5,7 +5,9 @@ import { z } from 'zod'
 
 import { getFirestore, getStorageBucket } from '../../infrastructure/database/firebase.js'
 import { FREE_TRIAL_DAYS, FREE_TRIAL_PLAN_ID } from '../payments/planLimits.js'
-import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
+import { requireOrgMember, requirePlatformAdmin } from '../../infrastructure/auth/rbac.js'
+import { writeAudit } from '../../infrastructure/audit/audit.js'
+import { geocodeAddress } from '../../infrastructure/geocoding/googleGeocoding.service.js'
 
 const NUROO_PLAN_IDS = ['nuroo', 'nuroo_business'] as const
 type NurooPlanId = (typeof NUROO_PLAN_IDS)[number]
@@ -35,6 +37,43 @@ export const imageSourceSchema = z
     message: 'Must be a valid URL or uploaded image',
   })
 
+function isHttpUrl(value: string): boolean {
+  try {
+    const protocol = new URL(value).protocol
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * zod's .url() only checks that the string parses as a URL — it happily
+ * accepts `javascript:alert(1)`, which then gets stored and rendered as a
+ * clickable <a href> on the public marketplace page. Restrict to http(s).
+ */
+export function safeHttpUrlSchema(maxLength: number) {
+  return z
+    .string()
+    .trim()
+    .max(maxLength)
+    .refine(isHttpUrl, { message: 'Must be a valid http(s) URL' })
+}
+
+const importOrgSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  country: z.string().trim().max(100).optional(),
+  city: z.string().trim().max(100).optional(),
+  type: z.enum(ORG_TYPES).nullable().optional(),
+  categories: z.array(z.string().trim().max(100)).max(20).optional(),
+  description: z.string().trim().max(4000).optional(),
+  address: z.string().trim().max(500).optional(),
+  contactPhone: z.string().trim().max(50).optional(),
+  whatsappNumber: z.string().trim().max(50).optional(),
+  websiteUrl: safeHttpUrlSchema(500).optional(),
+  logoUrl: imageSourceSchema.optional(),
+  sourceUrl: safeHttpUrlSchema(1000).optional(),
+})
+
 const uploadKindSchema = z.enum(['logo', 'cover', 'photo'])
 const imagePositionSchema = z.number().min(0).max(100).optional().nullable()
 const imageScaleSchema = z.number().min(1).max(2).optional().nullable()
@@ -53,20 +92,51 @@ export function parseDataImageUrl(value: string): { mimeType: string; buffer: Bu
   }
 }
 
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff])
+
+/**
+ * Sniffs the real file format from magic bytes — never trusts a
+ * client-declared mimetype (data: URI prefix or multipart Content-Type
+ * header), both of which are attacker-controlled. Only these three raster
+ * formats are allowed; SVG is deliberately excluded since it's XML and can
+ * embed <script>, which would execute when the uploaded file is opened
+ * directly from its public storage URL.
+ */
+export function sniffImageMimeType(
+  buffer: Buffer
+): 'image/png' | 'image/jpeg' | 'image/webp' | null {
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(PNG_MAGIC)) return 'image/png'
+  if (buffer.length >= 3 && buffer.subarray(0, 3).equals(JPEG_MAGIC)) return 'image/jpeg'
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+  ) {
+    return 'image/webp'
+  }
+  return null
+}
+
 export async function uploadOrgMarketplaceImage(
   orgId: string,
   kind: 'logo' | 'cover' | 'photo',
   mediaBuffer: Buffer,
-  mediaMimetype: string,
+  _mediaMimetype: string,
   mediaFilename: string
 ) {
+  const realMimeType = sniffImageMimeType(mediaBuffer)
+  if (!realMimeType) {
+    throw new Error('Unsupported image format — only PNG, JPEG, and WebP are allowed')
+  }
+
   const bucket = await getStorageBucket()
   const safeName = mediaFilename.replace(/[^a-zA-Z0-9._-]/g, '_')
   const storagePath = `orgs/${orgId}/marketplace/${kind}/${Date.now()}-${safeName}`
   const file = bucket.file(storagePath)
 
   await file.save(mediaBuffer, {
-    contentType: mediaMimetype || undefined,
+    contentType: realMimeType,
     metadata: {
       cacheControl: 'public, max-age=31536000',
     },
@@ -98,7 +168,7 @@ const updateOrgSchema = z
       .max(50)
       .regex(/^[+\d\s\-().]*$/, 'Invalid phone format')
       .optional(),
-    websiteUrl: z.string().trim().max(500).url('Must be a valid URL').optional().or(z.literal('')),
+    websiteUrl: safeHttpUrlSchema(500).optional().or(z.literal('')),
     logoUrl: imageSourceSchema.optional().or(z.literal('')),
     coverImageUrl: imageSourceSchema.optional().or(z.literal('')),
     logoPositionX: imagePositionSchema,
@@ -149,6 +219,39 @@ const createOrgResponseSchema = {
     role: { type: 'string' },
   },
 } as const
+
+const importOrgBodySchema = {
+  type: 'object',
+  required: ['name'],
+  additionalProperties: true,
+  properties: {
+    name: { type: 'string' },
+    country: { type: 'string' },
+    city: { type: 'string' },
+    type: { type: ['string', 'null'], enum: [...ORG_TYPES, null] },
+    categories: { type: 'array', items: { type: 'string' } },
+    description: { type: 'string' },
+    address: { type: 'string' },
+    contactPhone: { type: 'string' },
+    whatsappNumber: { type: 'string' },
+    websiteUrl: { type: 'string' },
+    logoUrl: { type: 'string' },
+    sourceUrl: { type: 'string' },
+  },
+} as const
+
+const importOrgResponseSchema = {
+  type: 'object',
+  required: ['ok', 'orgId', 'name', 'status'],
+  properties: {
+    ok: { type: 'boolean' },
+    orgId: { type: 'string' },
+    name: { type: 'string' },
+    status: { type: 'string' },
+  },
+} as const
+
+const RATE_IMPORT = { max: 30, timeWindow: '1 minute' }
 
 const updateOrgBodySchema = {
   type: 'object',
@@ -481,6 +584,101 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
     }
   )
 
+  // POST /admin/orgs/import — platform-admin-only. Creates an unclaimed
+  // marketplace listing from a public source: no members doc is written,
+  // so this can never silently grant ownership to anyone (same reasoning
+  // as the self-serve basic-org path in parent.routes.ts). The listing is
+  // publicly visible immediately (isPublicMarketplaceEnabled: true), but
+  // `status` is never exposed in the public response shape — it only
+  // drives the claim workflow added in a later phase.
+  fastify.post<{ Body: z.infer<typeof importOrgSchema> }>(
+    '/admin/orgs/import',
+    {
+      preHandler: requirePlatformAdmin,
+      config: { rateLimit: RATE_IMPORT },
+      schema: {
+        tags: ['Organizations'],
+        summary:
+          'Import an unclaimed organization listing from a public source (platform admin only)',
+        body: importOrgBodySchema,
+        response: {
+          200: importOrgResponseSchema,
+          400: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const db = getFirestore()
+      const parsed = importOrgSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request' })
+      }
+      const body = parsed.data
+      const now = new Date()
+
+      let uploadedLogoUrl: string | null = null
+      const orgRef = db.collection('organizations').doc()
+      if (body.logoUrl) {
+        const parsedImage = parseDataImageUrl(body.logoUrl)
+        uploadedLogoUrl = parsedImage
+          ? await uploadOrgMarketplaceImage(
+              orgRef.id,
+              'logo',
+              parsedImage.buffer,
+              parsedImage.mimeType,
+              'logo'
+            )
+          : body.logoUrl
+      }
+
+      const geocoded = body.address
+        ? await geocodeAddress(body.address, {
+            country: body.country ?? null,
+            city: body.city ?? null,
+          })
+        : null
+
+      await orgRef.set({
+        name: body.name,
+        country: body.country ?? null,
+        city: body.city ?? null,
+        type: body.type ?? null,
+        categories: body.categories ?? [],
+        description: body.description ?? null,
+        address: body.address ?? null,
+        lat: geocoded?.lat ?? null,
+        lng: geocoded?.lng ?? null,
+        contactPhone: body.contactPhone ?? null,
+        whatsappNumber: body.whatsappNumber ?? null,
+        websiteUrl: body.websiteUrl ?? null,
+        logoUrl: uploadedLogoUrl,
+        createdAt: admin.firestore.Timestamp.fromDate(now),
+        createdBy: null,
+        importedBy: request.user?.uid ?? null,
+        sourceUrl: body.sourceUrl ?? null,
+        status: 'unclaimed',
+        claimedBy: null,
+        claimedAt: null,
+        isActive: true,
+        isPublicMarketplaceEnabled: true,
+      })
+
+      writeAudit({
+        db,
+        orgId: orgRef.id,
+        entityType: 'organization',
+        entityId: orgRef.id,
+        action: 'organization.imported',
+        actorId: request.user?.uid ?? 'platform_admin_key',
+        actorRole: 'platform_admin',
+        after: { name: body.name, sourceUrl: body.sourceUrl ?? null, status: 'unclaimed' },
+      })
+
+      return { ok: true, orgId: orgRef.id, name: body.name, status: 'unclaimed' }
+    }
+  )
+
   fastify.patch<{
     Params: { orgId: string }
     Body: z.infer<typeof updateOrgSchema>
@@ -574,7 +772,27 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
       if (body.type !== undefined) updateData.type = body.type
       if (body.categories !== undefined) updateData.categories = body.categories
       if (body.description !== undefined) updateData.description = body.description || null
-      if (body.address !== undefined) updateData.address = body.address || null
+      if (body.address !== undefined) {
+        updateData.address = body.address || null
+        if (body.address) {
+          const existing = orgSnap.data()!
+          const geocoded = await geocodeAddress(body.address, {
+            country:
+              body.country !== undefined
+                ? body.country || null
+                : ((existing.country as string | null) ?? null),
+            city:
+              body.city !== undefined
+                ? body.city || null
+                : ((existing.city as string | null) ?? null),
+          })
+          updateData.lat = geocoded?.lat ?? null
+          updateData.lng = geocoded?.lng ?? null
+        } else {
+          updateData.lat = null
+          updateData.lng = null
+        }
+      }
       if (body.contactPhone !== undefined) updateData.contactPhone = body.contactPhone || null
       if (body.whatsappNumber !== undefined) updateData.whatsappNumber = body.whatsappNumber || null
       if (body.websiteUrl !== undefined) updateData.websiteUrl = body.websiteUrl || null
@@ -604,6 +822,8 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
           categories: data.categories ?? [],
           description: data.description ?? null,
           address: data.address ?? null,
+          lat: typeof data.lat === 'number' ? data.lat : null,
+          lng: typeof data.lng === 'number' ? data.lng : null,
           contactPhone: data.contactPhone ?? null,
           whatsappNumber: data.whatsappNumber ?? null,
           websiteUrl: data.websiteUrl ?? null,

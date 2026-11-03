@@ -68,6 +68,9 @@ export const envSchema = z.object({
   WHATSAPP_TEMPLATE_LANG: z.string().optional(),
   WHATSAPP_BOOKING_TEMPLATE_NAME: z.string().optional(),
   WHATSAPP_BOOKING_TEMPLATE_LANG: z.string().optional(),
+
+  // Google Geocoding API (organization address → map coordinates)
+  GOOGLE_MAPS_API_KEY: z.string().optional(),
 })
 
 export type Env = z.infer<typeof envSchema>
