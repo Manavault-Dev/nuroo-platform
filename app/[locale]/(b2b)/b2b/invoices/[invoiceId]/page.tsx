@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { CheckCircle, Clock, AlertCircle, XCircle, ArrowLeft, RefreshCw } from 'lucide-react'
 import { usePageAuth } from '@/lib/b2b/usePageAuth'
 import { apiClient, type Invoice } from '@/lib/b2b/api'
@@ -16,7 +17,11 @@ type StatusTheme = {
   textColor: string
 }
 
-function getStatusTheme(status: string, returnStatus: string | null): StatusTheme {
+function getStatusTheme(
+  status: string,
+  returnStatus: string | null,
+  t: (key: string) => string
+): StatusTheme {
   // If the URL has ?status=paid (return from Finik payment page) show success
   // even before the webhook confirms — the payment was accepted by Finik
   const effectiveStatus = returnStatus === 'paid' ? 'paid' : status
@@ -25,8 +30,8 @@ function getStatusTheme(status: string, returnStatus: string | null): StatusThem
     case 'paid':
       return {
         icon: <CheckCircle className="w-16 h-16 text-emerald-500" />,
-        title: 'Оплата получена',
-        message: 'Платёж успешно проведён. Статус счёта обновлён.',
+        title: t('invoiceDetail.titlePaid'),
+        message: t('invoiceDetail.messagePaid'),
         bg: 'bg-emerald-50',
         border: 'border-emerald-200',
         textColor: 'text-emerald-700',
@@ -34,8 +39,8 @@ function getStatusTheme(status: string, returnStatus: string | null): StatusThem
     case 'pending':
       return {
         icon: <Clock className="w-16 h-16 text-amber-500" />,
-        title: 'Ожидание подтверждения',
-        message: 'Платёж обрабатывается. Статус обновится автоматически.',
+        title: t('invoiceDetail.titlePending'),
+        message: t('invoiceDetail.messagePending'),
         bg: 'bg-amber-50',
         border: 'border-amber-200',
         textColor: 'text-amber-700',
@@ -43,8 +48,8 @@ function getStatusTheme(status: string, returnStatus: string | null): StatusThem
     case 'failed':
       return {
         icon: <AlertCircle className="w-16 h-16 text-red-500" />,
-        title: 'Платёж не прошёл',
-        message: 'Произошла ошибка при обработке платежа. Попробуйте ещё раз.',
+        title: t('invoiceDetail.titleFailed'),
+        message: t('invoiceDetail.messageFailed'),
         bg: 'bg-red-50',
         border: 'border-red-200',
         textColor: 'text-red-700',
@@ -52,8 +57,8 @@ function getStatusTheme(status: string, returnStatus: string | null): StatusThem
     case 'expired':
       return {
         icon: <XCircle className="w-16 h-16 text-gray-400" />,
-        title: 'Срок оплаты истёк',
-        message: 'Время для оплаты этого счёта истекло. Обратитесь в организацию.',
+        title: t('invoiceDetail.titleExpired'),
+        message: t('invoiceDetail.messageExpired'),
         bg: 'bg-gray-50',
         border: 'border-gray-200',
         textColor: 'text-gray-600',
@@ -61,8 +66,8 @@ function getStatusTheme(status: string, returnStatus: string | null): StatusThem
     case 'canceled':
       return {
         icon: <XCircle className="w-16 h-16 text-gray-400" />,
-        title: 'Счёт отменён',
-        message: 'Этот счёт был отменён.',
+        title: t('invoiceDetail.titleCanceled'),
+        message: t('invoiceDetail.messageCanceled'),
         bg: 'bg-gray-50',
         border: 'border-gray-200',
         textColor: 'text-gray-600',
@@ -70,7 +75,7 @@ function getStatusTheme(status: string, returnStatus: string | null): StatusThem
     default:
       return {
         icon: <Clock className="w-16 h-16 text-blue-500" />,
-        title: 'Детали счёта',
+        title: t('invoiceDetail.titleDefault'),
         message: '',
         bg: 'bg-blue-50',
         border: 'border-blue-200',
@@ -84,6 +89,7 @@ export default function InvoiceDetailPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { orgId, isLoading: authLoading } = usePageAuth()
+  const t = useTranslations('b2b.pages.finance')
 
   const invoiceId = params.invoiceId as string
   // ?status=paid is appended by the returnUrl when Finik redirects user back
@@ -103,11 +109,11 @@ export default function InvoiceDetailPage() {
       const found = (res.invoices ?? []).find((inv) => inv.id === invoiceId)
       setInvoice(found ?? null)
     } catch {
-      setError('Не удалось загрузить данные счёта.')
+      setError(t('invoiceDetail.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [orgId, invoiceId])
+  }, [orgId, invoiceId, t])
 
   // Initial load
   useEffect(() => {
@@ -133,16 +139,16 @@ export default function InvoiceDetailPage() {
 
   if (authLoading || (loading && !invoice)) return <PageSpinner />
 
-  const theme = getStatusTheme(invoice?.status ?? 'pending', returnStatus)
+  const theme = getStatusTheme(invoice?.status ?? 'pending', returnStatus, t)
 
   const statusLabels: Record<string, string> = {
-    paid: 'Оплачено',
-    pending: 'Ожидает оплаты',
-    upcoming: 'Предстоящий',
-    overdue: 'Просрочен',
-    failed: 'Ошибка',
-    expired: 'Истёк',
-    canceled: 'Отменён',
+    paid: t('statusPaid'),
+    pending: t('statusPending'),
+    upcoming: t('statusUpcoming'),
+    overdue: t('statusOverdue'),
+    failed: t('statusFailed'),
+    expired: t('statusExpired'),
+    canceled: t('statusCanceled'),
   }
 
   return (
@@ -154,7 +160,7 @@ export default function InvoiceDetailPage() {
           className="flex items-center gap-2 text-gray-500 hover:text-gray-700 mb-6 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span className="text-sm font-medium">К списку счетов</span>
+          <span className="text-sm font-medium">{t('invoiceDetail.backToInvoices')}</span>
         </button>
 
         {/* Status card */}
@@ -166,13 +172,13 @@ export default function InvoiceDetailPage() {
           {invoice && (
             <div className="bg-white rounded-xl border border-gray-100 p-4 text-left mb-4 space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-500">Сумма</span>
+                <span className="text-sm text-gray-500">{t('amount')}</span>
                 <span className="font-bold text-gray-900">
                   {invoice.amount.toLocaleString('ru-RU')} {invoice.currency}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-500">Статус</span>
+                <span className="text-sm text-gray-500">{t('status')}</span>
                 <span
                   className={`text-sm font-semibold ${
                     invoice.status === 'paid'
@@ -187,13 +193,15 @@ export default function InvoiceDetailPage() {
               </div>
               {invoice.description && (
                 <div className="flex justify-between items-start gap-4">
-                  <span className="text-sm text-gray-500 shrink-0">Описание</span>
+                  <span className="text-sm text-gray-500 shrink-0">
+                    {t('invoiceDetail.labelDescription')}
+                  </span>
                   <span className="text-sm text-gray-700 text-right">{invoice.description}</span>
                 </div>
               )}
               {invoice.dueDate && (
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-500">Срок оплаты</span>
+                  <span className="text-sm text-gray-500">{t('invoiceDueDate')}</span>
                   <span className="text-sm text-gray-700">
                     {new Date(invoice.dueDate + 'T00:00:00').toLocaleDateString('ru-RU', {
                       day: 'numeric',
@@ -205,7 +213,7 @@ export default function InvoiceDetailPage() {
               )}
               {invoice.paidAt && (
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-500">Оплачено</span>
+                  <span className="text-sm text-gray-500">{t('invoiceDetail.labelPaidAt')}</span>
                   <span className="text-sm text-emerald-600 font-medium">
                     {new Date(invoice.paidAt).toLocaleDateString('ru-RU', {
                       day: 'numeric',
@@ -225,7 +233,7 @@ export default function InvoiceDetailPage() {
           {returnStatus === 'paid' && invoice?.status !== 'paid' && refreshCount < 3 && (
             <div className="flex items-center justify-center gap-2 text-sm text-amber-600 mb-4">
               <Spinner size="sm" />
-              <span>Ожидаем подтверждения от банка…</span>
+              <span>{t('invoiceDetail.waitingBankConfirmation')}</span>
             </div>
           )}
 
@@ -235,7 +243,7 @@ export default function InvoiceDetailPage() {
             className="flex items-center gap-2 mx-auto text-sm text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
           >
             {loading ? <Spinner size="sm" /> : <RefreshCw className="w-4 h-4" />}
-            <span>Обновить статус</span>
+            <span>{t('invoiceDetail.refreshStatus')}</span>
           </button>
         </div>
       </div>

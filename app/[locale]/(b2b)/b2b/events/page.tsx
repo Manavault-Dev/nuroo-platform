@@ -88,10 +88,12 @@ export default function EventsPage() {
   const { orgId, isAdmin, isLoading } = usePageAuth()
   const [events, setEvents] = useState<OrgEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<OrgEvent | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
   const [regsEvent, setRegsEvent] = useState<OrgEvent | null>(null)
   const [regs, setRegs] = useState<Registration[]>([])
@@ -99,15 +101,24 @@ export default function EventsPage() {
 
   const fetchEvents = async () => {
     if (!orgId) return
-    const token = await getIdToken()
-    const res = await fetch(`${API}/orgs/${orgId}/events`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (res.ok) {
-      const data = await res.json()
-      setEvents(data.events ?? [])
+    setLoading(true)
+    try {
+      const token = await getIdToken()
+      const res = await fetch(`${API}/orgs/${orgId}/events`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setEvents(data.events ?? [])
+        setError('')
+      } else {
+        setError('Не удалось загрузить мероприятия')
+      }
+    } catch {
+      setError('Не удалось загрузить мероприятия')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   useEffect(() => {
@@ -143,6 +154,7 @@ export default function EventsPage() {
   const handleSave = async () => {
     if (!orgId || saving) return
     setSaving(true)
+    setSaveError('')
     try {
       const token = await getIdToken()
       const body = {
@@ -162,8 +174,12 @@ export default function EventsPage() {
       })
       if (res.ok) {
         setModalOpen(false)
-        fetchEvents()
+        await fetchEvents()
+      } else {
+        setSaveError('Не удалось сохранить мероприятие')
       }
+    } catch {
+      setSaveError('Не удалось сохранить мероприятие')
     } finally {
       setSaving(false)
     }
@@ -172,28 +188,42 @@ export default function EventsPage() {
   const handleDelete = async (id: string) => {
     if (!orgId || !confirm('Удалить мероприятие?')) return
     setDeleting(id)
-    const token = await getIdToken()
-    await fetch(`${API}/orgs/${orgId}/events/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    setDeleting(null)
-    setEvents((prev) => prev.filter((e) => e.id !== id))
+    try {
+      const token = await getIdToken()
+      const res = await fetch(`${API}/orgs/${orgId}/events/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        setEvents((prev) => prev.filter((e) => e.id !== id))
+      } else {
+        setError('Не удалось удалить мероприятие')
+      }
+    } catch {
+      setError('Не удалось удалить мероприятие')
+    } finally {
+      setDeleting(null)
+    }
   }
 
   const openRegistrations = async (ev: OrgEvent) => {
     setRegsEvent(ev)
     setRegs([])
     setRegsLoading(true)
-    const token = await getIdToken()
-    const res = await fetch(`${API}/orgs/${orgId}/events/${ev.id}/registrations`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (res.ok) {
-      const data = await res.json()
-      setRegs(data.registrations ?? [])
+    try {
+      const token = await getIdToken()
+      const res = await fetch(`${API}/orgs/${orgId}/events/${ev.id}/registrations`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setRegs(data.registrations ?? [])
+      }
+    } catch {
+      setRegs([])
+    } finally {
+      setRegsLoading(false)
     }
-    setRegsLoading(false)
   }
 
   const exportCsv = () => {
@@ -222,13 +252,21 @@ export default function EventsPage() {
   const handleTogglePublish = async (ev: OrgEvent) => {
     if (!orgId) return
     const next = ev.status === 'published' ? 'draft' : 'published'
-    const token = await getIdToken()
-    const res = await fetch(`${API}/orgs/${orgId}/events/${ev.id}`, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: next }),
-    })
-    if (res.ok) fetchEvents()
+    try {
+      const token = await getIdToken()
+      const res = await fetch(`${API}/orgs/${orgId}/events/${ev.id}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next }),
+      })
+      if (res.ok) {
+        await fetchEvents()
+      } else {
+        setError('Не удалось изменить статус мероприятия')
+      }
+    } catch {
+      setError('Не удалось изменить статус мероприятия')
+    }
   }
 
   if (isLoading || loading) {
@@ -258,6 +296,12 @@ export default function EventsPage() {
           </button>
         )}
       </div>
+
+      {error && (
+        <div className="mb-5 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {events.length === 0 ? (
         <div className="text-center py-20 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800">
@@ -307,6 +351,7 @@ export default function EventsPage() {
           form={form}
           editing={editing}
           saving={saving}
+          error={saveError}
           onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
           onSave={handleSave}
           onClose={() => setModalOpen(false)}
@@ -563,6 +608,7 @@ function EventModal({
   form,
   editing,
   saving,
+  error,
   onChange,
   onSave,
   onClose,
@@ -570,6 +616,7 @@ function EventModal({
   form: typeof EMPTY_FORM
   editing: OrgEvent | null
   saving: boolean
+  error?: string
   onChange: (patch: Partial<typeof EMPTY_FORM>) => void
   onSave: () => void
   onClose: () => void
@@ -796,6 +843,12 @@ function EventModal({
               </div>
             )}
           </div>
+
+          {error && (
+            <div className="px-3 py-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-400">
+              {error}
+            </div>
+          )}
         </div>
 
         {/* Footer */}

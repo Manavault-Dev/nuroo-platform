@@ -1772,7 +1772,16 @@
         "ctaChoosePlan": "Тариф тандоо",
         "ctaUpdateBilling": "Төлөмдү жаңыртуу",
         "ctaManageBilling": "Жазылууну башкаруу",
-        "ctaContactSupport": "Колдоо менен байланышуу"
+        "ctaContactSupport": "Колдоо менен байланышуу",
+        "billingBadge": {
+          "freeTrial": "Акысыз мөөнөт",
+          "active": "Активдүү",
+          "pastDue": "Төлөм талап кылынат",
+          "expired": "Сыноо мөөнөтү бүттү",
+          "cancelled": "Жокко чыгарылды",
+          "suspended": "Токтотулду",
+          "daysLeft": "{days} күн калды"
+        }
       },
       "branches": {
         "title": "Жайгашкан жерлер",
@@ -1905,7 +1914,26 @@
         "noProfile": "Төлөм планы жок",
         "perMonth": "ай",
         "showAllInvoices": "Бардык {count} эсепти көрсөтүү",
-        "hideInvoices": "Жыйноо"
+        "hideInvoices": "Жыйноо",
+        "invoiceDetail": {
+          "backToInvoices": "Эсептер тизмесине",
+          "titlePaid": "Төлөм алынды",
+          "messagePaid": "Төлөм ийгиликтүү аткарылды. Эсептин статусу жаңырды.",
+          "titlePending": "Ырастоону күтүү",
+          "messagePending": "Төлөм иштетилип жатат. Статус автоматтык түрдө жаңырат.",
+          "titleFailed": "Төлөм өтпөдү",
+          "messageFailed": "Төлөмдү иштетүүдө ката кетти. Кайра аракет кылыңыз.",
+          "titleExpired": "Төлөө мөөнөтү бүттү",
+          "messageExpired": "Бул эсеп үчүн төлөө мөөнөтү бүттү. Уюм менен байланышыңыз.",
+          "titleCanceled": "Эсеп жокко чыгарылды",
+          "messageCanceled": "Бул эсеп жокко чыгарылды.",
+          "titleDefault": "Эсеп тууралуу маалымат",
+          "labelDescription": "Сүрөттөмө",
+          "labelPaidAt": "Төлөнгөн күнү",
+          "loadFailed": "Эсеп маалыматын жүктөө ишке ашпады.",
+          "waitingBankConfirmation": "Банктан ырастоону күтөбүз…",
+          "refreshStatus": "Статусту жаңыртуу"
+        }
       },
       "common": {
         "loading": "Жүктөлүп жатат...",
@@ -2323,6 +2351,55 @@
         "previewChildren": "Балдар",
         "previewReports": "Отчёттор",
         "previewBrandSettings": "Бренд жөндөөлөр"
+      },
+      "leads": {
+        "title": "Арыздар",
+        "subtitle": "Ата-энелерден келген арыздардын тобокелдиги — маркетплейстен жана кол менен",
+        "addLead": "Арыз кошуу",
+        "totalLeads": "Бардык арыздар",
+        "conversionRate": "Конверсия",
+        "branchLabel": "Филиал:",
+        "allBranches": "Бардык филиалдар",
+        "noBranch": "Филиалсыз",
+        "empty": "Бош",
+        "loadFailed": "Арыздарды жүктөө ишке ашпады",
+        "statusChangeFailed": "Статусту өзгөртүү ишке ашпады",
+        "childPrefix": "Бала",
+        "interestedPrefix": "Кызыкдар",
+        "statuses": {
+          "new": "Жаңы",
+          "contacted": "Байланышылды",
+          "trial_booked": "Сынак сабак",
+          "active_client": "Активдүү кардар",
+          "lost": "Баш тартуу"
+        },
+        "sources": {
+          "marketplace": "Маркетплейс",
+          "manual": "Кол менен",
+          "referral": "Сунуштоо"
+        },
+        "modal": {
+          "statusLabel": "Статус",
+          "branchLabel": "Филиал",
+          "notesLabel": "Эскертүүлөр",
+          "cancel": "Жокко чыгаруу",
+          "save": "Сактоо"
+        },
+        "newLead": {
+          "title": "Жаңы арыз",
+          "parentNameLabel": "Ата-эненин аты *",
+          "phoneLabel": "Телефон *",
+          "phonePlaceholder": "+996 XXX XXX XXX",
+          "emailLabel": "Email",
+          "childLabel": "Бала",
+          "branchLabel": "Филиал",
+          "programInterestLabel": "Кызыктырган программа",
+          "notesLabel": "Эскертүүлөр",
+          "errorRequired": "Ата-эненин атын жана телефонун көрсөтүңүз",
+          "errorCreateFailed": "Арыз түзүлбөдү",
+          "cancel": "Жокко чыгаруу",
+          "create": "Түзүү"
+        }
       }
     },
     "notifications": {
@@ -2361,6 +2438,10 @@
         "error": "Ката",
         "warning": "Эскертүү",
         "info": "Маалымат"
+      },
+      "upgradeScreen": {
+        "tryCta": "Nuroo Business байкап көрүү →",
+        "includesNote": "Nuroo мүмкүнчүлүктөрүнүн баарын + уюм үчүн каражаттарды камтыйт"
       }
     },
     "activityFeed": {
@@ -2479,7 +2560,12 @@
     "locale": "Тил",
     "en": "English",
     "ru": "Русский",
-    "ky": "Кыргызча"
+    "ky": "Кыргызча",
+    "dateTimePicker": {
+      "selectDateTime": "Дата жана убакытты тандаңыз",
+      "time": "Убакыт",
+      "done": "Даяр"
+    }
   },
   "legalPage": {
     "terms": {
@@ -2683,39 +2769,51 @@
     "loading": "Жүктөлүүдө...",
     "loadError": "Уюмдарды жүктөө мүмкүн болгон жок",
     "orgPage": {
+      "address": "Дарек",
       "back": "Маркетплейске кайтуу",
-      "specialists": "Биздин адистер",
-      "noSpecialists": "Адистер көрсөтүлгөн жок",
-      "services": "Кызматтар",
-      "noServices": "Кызматтар кошулган жок",
+      "back7Days": "← 7 күн",
+      "book": "Жазылуу",
+      "bookError": "Жазылуу түзүлгөн жок. Кайра аракет кылыңыз.",
+      "bookSuccess": "Жазылуу ийгиликтүү түзүлдү!",
+      "booking": "Жазылып жатабыз...",
+      "bookingUnavailableNoService": "Адистер азырынча кызматтарды орнотушкан жок — телефон же WhatsApp аркылуу байланышыңыз.",
+      "bookingUnavailableNoSlot": "Жакынкы 30 күндө бош убакыт жок — телефон же WhatsApp аркылуу байланышыңыз.",
+      "bookingUnavailableNoSpecialist": "Уюм азырынча адистерди кошкон жок — телефон же WhatsApp аркылуу байланышыңыз.",
+      "bookingUnavailableTitle": "Онлайн жазылуу азырынча жеткиликсиз",
+      "cancelBtn": "Жокко чыгаруу",
+      "claimBtn": "Туташтыруу",
+      "claimConfirm": "Биз сиздин талабыңызды карап чыгабыз жана башкаруу укугун берерден мурун байланышабыз. Талапты жөнөтөсүзбү?",
+      "claimError": "Талапты жөнөтүү мүмкүн болбоду. Кайра аракет кылыңыз.",
+      "claimPendingSub": "Биз бул уюмду туташтыруу талабыңызды карап чыгып жатабыз.",
+      "claimPendingTitle": "Талап жөнөтүлдү",
+      "claimSub": "Профилди, командаңызды жана жазылууларды башкаруу үчүн Nuroo'го туташтырыңыз.",
+      "claimSubmitting": "Жөнөтүлүп жатат...",
+      "claimTitle": "Бул сиздин уюмуңуз беле?",
+      "cohorts": "Топтук сабактар",
+      "confirmBtn": "Ырастоо",
+      "confirmDate": "Дата",
+      "confirmService": "Кызмат",
+      "confirmSpecialist": "Адис",
+      "confirmTime": "Убакыт",
+      "confirmTitle": "Жазылууну ырастаңыз",
       "duration": "{min} мүн",
       "free": "Акысыз",
-      "selectService": "Кызматты тандаңыз",
-      "selectDate": "Датаны тандаңыз",
-      "selectTime": "Убакытты тандаңыз",
-      "noSlots": "Бош убакыттар жок",
-      "book": "Жазылуу",
-      "booking": "Жазылып жатабыз...",
-      "bookSuccess": "Жазылуу ийгиликтүү түзүлдү!",
-      "bookError": "Жазылуу түзүлгөн жок. Кайра аракет кылыңыз.",
-      "loginRequired": "Жазылуу үчүн кириңиз",
-      "loginBtn": "Кируу",
       "loadError": "Маалыматтарды жүктөө мүмкүн болгон жок",
-      "phone": "Телефон",
-      "address": "Дарек",
-      "website": "Сайт",
-      "back7Days": "← 7 күн",
+      "loginBtn": "Кируу",
+      "loginRequired": "Жазылуу үчүн кириңиз",
       "next7Days": "7 күн →",
-      "confirmTitle": "Жазылууну ырастаңыз",
-      "confirmSpecialist": "Адис",
-      "confirmService": "Кызмат",
-      "confirmDate": "Дата",
-      "confirmTime": "Убакыт",
-      "confirmBtn": "Ырастоо",
-      "cancelBtn": "Жокко чыгаруу",
+      "noCohorts": "Топтук сабактар жок",
+      "noServices": "Кызматтар кошулган жок",
+      "noSlots": "Бош убакыттар жок",
+      "noSpecialists": "Адистер көрсөтүлгөн жок",
+      "phone": "Телефон",
+      "selectDate": "Датаны тандаңыз",
+      "selectService": "Кызматты тандаңыз",
+      "selectTime": "Убакытты тандаңыз",
+      "services": "Кызматтар",
       "slotTaken": "Бул убакыт мурунтан ээленген. Башка убакытты тандаңыз.",
-      "cohorts": "Топтук сабактар",
-      "noCohorts": "Топтук сабактар жок"
+      "specialists": "Биздин адистер",
+      "website": "Сайт"
     }
   },
   "forgotPassword": {

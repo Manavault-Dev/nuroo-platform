@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from '@/i18n/navigation'
+import { useRouter, Link } from '@/i18n/navigation'
 import { useAuth } from '@/lib/b2b/AuthContext'
 import { db as _db } from '@/lib/firebase/config'
 import {
@@ -288,6 +288,13 @@ export default function SystemAppControlPage() {
             <p className="text-sm text-gray-500">Управление приложением в реальном времени</p>
           </div>
         </div>
+
+        <Link
+          href="/b2b/admin/org-claims"
+          className="text-sm text-primary-600 hover:underline mr-4"
+        >
+          Заявки на организации
+        </Link>
 
         <button
           onClick={confirmAndSave}

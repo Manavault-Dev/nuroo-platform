@@ -1772,7 +1772,16 @@
         "ctaChoosePlan": "Choose Plan",
         "ctaUpdateBilling": "Update Billing",
         "ctaManageBilling": "Manage Billing",
-        "ctaContactSupport": "Contact Support"
+        "ctaContactSupport": "Contact Support",
+        "billingBadge": {
+          "freeTrial": "Free Trial",
+          "active": "Active",
+          "pastDue": "Payment Required",
+          "expired": "Trial Expired",
+          "cancelled": "Cancelled",
+          "suspended": "Suspended",
+          "daysLeft": "{days}d left"
+        }
       },
       "branches": {
         "title": "Locations",
@@ -1905,7 +1914,26 @@
         "noProfile": "No payment plan",
         "perMonth": "mo",
         "showAllInvoices": "Show all {count, plural, one {invoice} other {invoices}}",
-        "hideInvoices": "Collapse"
+        "hideInvoices": "Collapse",
+        "invoiceDetail": {
+          "backToInvoices": "Back to invoices",
+          "titlePaid": "Payment received",
+          "messagePaid": "The payment was processed successfully. The invoice status has been updated.",
+          "titlePending": "Awaiting confirmation",
+          "messagePending": "The payment is being processed. The status will update automatically.",
+          "titleFailed": "Payment failed",
+          "messageFailed": "An error occurred while processing the payment. Please try again.",
+          "titleExpired": "Payment deadline passed",
+          "messageExpired": "The payment window for this invoice has expired. Please contact the organization.",
+          "titleCanceled": "Invoice canceled",
+          "messageCanceled": "This invoice was canceled.",
+          "titleDefault": "Invoice details",
+          "labelDescription": "Description",
+          "labelPaidAt": "Paid at",
+          "loadFailed": "Failed to load invoice details.",
+          "waitingBankConfirmation": "Waiting for bank confirmation…",
+          "refreshStatus": "Refresh status"
+        }
       },
       "common": {
         "loading": "Loading...",
@@ -2323,6 +2351,55 @@
         "previewChildren": "Children",
         "previewReports": "Reports",
         "previewBrandSettings": "Brand Settings"
+      },
+      "leads": {
+        "title": "Leads",
+        "subtitle": "Inquiry pipeline from parents — from the marketplace and added manually",
+        "addLead": "Add Lead",
+        "totalLeads": "Total Leads",
+        "conversionRate": "Conversion",
+        "branchLabel": "Branch:",
+        "allBranches": "All branches",
+        "noBranch": "No branch",
+        "empty": "Empty",
+        "loadFailed": "Failed to load leads",
+        "statusChangeFailed": "Failed to change status",
+        "childPrefix": "Child",
+        "interestedPrefix": "Interested in",
+        "statuses": {
+          "new": "New",
+          "contacted": "Contacted",
+          "trial_booked": "Trial Booked",
+          "active_client": "Active Client",
+          "lost": "Lost"
+        },
+        "sources": {
+          "marketplace": "Marketplace",
+          "manual": "Manual",
+          "referral": "Referral"
+        },
+        "modal": {
+          "statusLabel": "Status",
+          "branchLabel": "Branch",
+          "notesLabel": "Notes",
+          "cancel": "Cancel",
+          "save": "Save"
+        },
+        "newLead": {
+          "title": "New Lead",
+          "parentNameLabel": "Parent's name *",
+          "phoneLabel": "Phone *",
+          "phonePlaceholder": "+996 XXX XXX XXX",
+          "emailLabel": "Email",
+          "childLabel": "Child",
+          "branchLabel": "Branch",
+          "programInterestLabel": "Program of interest",
+          "notesLabel": "Notes",
+          "errorRequired": "Enter the parent's name and phone number",
+          "errorCreateFailed": "Failed to create lead",
+          "cancel": "Cancel",
+          "create": "Create"
+        }
       }
     },
     "notifications": {
@@ -2361,6 +2438,10 @@
         "error": "Error",
         "warning": "Warning",
         "info": "Information"
+      },
+      "upgradeScreen": {
+        "tryCta": "Try Nuroo Business →",
+        "includesNote": "Includes everything in Nuroo + tools for your organization"
       }
     },
     "activityFeed": {
@@ -2479,7 +2560,12 @@
     "locale": "Language",
     "en": "English",
     "ru": "Русский",
-    "ky": "Кыргызча"
+    "ky": "Кыргызча",
+    "dateTimePicker": {
+      "selectDateTime": "Select date and time",
+      "time": "Time",
+      "done": "Done"
+    }
   },
   "legalPage": {
     "terms": {
@@ -2683,39 +2769,51 @@
     "loading": "Loading...",
     "loadError": "Failed to load organizations",
     "orgPage": {
+      "address": "Address",
       "back": "Back to Marketplace",
-      "specialists": "Our Specialists",
-      "noSpecialists": "No specialists listed",
-      "services": "Services",
-      "noServices": "No services added",
+      "back7Days": "← 7 days",
+      "book": "Book",
+      "bookError": "Failed to create booking. Please try again.",
+      "bookSuccess": "Booking created successfully!",
+      "booking": "Booking...",
+      "bookingUnavailableNoService": "Specialists haven't set up any services yet — contact them by phone or WhatsApp.",
+      "bookingUnavailableNoSlot": "No open times in the next 30 days — contact them by phone or WhatsApp.",
+      "bookingUnavailableNoSpecialist": "This organization hasn't added any specialists yet — contact them by phone or WhatsApp.",
+      "bookingUnavailableTitle": "Online booking isn't available yet",
+      "cancelBtn": "Cancel",
+      "claimBtn": "Connect",
+      "claimConfirm": "We'll review your request and reach out before granting management access. Send request?",
+      "claimError": "Couldn't send the request. Please try again later.",
+      "claimPendingSub": "We're reviewing your request to connect this organization.",
+      "claimPendingTitle": "Request sent",
+      "claimSub": "Connect it to Nuroo to manage its profile, team, and bookings.",
+      "claimSubmitting": "Sending...",
+      "claimTitle": "Is this your organization?",
+      "cohorts": "Group Sessions",
+      "confirmBtn": "Confirm",
+      "confirmDate": "Date",
+      "confirmService": "Service",
+      "confirmSpecialist": "Specialist",
+      "confirmTime": "Time",
+      "confirmTitle": "Confirm Booking",
       "duration": "{min} min",
       "free": "Free",
-      "selectService": "Select a service",
-      "selectDate": "Select a date",
-      "selectTime": "Select a time",
-      "noSlots": "No available slots",
-      "book": "Book",
-      "booking": "Booking...",
-      "bookSuccess": "Booking created successfully!",
-      "bookError": "Failed to create booking. Please try again.",
-      "loginRequired": "Sign in to book",
-      "loginBtn": "Sign In",
       "loadError": "Failed to load data",
-      "phone": "Phone",
-      "address": "Address",
-      "website": "Website",
-      "back7Days": "← 7 days",
+      "loginBtn": "Sign In",
+      "loginRequired": "Sign in to book",
       "next7Days": "7 days →",
-      "confirmTitle": "Confirm Booking",
-      "confirmSpecialist": "Specialist",
-      "confirmService": "Service",
-      "confirmDate": "Date",
-      "confirmTime": "Time",
-      "confirmBtn": "Confirm",
-      "cancelBtn": "Cancel",
+      "noCohorts": "No group sessions available",
+      "noServices": "No services added",
+      "noSlots": "No available slots",
+      "noSpecialists": "No specialists listed",
+      "phone": "Phone",
+      "selectDate": "Select a date",
+      "selectService": "Select a service",
+      "selectTime": "Select a time",
+      "services": "Services",
       "slotTaken": "This slot is no longer available. Please choose a different time.",
-      "cohorts": "Group Sessions",
-      "noCohorts": "No group sessions available"
+      "specialists": "Our Specialists",
+      "website": "Website"
     }
   },
   "forgotPassword": {

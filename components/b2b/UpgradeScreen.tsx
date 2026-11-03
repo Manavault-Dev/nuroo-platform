@@ -1,6 +1,7 @@
 'use client'
 
 import { Lock } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { type BusinessFeature, FEATURE_LABELS } from '@/lib/b2b/planGate'
 
 interface UpgradeScreenProps {
@@ -15,6 +16,7 @@ export function UpgradeScreen({
   upgradeHref = '/b2b/billing',
   inline = false,
 }: UpgradeScreenProps) {
+  const t = useTranslations('b2b.common.upgradeScreen')
   const { title, description } = FEATURE_LABELS[feature]
 
   if (inline) {
@@ -54,12 +56,10 @@ export function UpgradeScreen({
         href={upgradeHref}
         className="inline-flex items-center gap-2 px-6 py-3 bg-purple-600 text-white text-sm font-semibold rounded-xl hover:bg-purple-700 transition-colors"
       >
-        Попробовать Nuroo Business →
+        {t('tryCta')}
       </a>
 
-      <p className="mt-4 text-xs text-gray-400">
-        Включает все возможности Nuroo + инструменты для организации
-      </p>
+      <p className="mt-4 text-xs text-gray-400">{t('includesNote')}</p>
     </div>
   )
 }
