@@ -6,6 +6,7 @@ import { bookingRoute } from './booking.routes.js'
 import { bookingRescheduleRoute } from './booking.reschedule.routes.js'
 import { intakeRoute } from './intake.routes.js'
 import { blockingRoute } from './blocking.routes.js'
+import { readinessRoute } from './readiness.routes.js'
 
 export const bookingDomain: FastifyPluginAsync = async (fastify) => {
   await fastify.register(servicesRoute)
@@ -15,4 +16,5 @@ export const bookingDomain: FastifyPluginAsync = async (fastify) => {
   await fastify.register(bookingRescheduleRoute)
   await fastify.register(intakeRoute)
   await fastify.register(blockingRoute)
+  await fastify.register(readinessRoute)
 }
