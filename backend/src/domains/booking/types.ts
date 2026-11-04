@@ -109,12 +109,12 @@ export interface WaitlistDoc {
 
 /** Audit log entry — immutable record of who changed what */
 export interface AuditEntry {
-  entityType: 'booking' | 'cohort' | 'participant' | 'recommendation'
+  entityType: 'booking' | 'cohort' | 'participant' | 'recommendation' | 'organization'
   entityId: string
   orgId: string
   action: string // e.g. 'reschedule', 'cancel', 'status_change', 'payment_update'
   actorId: string
-  actorRole: 'parent' | 'specialist' | 'org_admin' | 'system'
+  actorRole: 'parent' | 'specialist' | 'org_admin' | 'system' | 'platform_admin'
   before: Record<string, unknown>
   after: Record<string, unknown>
   reason: string | null
