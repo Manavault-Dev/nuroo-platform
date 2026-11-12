@@ -4,6 +4,7 @@ import admin from 'firebase-admin'
 import { z } from 'zod'
 
 import { getFirestore, getStorageBucket } from '../../infrastructure/database/firebase.js'
+import { geocodeAddress } from '../../infrastructure/geocoding/googleGeocoding.service.js'
 import { FREE_TRIAL_DAYS, FREE_TRIAL_PLAN_ID } from '../payments/planLimits.js'
 import { requireOrgMember } from '../../infrastructure/auth/rbac.js'
 
@@ -19,9 +20,19 @@ export const ORG_TYPES = [
 ] as const
 export type OrgType = (typeof ORG_TYPES)[number]
 
+// Addresses copied from maps/websites often carry zero-width characters that
+// break geocoding and map-search links.
+const ZERO_WIDTH_CHARS = /[\u{200B}-\u{200D}\u{2060}\u{FEFF}]/gu
+
 const createOrgSchema = z.object({
   name: z.string().trim().min(1).max(200),
   country: z.string().trim().max(100).optional(),
+  city: z.string().trim().max(100).optional(),
+  address: z
+    .string()
+    .transform((v) => v.replace(ZERO_WIDTH_CHARS, '').trim())
+    .pipe(z.string().max(300))
+    .optional(),
   plan: z.enum(NUROO_PLAN_IDS).optional(),
   specializations: z.array(z.string().trim().max(100)).max(20).optional(),
   type: z.enum(ORG_TYPES).nullable().optional(),
@@ -132,6 +143,8 @@ const createOrgBodySchema = {
   properties: {
     name: { type: 'string' },
     country: { type: 'string' },
+    city: { type: 'string' },
+    address: { type: 'string' },
     plan: { type: 'string', enum: [...NUROO_PLAN_IDS] },
     specializations: { type: 'array', items: { type: 'string' } },
     type: { type: ['string', 'null'], enum: [...ORG_TYPES, null] },
@@ -400,6 +413,12 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ error: 'You already have an organization with this name' })
       }
 
+      // Best-effort map pin: a missing key, timeout, or unresolvable address
+      // yields null and the org is simply created without coordinates.
+      const location = body.address
+        ? await geocodeAddress(body.address, { country: body.country, city: body.city })
+        : null
+
       const orgRef = db.collection('organizations').doc()
       const orgId = orgRef.id
 
@@ -411,6 +430,9 @@ export const orgsRoute: FastifyPluginAsync = async (fastify) => {
         name: body.name,
         country: body.country || null,
         type: body.type ?? null,
+        ...(body.city ? { city: body.city } : {}),
+        ...(body.address ? { address: body.address } : {}),
+        ...(location ? { lat: location.lat, lng: location.lng } : {}),
         createdAt: admin.firestore.Timestamp.fromDate(now),
         createdBy: uid,
         isActive: true,

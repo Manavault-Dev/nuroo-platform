@@ -1,6 +1,9 @@
 import { config } from '../../config/index.js'
 
 const GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json'
+// Runs inside user-facing requests (org creation): never let a slow Google
+// response hold the request open.
+const GEOCODE_TIMEOUT_MS = 3000
 
 export interface GeocodeResult {
   lat: number
@@ -35,7 +38,9 @@ export async function geocodeAddress(
   if (regionBias) params.set('region', regionBias)
 
   try {
-    const res = await fetch(`${GEOCODE_URL}?${params.toString()}`)
+    const res = await fetch(`${GEOCODE_URL}?${params.toString()}`, {
+      signal: AbortSignal.timeout(GEOCODE_TIMEOUT_MS),
+    })
     if (!res.ok) return null
 
     const data = (await res.json()) as {
