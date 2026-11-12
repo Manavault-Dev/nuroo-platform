@@ -147,4 +147,4 @@ and rollback procedure in the billing runbook.
 
 ## License
 
-Proprietary software. All rights reserved.
+Proprietary software. All rights reserved. See [LICENSE](LICENSE).
