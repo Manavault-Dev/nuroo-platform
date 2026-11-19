@@ -49,7 +49,7 @@
     "openai": "^4.104.0",
     "resend": "^6.19.0",
     "stripe": "^16.12.0",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^3.22.4"
   },
   "devDependencies": {

@@ -110,8 +110,10 @@ function validateRow(data: {
   return undefined
 }
 
-function parseWorkbook(buffer: Buffer): ImportRow[] {
-  const workbook = read(buffer, { type: 'buffer', cellDates: true })
+export function parseWorkbook(buffer: Buffer): ImportRow[] {
+  // raw: keep CSV cells as text — otherwise "+996700123456" becomes the number
+  // 996700123456 and "0555123456" loses its leading zero.
+  const workbook = read(buffer, { type: 'buffer', cellDates: true, raw: true })
   const firstSheetName = workbook.SheetNames[0]
   if (!firstSheetName) return []
   const sheet = workbook.Sheets[firstSheetName]
